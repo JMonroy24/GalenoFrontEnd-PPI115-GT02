@@ -1,0 +1,23 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "BrowserSync",
+            "type": "chrome",
+            "request": "launch",
+            "url": "http://localhost:3000",
+            "webRoot": "${workspaceFolder}/source",
+            "preLaunchTask": "Lanzar browser-sync",
+            "postDebugTask": "Apagar browser-sync"
+        },
+        {
+            "name": "browser-sync debug",
+            "type": "chrome",
+            "request": "launch",
+            "url": "http://localhost:3000/test/runner.html",
+            "webRoot": "${workspaceFolder}",
+            "preLaunchTask": "debug browser",
+            "postDebugTask": "Apagar browser-sync"
+        }
+    ]
+}

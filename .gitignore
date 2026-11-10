@@ -1,0 +1,12 @@
+# Configuraciones y credenciales de herramientas IA
+opencode.json
+
+# Dependencias y logs
+node_modules/
+*.log
+
+# Archivos del sistema operativo y respaldos
+.DS_Store
+Thumbs.db
+*~
+*.swp
