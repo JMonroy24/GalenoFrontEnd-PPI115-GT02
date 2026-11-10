@@ -17,18 +17,5 @@
       "sizes": "512x512",
       "type": "image/png"
     }
-  ],
-  "screenshots": [
-    {
-      "src": "recursos/imagenes/galeno_app_01.png",
-      "sizes": "1200x670",
-      "type": "image/png",
-      "form_factor": "wide"
-    },
-    {
-      "src": "recursos/imagenes/galeno_app_02.png",
-      "sizes": "800x512",
-      "type": "image/png"
-    }
   ]
 }

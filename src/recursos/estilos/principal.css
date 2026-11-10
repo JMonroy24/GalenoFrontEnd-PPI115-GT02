@@ -1,0 +1,124 @@
+:root {
+    --color-primario: #1e3a8a;
+    --color-primario-claro: #dbeafe;
+    --color-fondo: #f3f4f6;
+    --color-superficie: #ffffff;
+    --color-texto: #1f2937;
+    --color-borde: #d1d5db;
+    --color-error: #dc2626;
+    --color-exito: #16a34a;
+    --color-info: #2563eb;
+    --radio: 8px;
+    --sombra: 0 6px 16px rgba(15, 23, 42, 0.08);
+    --ancho-menu: 220px;
+}
+
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+    margin: 0;
+}
+
+body {
+    font-family: system-ui, sans-serif;
+    background-color: var(--color-fondo);
+    color: var(--color-texto);
+}
+
+.form-control {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio);
+    background-color: var(--color-superficie);
+    color: var(--color-texto);
+    font: inherit;
+}
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem 1rem;
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio);
+    background-color: var(--color-superficie);
+    color: var(--color-texto);
+    font: inherit;
+    cursor: pointer;
+}
+
+.btn-primario {
+    background-color: var(--color-primario);
+    border-color: var(--color-primario);
+    color: var(--color-superficie);
+}
+
+.header,
+.body,
+.footer {
+    padding: 0.75rem 1rem;
+}
+
+.header {
+    border-bottom: 1px solid var(--color-borde);
+}
+
+.footer {
+    border-top: 1px solid var(--color-borde);
+}
+
+.dropdown-menu {
+    position: absolute;
+    z-index: 1000;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border: 1px solid var(--color-borde);
+    border-radius: var(--radio);
+    background-color: var(--color-superficie);
+    box-shadow: var(--sombra);
+}
+
+.app {
+    display: grid;
+    min-height: 100vh;
+    grid-template-columns: var(--ancho-menu) 1fr;
+    grid-template-rows: auto 1fr auto;
+    grid-template-areas:
+        "encabezado encabezado"
+        "menu contenido"
+        "pie pie";
+}
+
+.encabezado {
+    grid-area: encabezado;
+}
+
+.menu {
+    grid-area: menu;
+}
+
+.contenido {
+    grid-area: contenido;
+    overflow: auto;
+    padding: 1rem;
+}
+
+.pie {
+    grid-area: pie;
+}
+
+@media (max-width: 800px) {
+    .app {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto auto 1fr auto;
+        grid-template-areas:
+            "encabezado"
+            "menu"
+            "contenido"
+            "pie";
+    }
+}
