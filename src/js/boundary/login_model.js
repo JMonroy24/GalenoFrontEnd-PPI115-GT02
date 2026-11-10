@@ -15,19 +15,12 @@ export default class LoginModel extends HTMLElement {
             <link rel="stylesheet" href="recursos/estilos/principal.css">
             <select id="selClinica" class="form-control"></select>
             <select id="selRol" class="form-control"></select>
-            <button id="btnEntrar" disabled>Entrar</button>
+            <button id="btnEntrar">Entrar</button>
         `;
 
         const selClinica = this.shadowRoot.querySelector("#selClinica");
         const selRol = this.shadowRoot.querySelector("#selRol");
         const btnEntrar = this.shadowRoot.querySelector("#btnEntrar");
-
-        const actualizarBoton = () => {
-            btnEntrar.disabled = !(selClinica.value && selRol.value);
-        };
-
-        selClinica.addEventListener("change", actualizarBoton);
-        selRol.addEventListener("change", actualizarBoton);
 
         this.clinicaService.buscarActivos()
             .then((respuesta) => {
@@ -37,7 +30,6 @@ export default class LoginModel extends HTMLElement {
                     opcion.textContent = clinica.nombre;
                     selClinica.appendChild(opcion);
                 });
-                actualizarBoton();
             })
             .catch((err) => {
                 this.dispatchEvent(GeneradorMensajes.crearMensaje(
@@ -56,7 +48,6 @@ export default class LoginModel extends HTMLElement {
                     opcion.textContent = rol.nombre;
                     selRol.appendChild(opcion);
                 });
-                actualizarBoton();
             })
             .catch((err) => {
                 this.dispatchEvent(GeneradorMensajes.crearMensaje(
