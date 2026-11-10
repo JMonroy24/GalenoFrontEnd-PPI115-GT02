@@ -3,21 +3,34 @@
     "configurations": [
         {
             "name": "BrowserSync",
-            "type": "chrome",
+            "type": "pwa-chrome",
             "request": "launch",
             "url": "http://localhost:3000",
-            "webRoot": "${workspaceFolder}/source",
+            "webRoot": "${workspaceFolder}/src",
+            "runtimeExecutable": "/snap/bin/brave",
+            "runtimeArgs": [
+                "--remote-debugging-port=9222",
+                "--new-window",
+                "--user-data-dir=/tmp/brave-debug"
+            ],
             "preLaunchTask": "Lanzar browser-sync",
             "postDebugTask": "Apagar browser-sync"
         },
         {
             "name": "browser-sync debug",
-            "type": "chrome",
+            "type": "pwa-chrome",
             "request": "launch",
             "url": "http://localhost:3000/test/runner.html",
             "webRoot": "${workspaceFolder}",
+            "runtimeExecutable": "/snap/bin/brave",
+            "runtimeArgs": [
+                "--remote-debugging-port=9222",
+                "--new-window",
+                "--user-data-dir=/tmp/brave-debug"
+            ],
             "preLaunchTask": "debug browser",
             "postDebugTask": "Apagar browser-sync"
         }
     ]
 }
+
