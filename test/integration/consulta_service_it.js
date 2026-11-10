@@ -1,5 +1,6 @@
 import ConsultaService from "../../src/js/control/consulta_service.js";
 import DefaultResponse from "../../src/js/entity/default_response.js";
+import config from "../../src/js/config.js";
 import { expect } from "../lib/chai/index.js";
 
 mocha.setup("bdd");
@@ -9,7 +10,7 @@ describe("ConsultaService (integración con Open Liberty)", function () {
     this.timeout(5000);
 
     it("responde 200 sin errores de CORS", async () => {
-        const response = await fetch("http://localhost:9080/galenoSV/resources/v1/consultas?first=0&max=10");
+        const response = await fetch(`${config.API_BASE}consultas?first=0&max=10`);
         expect(response.status).to.equal(200);
     });
 
