@@ -4,7 +4,7 @@
     {
       "label": "Lanzar browser-sync",
       "type": "shell",
-      "command": "browser-sync start --server source --files \"source/**/*\" --no-open",
+      "command": "browser-sync start --server src --files \"**/*\" --no-open",
       "isBackground": true,
       "problemMatcher": []
     },

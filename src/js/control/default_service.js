@@ -1,9 +1,10 @@
+import config from "../config.js";
 import DefaultError from "../entity/default_error.js";
 import DefaultResponse from "../entity/default_response.js";
 
 export default class DefaultService {
     constructor() {
-        this._urlBase = "http://localhost:9080/galenoSV/resources/v1/";
+        this._urlBase = config.API_BASE;
     }
 
     findRange(first, max) {
