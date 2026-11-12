@@ -162,30 +162,6 @@ a {
     outline-offset: var(--focus-offset);
 }
 
-.layout {
-    display: grid;
-    min-height: 100vh;
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr) auto;
-    grid-template-areas:
-        "header"
-        "main"
-        "footer";
-}
-
-.layout-header {
-    grid-area: header;
-}
-
-.layout-main {
-    grid-area: main;
-    min-width: 0;
-}
-
-.layout-footer {
-    grid-area: footer;
-}
-
 .form-control {
     width: 100%;
     min-height: 2.75rem;
@@ -269,7 +245,8 @@ a {
     background-color: var(--color-primario-claro);
 }
 
-.app {
+.app,
+.layout {
     display: grid;
     min-height: 100vh;
     grid-template-columns: var(--ancho-menu) minmax(0, 1fr);
@@ -280,23 +257,27 @@ a {
         "pie pie";
 }
 
-.encabezado {
+.encabezado,
+.layout-header {
     grid-area: encabezado;
 }
 
-.menu {
+.menu,
+.layout-menu {
     grid-area: menu;
     min-width: 0;
 }
 
-.contenido {
+.contenido,
+.layout-main {
     grid-area: contenido;
     min-width: 0;
     overflow: auto;
     padding: var(--espacio-4);
 }
 
-.pie {
+.pie,
+.layout-footer {
     grid-area: pie;
 }
 
@@ -305,17 +286,19 @@ a {
         --menu-width: 190px;
     }
 
-    .contenido {
+    .contenido,
+    .layout-main {
         padding: var(--space-4);
     }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 800px) {
     :root {
         --menu-width: 100%;
     }
 
-    .app {
+    .app,
+    .layout {
         grid-template-columns: minmax(0, 1fr);
         grid-template-rows: auto auto minmax(0, 1fr) auto;
         grid-template-areas:
@@ -325,8 +308,16 @@ a {
             "pie";
     }
 
-    .contenido {
+    .contenido,
+    .layout-main {
         padding: var(--space-3);
+    }
+}
+
+@media (max-width: 640px) {
+    .contenido,
+    .layout-main {
+        padding: var(--space-2);
     }
 }
 
@@ -335,7 +326,8 @@ a {
         --menu-width: 220px;
     }
 
-    .contenido {
+    .contenido,
+    .layout-main {
         width: min(100%, var(--content-max-width));
         padding: var(--space-6);
     }
