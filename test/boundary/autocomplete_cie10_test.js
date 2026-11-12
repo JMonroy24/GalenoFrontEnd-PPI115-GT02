@@ -30,8 +30,8 @@ suite("AutoCompleteCie10 (unitaria)", () => {
     });
 
     teardown(() => {
-        clock.restore();
-        buscarStub.restore();
+        clock?.restore();
+        buscarStub?.restore();
         if (host && host.parentNode) {
             host.parentNode.removeChild(host);
         }
