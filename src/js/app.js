@@ -7,6 +7,8 @@ import "./boundary/vista_pendiente.js";
 import "./boundary/login_model.js";
 import "./boundary/busqueda_consulta_model.js";
 import "./boundary/vistas/busqueda_citas_view.js";
+import "./boundary/vistas/dashboard_view.js";
+import "./boundary/vistas/atencion_consulta_view.js";
 import "./boundary/vistas/login_view.js";
 import GeneradorMensajes from "./control/generador_mensajes.js";
 
@@ -23,6 +25,8 @@ const RUTAS = {
     medios_contactos: "vista-pendiente",
     personas_roles: "vista-pendiente",
     consultas: "busqueda-citas-view",
+    dashboard: "dashboard-view",
+    atencion: "atencion-consulta-view",
     ordenes_examenes: "vista-pendiente",
     resultados: "vista-pendiente",
     login: "login-view"

@@ -1,4 +1,4 @@
-const CACHE_NAME = "galenosv-app-shell-v9";
+const CACHE_NAME = "galenosv-app-shell-v13";
 
 const APP_SHELL = [
     "/index.html",
@@ -15,6 +15,7 @@ const APP_SHELL = [
     "/js/boundary/busqueda_consulta_model.js",
     "/js/boundary/vistas/busqueda_citas_view.js",
     "/js/boundary/vistas/login_view.js",
+    "/js/boundary/vistas/dashboard_view.js",
     "/js/boundary/login_model.js",
     "/js/boundary/vista_pendiente.js",
     "/js/boundary/componentes/asistente_busqueda.js",
@@ -22,6 +23,7 @@ const APP_SHELL = [
     "/js/boundary/componentes/buscador_persona.js",
     "/js/boundary/componentes/buscador_tipo_doc.js",
     "/js/boundary/componentes/encabezado_app.js",
+    "/js/boundary/componentes/historial_pasos.js",
     "/js/boundary/componentes/instalador_app.js",
     "/js/boundary/componentes/menu_lateral.js",
     "/js/boundary/componentes/notificacion_emergente.js",

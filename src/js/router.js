@@ -11,8 +11,8 @@ const PRIVATE_ROUTE_PATHS = new Set(
 const ROUTES = Object.freeze({
     login: "login-view",
     consultas: "busqueda-citas-view",
-    dashboard: "vista-pendiente",
-    atencion: "vista-pendiente",
+    dashboard: "dashboard-view",
+    atencion: "atencion-consulta-view",
     roles: "vista-pendiente",
     tipos_documentos: "vista-pendiente",
     tipos_medios_contactos: "vista-pendiente",
