@@ -1,53 +1,24 @@
 import DefaultService from "./default_service.js";
-import DefaultError from "../entity/default_error.js";
-import DefaultResponse from "../entity/default_response.js";
+import { ENDPOINTS } from "../config.js";
 
 export default class PersonaService extends DefaultService {
     constructor() {
-        super();
-        this._urlBase += "personas";
+        super(ENDPOINTS.personas);
     }
 
-    buscarPorDui(dui) {
-        return new Promise((resolve, reject) => {
-            fetch(`${this._urlBase}/dui/${encodeURIComponent(dui)}`, { method: "GET" })
-                .then(async (response) => {
-                    if (response.status === 200) {
-                        resolve(await response.json());
-                    } else if (response.status === 404) {
-                        resolve(null);
-                    } else {
-                        reject(new DefaultError("Error al buscar la persona", response));
-                    }
-                })
-                .catch((err) => {
-                    reject(new DefaultError("Error al buscar la persona", err));
-                });
-        });
+    async buscarPorDui(dui) {
+        const respuesta = await this.findRange(0, 1, dui);
+        return respuesta.items[0] ?? null;
     }
 
-    crearPersona(personaDto) {
-        return new Promise((resolve, reject) => {
-            fetch(this._urlBase, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(personaDto)
-            })
-                .then(async (response) => {
-                    if (response.status === 200 || response.status === 201) {
-                        const texto = await response.text();
-                        if (texto === null || texto.trim() === "") {
-                            resolve(null);
-                        } else {
-                            resolve(JSON.parse(texto));
-                        }
-                    } else {
-                        reject(new DefaultError("Error al crear la persona", response));
-                    }
-                })
-                .catch((err) => {
-                    reject(new DefaultError("Error al crear la persona", err));
-                });
-        });
+    async crearPersona(personaDto) {
+        const response = await this._request(this._urlBase, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(personaDto)
+        }, "Error al crear la persona");
+
+        const texto = await response.text();
+        return texto.trim() === "" ? null : JSON.parse(texto);
     }
 }
