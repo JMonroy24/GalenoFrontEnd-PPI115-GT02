@@ -1,6 +1,7 @@
 import ConsultaService from "../../src/js/control/consulta_service.js";
 import DefaultResponse from "../../src/js/entity/default_response.js";
 import DefaultError from "../../src/js/entity/default_error.js";
+import store from "../../src/js/store.js";
 import { assert, expect } from "../lib/chai/index.js";
 
 mocha.setup("tdd");
@@ -11,26 +12,36 @@ suite("ConsultaService (unitaria)", () => {
 
     teardown(() => fetchStub.restore());
 
-    test("findRange devuelve DefaultResponse y usa el header total-registros", async () => {
+    test("findRange lee la respuesta estructurada y envía paginación y filtro", async () => {
         fetchStub = sinon.stub(window, "fetch").resolves({
+            ok: true,
             status: 200,
-            json: async () => [{ idConsulta: 1 }],
-            headers: new Map([["total-registros", "1"]])
+            json: async () => ({
+                items: [{ idConsulta: 1 }],
+                total: 1,
+                first: 0,
+                max: 10
+            })
         });
 
-        const resp = await servicio.findRange(0, 10);
+        const resp = await servicio.findRange(0, 10, "consulta de prueba");
 
         assert.instanceOf(resp, DefaultResponse);
         expect(resp.total).to.equal(1);
         expect(resp.datos).to.have.length(1);
-        expect(fetchStub.firstCall.args[0]).to.contain("consultas?first=0&max=10");
+        expect(resp.items).to.equal(resp.datos);
+        expect(resp.first).to.equal(0);
+        expect(resp.max).to.equal(10);
+        expect(fetchStub.firstCall.args[0].toString()).to.contain(
+            "consultas?first=0&max=10&q=consulta+de+prueba"
+        );
     });
 
-    test("findRange conserva total 0 cuando el header es 0", async () => {
+    test("findRange conserva el total 0 del payload", async () => {
         fetchStub = sinon.stub(window, "fetch").resolves({
+            ok: true,
             status: 200,
-            json: async () => [],
-            headers: new Map([["total-registros", "0"]])
+            json: async () => ({ items: [], total: 0, first: 0, max: 10 })
         });
 
         const resp = await servicio.findRange(0, 10);
@@ -38,10 +49,10 @@ suite("ConsultaService (unitaria)", () => {
         expect(resp.total).to.equal(0);
     });
 
-    test("findRange rechaza con DefaultError cuando el status no es 200", async () => {
+    test("findRange rechaza con DefaultError cuando response.ok es false", async () => {
         fetchStub = sinon.stub(window, "fetch").resolves({
-            status: 500,
-            headers: new Map()
+            ok: false,
+            status: 500
         });
 
         let error;
@@ -52,5 +63,32 @@ suite("ConsultaService (unitaria)", () => {
         }
 
         assert.instanceOf(error, DefaultError);
+    });
+
+    test("inyecta el token y cierra la sesión al recibir 401", async () => {
+        store.setState("session", { token: "test-token" });
+        fetchStub = sinon.stub(window, "fetch").resolves({
+            ok: false,
+            status: 401,
+            clone: () => ({
+                json: async () => ({ message: "Token expirado", reason: "expired" })
+            })
+        });
+
+        let error;
+        try {
+            await servicio.findRange(0, 10);
+        } catch (err) {
+            error = err;
+        } finally {
+            store.setState("session", null);
+        }
+
+        assert.instanceOf(error, DefaultError);
+        expect(fetchStub.firstCall.args[1].headers.get("Authorization")).to.equal("Bearer test-token");
+        expect(store.getState().session).to.equal(null);
+        expect(error.status).to.equal(401);
+        expect(error.message).to.equal("Token expirado");
+        expect(error.details.reason).to.equal("expired");
     });
 });
