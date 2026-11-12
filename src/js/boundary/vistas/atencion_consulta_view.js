@@ -1,13 +1,24 @@
 import { store } from "../../store.js";
 import { consultaService } from "../../control/consulta_service.js";
 import GeneradorMensajes from "../../control/generador_mensajes.js";
-import { navigate } from "../../router.js";
+import { navigate, parseRouteParams } from "../../router.js";
+import "../../boundary/componentes/stepper_progreso.js";
+import "../../boundary/componentes/autocomplete_cie10.js";
 
 /** Límite de caracteres para Notas de la Consulta. */
 const MAX_NOTAS = 2000;
 
 /** Límite de caracteres para Plan de Tratamiento. */
 const MAX_PLAN = 2000;
+
+/**
+ * Etapas del flujo clínico mostradas en el stepper.
+ * Índice 1 corresponde a "Consulta Médica", que es el paso activo en esta vista.
+ */
+const ETAPAS_FLUJO = Object.freeze(["Triaje", "Consulta Médica", "Tratamiento", "Cierre"]);
+
+/** Índice del paso activo en esta vista dentro de ETAPAS_FLUJO. */
+const PASO_ACTIVO = 1;
 
 /**
  * Vista de atención médica de una consulta.
@@ -28,6 +39,12 @@ export class AtencionConsultaView extends HTMLElement {
 
         /** @type {boolean} Indica si hay una petición en curso. */
         this._enviando = false;
+
+        /** @type {Array<object|string>} Diagnósticos CIE-10 seleccionados. */
+        this._diagnosticos = [];
+
+        /** @type {number} Paso activo en el stepper (0-based). */
+        this._pasoActivo = PASO_ACTIVO;
 
         this._alCambioStore = (evento) => {
             const estado = evento?.detail ?? store.getState();
@@ -53,6 +70,13 @@ export class AtencionConsultaView extends HTMLElement {
             estado?.consulta ??
             null;
 
+        // Si el hash incluye un id (#atencion/<id>), intenta cargar la consulta
+        // directamente desde el servicio para soportar acceso directo por URL.
+        const { params } = parseRouteParams(window.location.hash);
+        if (params.id) {
+            this._cargarConsultaPorId(params.id);
+        }
+
         this.render();
         store.addEventListener("state-changed", this._alCambioStore);
     }
@@ -61,20 +85,66 @@ export class AtencionConsultaView extends HTMLElement {
         store.removeEventListener("state-changed", this._alCambioStore);
     }
 
+    /**
+     * Carga la consulta desde el servicio usando el id extraído del hash.
+     * Si el store ya tiene la misma consulta no realiza la petición.
+     *
+     * @param {string} id - Identificador de la consulta extraído de la ruta dinámica.
+     */
+    async _cargarConsultaPorId(id) {
+        // Si el store ya contiene la consulta con ese id, no duplicamos la carga.
+        const idActual =
+            this._consulta?.idConsulta ??
+            this._consulta?.id ??
+            null;
+
+        if (idActual !== null && String(idActual) === String(id)) {
+            return;
+        }
+
+        try {
+            const consulta = await consultaService.obtenerConsulta(id);
+
+            if (!consulta) {
+                return;
+            }
+
+            this._consulta = consulta;
+
+            store.setState({
+                consultaActiva: consulta,
+                consultaSeleccionada: consulta,
+                consulta
+            });
+
+            // Actualiza la vista con la consulta cargada
+            this.render();
+        } catch (error) {
+            GeneradorMensajes.crearMensaje(
+                "Error al cargar la consulta",
+                error?.mensaje ?? error?.message ?? "",
+                "error"
+            );
+        }
+    }
+
     // ─── API pública ──────────────────────────────────────────────────────────
 
     /**
-     * Devuelve un objeto limpio con los valores actuales de los campos del formulario.
+     * Devuelve un objeto limpio con los valores actuales de los campos del formulario,
+     * incluyendo los diagnósticos CIE-10 seleccionados.
      *
-     * @returns {{ notasConsulta: string, planTratamiento: string }}
+     * @returns {{ notasConsulta: string, planTratamiento: string, diagnosticos: Array<object|string> }}
      */
     obtenerDatosFormulario() {
         const notas = this.shadowRoot?.querySelector("#notas-consulta");
         const plan = this.shadowRoot?.querySelector("#plan-tratamiento");
+        const cie10 = this.shadowRoot?.querySelector("#cie10-busqueda");
 
         return {
             notasConsulta: (notas?.value ?? "").trim(),
-            planTratamiento: (plan?.value ?? "").trim()
+            planTratamiento: (plan?.value ?? "").trim(),
+            diagnosticos: cie10?.obtenerSeleccionados() ?? [...this._diagnosticos]
         };
     }
 
@@ -418,10 +488,35 @@ export class AtencionConsultaView extends HTMLElement {
                         transition: none;
                     }
                 }
+
+                /* ── Stepper ── */
+                .stepper-contenedor {
+                    padding: var(--space-3, 0.75rem) var(--space-4, 1rem);
+                    border: var(--border-width, 1px) solid var(--color-border, #64748b);
+                    border-radius: var(--radius-lg, 0.75rem);
+                    background-color: var(--color-surface, #ffffff);
+                    box-shadow: var(--shadow-sm, 0 1px 2px rgb(15 23 42 / 0.08));
+                }
+
+                /* ── Campo CIE-10 ── */
+                .campo-cie10-descripcion {
+                    display: block;
+                    margin-top: var(--space-1, 0.25rem);
+                    color: var(--color-text-muted, #475569);
+                    font-size: var(--text-xs, 0.75rem);
+                    font-weight: 400;
+                }
             </style>
 
             <section class="vista" aria-labelledby="titulo-vista">
                 ${this._htmlCabecera()}
+
+                <div class="stepper-contenedor">
+                    <stepper-progreso
+                        id="stepper-flujo"
+                        paso-activo="${this._pasoActivo}"
+                    ></stepper-progreso>
+                </div>
 
                 <div class="tarjeta" role="main">
                     <h2 class="tarjeta-titulo" id="titulo-vista">Registro de Atención Médica</h2>
@@ -556,6 +651,22 @@ export class AtencionConsultaView extends HTMLElement {
                     ></span>
                 </div>
 
+                <!-- ── Campo: Diagnósticos CIE-10 ── -->
+                <div class="campo" id="grupo-cie10">
+                    <label class="etiqueta">
+                        Diagnósticos CIE-10
+                        <span class="campo-cie10-descripcion">
+                            Busque y seleccione uno o varios códigos de diagnóstico.
+                        </span>
+                    </label>
+                    <auto-complete-cie10
+                        id="cie10-busqueda"
+                        aria-label="Buscador de diagnósticos CIE-10"
+                    ></auto-complete-cie10>
+                </div>
+
+                <hr class="divisor" aria-hidden="true">
+
                 <!-- ── Acciones ── -->
                 <div class="acciones">
                     <button type="button" class="btn btn-cancelar" id="btn-cancelar">
@@ -587,6 +698,28 @@ export class AtencionConsultaView extends HTMLElement {
         const btnCancelar = this.shadowRoot.querySelector("#btn-cancelar");
         const textareaNotas = this.shadowRoot.querySelector("#notas-consulta");
         const textareaPlan = this.shadowRoot.querySelector("#plan-tratamiento");
+
+        // ── Stepper: sincronizar etapas y escuchar clics de paso ──
+        const stepper = this.shadowRoot.querySelector("#stepper-flujo");
+        if (stepper) {
+            stepper.etapas = [...ETAPAS_FLUJO];
+            stepper.pasoActivo = this._pasoActivo;
+            stepper.addEventListener("paso-click", (evento) => {
+                this._pasoActivo = evento.detail.indice;
+                stepper.setPaso(this._pasoActivo);
+            });
+        }
+
+        // ── Auto-complete CIE-10: restaurar selección previa y escuchar cambios ──
+        const cie10 = this.shadowRoot.querySelector("#cie10-busqueda");
+        if (cie10) {
+            if (this._diagnosticos.length > 0) {
+                cie10.seleccionados = [...this._diagnosticos];
+            }
+            cie10.addEventListener("cie10-change", (evento) => {
+                this._diagnosticos = evento.detail?.seleccionados ?? [];
+            });
+        }
 
         btnVolver?.addEventListener("click", () => this._volverAlDashboard());
         btnCancelar?.addEventListener("click", () => this._cancelar());
@@ -643,7 +776,8 @@ export class AtencionConsultaView extends HTMLElement {
             if (idConsulta) {
                 await consultaService.registrarAtencion(idConsulta, {
                     notasConsulta: datos.notasConsulta || null,
-                    planTratamiento: datos.planTratamiento || null
+                    planTratamiento: datos.planTratamiento || null,
+                    diagnosticos: datos.diagnosticos.length > 0 ? datos.diagnosticos : null
                 });
             }
 
