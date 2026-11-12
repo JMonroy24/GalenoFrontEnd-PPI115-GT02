@@ -16,8 +16,10 @@ function _leerSesionStorage() {
         const token = datos?.token ?? null;
         const perfil = datos?.perfil ?? datos?.usuario ?? null;
         const roles = Array.isArray(datos?.roles) ? datos.roles : [];
-        if (!token && !perfil) return null;
-        return { token, perfil, roles };
+        const clinicaActiva = datos?.clinicaActiva ?? null;
+        const rolSeleccionado = datos?.rolSeleccionado ?? roles[0] ?? null;
+        if (!token && !perfil && !clinicaActiva && !rolSeleccionado) return null;
+        return { token, perfil, roles, clinicaActiva, rolSeleccionado };
     } catch {
         return null;
     }
@@ -34,8 +36,8 @@ export class Store extends EventTarget {
             token: sesion?.token ?? null,
             usuario: sesion?.perfil ?? null,
             roles: sesion?.roles ?? [],
-            rolSeleccionado: sesion?.roles?.[0] ?? null,
-            clinicaActiva: null,
+            rolSeleccionado: sesion?.rolSeleccionado ?? sesion?.roles?.[0] ?? null,
+            clinicaActiva: sesion?.clinicaActiva ?? null,
             online: globalThis.navigator?.onLine ?? true
         };
 
@@ -55,6 +57,35 @@ export class Store extends EventTarget {
         }
 
         this.dispatchEvent(new CustomEvent("state-changed", { detail: this.state }));
+    }
+
+    setContextoTrabajo(clinicaActiva, rolSeleccionado) {
+        this.state.clinicaActiva = clinicaActiva;
+        this.state.rolSeleccionado = rolSeleccionado;
+        this._persistirSesion();
+        this.dispatchEvent(new CustomEvent("state-changed", { detail: this.state }));
+    }
+
+    setClinicaActiva(clinicaActiva) {
+        this.setContextoTrabajo(clinicaActiva, this.state.rolSeleccionado);
+    }
+
+    setRolActivo(rolSeleccionado) {
+        this.setContextoTrabajo(this.state.clinicaActiva, rolSeleccionado);
+    }
+
+    _persistirSesion() {
+        try {
+            if (typeof sessionStorage === "undefined") return;
+            sessionStorage.setItem(SESSION_KEY, JSON.stringify({
+                token: this.state.token,
+                perfil: this.state.usuario,
+                roles: this.state.roles,
+                clinicaActiva: this.state.clinicaActiva,
+                rolSeleccionado: this.state.rolSeleccionado
+            }));
+        } catch {
+        }
     }
 
     getState() {
