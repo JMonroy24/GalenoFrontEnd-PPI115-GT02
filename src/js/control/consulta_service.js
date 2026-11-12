@@ -67,6 +67,39 @@ export class ConsultaService extends DefaultService {
         return this.buscarCitas(filtros, first, max);
     }
 
+    /**
+     * Busca consultas filtrando por datos del paciente y rango de fechas.
+     *
+     * Construye los query params estándar (`first`, `max`) junto con los
+     * filtros opcionales y delega en `findRange()` a través del mecanismo
+     * compartido de paginación del servicio base.
+     *
+     * @param {object}  opciones
+     * @param {string}  [opciones.tipoDocumento]   - Tipo de documento de identidad del paciente.
+     * @param {string}  [opciones.numeroDocumento] - Número de documento de identidad del paciente.
+     * @param {string|number} [opciones.clinicaId] - Identificador de la clínica.
+     * @param {string}  [opciones.fechaDesde]      - Fecha de inicio del rango (ISO 8601, p. ej. "2024-01-01").
+     * @param {string}  [opciones.fechaHasta]      - Fecha de fin del rango (ISO 8601, p. ej. "2024-12-31").
+     * @param {number}  [first=0]                  - Índice del primer registro (paginación).
+     * @param {number}  [max=DEFAULT_PAGE_SIZE]    - Cantidad máxima de registros a devolver.
+     * @returns {Promise<DefaultResponse>}
+     */
+    async buscarPorPacienteYFechas(
+        { tipoDocumento, numeroDocumento, clinicaId, fechaDesde, fechaHasta } = {},
+        first = 0,
+        max = DEFAULT_PAGE_SIZE
+    ) {
+        const filtros = {
+            ...(tipoDocumento   ? { tipoDocumento }                : {}),
+            ...(numeroDocumento ? { numeroDocumento }              : {}),
+            ...(clinicaId       ? { idClinica: clinicaId }         : {}),
+            ...(fechaDesde      ? { fechaDesde }                   : {}),
+            ...(fechaHasta      ? { fechaHasta }                   : {})
+        };
+
+        return this._buscarCitas(filtros, first, max);
+    }
+
     async registrarAtencion(idConsulta, atencion) {
         const response = await this._request(
             `${this._urlBase}/${encodeURIComponent(idConsulta)}/atencion`,

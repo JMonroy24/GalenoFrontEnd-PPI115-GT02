@@ -11,74 +11,16 @@ import "./boundary/vistas/dashboard_view.js";
 import "./boundary/vistas/atencion_consulta_view.js";
 import "./boundary/vistas/login_view.js";
 import GeneradorMensajes from "./control/generador_mensajes.js";
+import { initRouter, navigate } from "./router.js";
 
-const RUTAS = {
-    roles: "vista-pendiente",
-    tipos_documentos: "vista-pendiente",
-    tipos_medios_contactos: "vista-pendiente",
-    tipos_examenes: "vista-pendiente",
-    examenes: "vista-pendiente",
-    procedimientos: "vista-pendiente",
-    clinicas: "vista-pendiente",
-    personas: "vista-pendiente",
-    documentos: "vista-pendiente",
-    medios_contactos: "vista-pendiente",
-    personas_roles: "vista-pendiente",
-    consultas: "busqueda-citas-view",
-    dashboard: "dashboard-view",
-    atencion: "atencion-consulta-view",
-    ordenes_examenes: "vista-pendiente",
-    resultados: "vista-pendiente",
-    login: "login-view"
-};
-
-const contenido = document.querySelector("#contenido");
-const menu = document.querySelector("menu-lateral");
-const encabezado = document.querySelector("encabezado-app");
-
-let hashEsperado = null;
-
-const rutaDesdeHash = () => {
-    const id = location.hash.slice(1);
-    return RUTAS[id] ? id : "consultas";
-};
-
-const navegar = (id) => {
-    const solicitada = RUTAS[id] ? id : "consultas";
-    const ruta = solicitada;
-
-    contenido.replaceChildren();
-    const vista = document.createElement(RUTAS[ruta] ?? "vista-pendiente");
-    contenido.appendChild(vista);
-
-    menu.marcarActivo(ruta);
-
-    const enLogin = ruta === "login";
-    menu.hidden = enLogin;
-    encabezado.hidden = enLogin;
-    menu.style.display = enLogin ? "none" : "";
-    encabezado.style.display = enLogin ? "none" : "";
-
-    if (location.hash !== `#${ruta}`) {
-        hashEsperado = `#${ruta}`;
-        location.hash = ruta;
-    }
-};
+initRouter({ containerSelector: "#contenido" });
 
 window.addEventListener("navegar", (evento) => {
-    navegar(evento.detail);
-});
-
-window.addEventListener("hashchange", () => {
-    const esperado = hashEsperado;
-    hashEsperado = null;
-    if (location.hash !== esperado) {
-        navegar(rutaDesdeHash());
-    }
+    navigate(evento.detail);
 });
 
 window.addEventListener("contexto-seleccionado", () => {
-    navegar("consultas");
+    navigate("buscar-citas");
 });
 
 if ("serviceWorker" in navigator) {
@@ -90,5 +32,3 @@ if ("serviceWorker" in navigator) {
         );
     });
 }
-
-navegar(rutaDesdeHash());

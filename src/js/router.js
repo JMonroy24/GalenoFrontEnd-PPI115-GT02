@@ -1,8 +1,25 @@
 import { store } from "./store.js";
 
-const DEFAULT_ROUTE = "consultas";
+const DEFAULT_ROUTE = "buscar-citas";
 
 export const PRIVATE_ROUTES = Object.freeze(["#dashboard", "#atencion"]);
+
+/**
+ * Extrae la ruta base y los parámetros de un hash con segmentos dinámicos.
+ * Ejemplo: "#atencion/42" → { route: "atencion", params: { id: "42" } }
+ *
+ * @param {string} hash - El hash completo (con o sin "#").
+ * @returns {{ route: string, params: Record<string, string> }}
+ */
+export const parseRouteParams = (hash = "") => {
+    const clean = String(hash)
+        .replace(/^#/, "")
+        .replace(/^\/+|\/+$/g, "")
+        .trim();
+    const [route = "", ...segments] = clean.split("/");
+    const params = segments.length > 0 ? { id: segments[0] } : {};
+    return { route: route || "", params };
+};
 
 const PRIVATE_ROUTE_PATHS = new Set(
     PRIVATE_ROUTES.map((route) => route.replace(/^#/, ""))
@@ -10,7 +27,7 @@ const PRIVATE_ROUTE_PATHS = new Set(
 
 const ROUTES = Object.freeze({
     login: "login-view",
-    consultas: "busqueda-citas-view",
+    "buscar-citas": "busqueda-citas-view",
     dashboard: "dashboard-view",
     atencion: "atencion-consulta-view",
     roles: "vista-pendiente",
@@ -101,12 +118,15 @@ export class Router {
         return route;
     }
 
+    /**
+     * Extrae el nombre de ruta base desde un hash, ignorando segmentos dinámicos.
+     * "#atencion/42" → "atencion"
+     *
+     * @param {string} hash
+     * @returns {string}
+     */
     normalizeRoute(hash) {
-        const route = String(hash ?? "")
-            .replace(/^#/, "")
-            .replace(/^\/+|\/+$/g, "")
-            .trim();
-
+        const { route } = parseRouteParams(hash);
         return route || this.defaultRoute;
     }
 
@@ -199,24 +219,36 @@ export class Router {
         return view;
     }
 
+    /**
+     * Navega a un hash, preservando segmentos dinámicos en window.location.hash
+     * pero resolviendo solo la ruta base para el render.
+     * Ejemplo: navigate("#atencion/42") setea el hash completo y renderiza "atencion".
+     *
+     * @param {string} hash
+     * @returns {string} La ruta base resuelta.
+     */
     navigate(hash) {
-        const route = this.normalizeRoute(hash);
+        const { route, params } = parseRouteParams(hash);
+        const resolvedRoute = route || this.defaultRoute;
 
-        if (!this.canNavigate(route)) {
+        if (!this.canNavigate(resolvedRoute)) {
             const loginRoute = this.normalizeRoute("#login");
             this.render(loginRoute);
             return loginRoute;
         }
 
-        const targetHash = `#${route}`;
+        // Preserva el hash completo (incluye segmentos dinámicos como /42)
+        const targetHash = params.id
+            ? `#${resolvedRoute}/${params.id}`
+            : `#${resolvedRoute}`;
 
         if (typeof window !== "undefined" && window.location.hash !== targetHash) {
             window.location.hash = targetHash;
         }
 
-        this.render(route);
+        this.render(resolvedRoute);
 
-        return route;
+        return resolvedRoute;
     }
 }
 

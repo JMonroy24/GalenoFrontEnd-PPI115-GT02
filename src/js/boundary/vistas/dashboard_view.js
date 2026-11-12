@@ -526,11 +526,8 @@ export class DashboardView extends HTMLElement {
             detail: { consulta: cita }
         }));
 
-        navigate("#atencion");
-
-        if (typeof window !== "undefined") {
-            window.dispatchEvent(new CustomEvent("navegar", { detail: "atencion" }));
-        }
+        const idConsulta = cita?.idConsulta ?? cita?.id ?? null;
+        navigate(idConsulta ? `#atencion/${idConsulta}` : "#atencion");
     }
 
     _mostrarEstadoCitas(mensaje) {
