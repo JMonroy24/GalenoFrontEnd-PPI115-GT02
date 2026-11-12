@@ -1,21 +1,44 @@
 {
-  "name": "GalenoSV",
-  "short_name": "Galeno",
+  "name": "GalenoSV - Gestión Clínica",
+  "short_name": "GalenoSV",
   "start_url": "index.html",
+  "scope": "./",
   "display": "standalone",
-  "background_color": "#ffffff",
+  "background_color": "#f8fafc",
   "theme_color": "#1e3a8a",
   "lang": "es",
   "icons": [
     {
       "src": "recursos/imagenes/icono_192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "recursos/imagenes/icono_512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "recursos/imagenes/icono_512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "recursos/imagenes/icono_512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "form_factor": "narrow"
+    },
+    {
+      "src": "recursos/imagenes/galenosv-logo.png",
+      "sizes": "1254x1254",
+      "type": "image/png",
+      "form_factor": "wide"
     }
   ]
 }

@@ -6,6 +6,8 @@ import "./boundary/componentes/pie_app.js";
 import "./boundary/vista_pendiente.js";
 import "./boundary/login_model.js";
 import "./boundary/busqueda_consulta_model.js";
+import "./boundary/vistas/busqueda_citas_view.js";
+import "./boundary/vistas/login_view.js";
 import GeneradorMensajes from "./control/generador_mensajes.js";
 
 const RUTAS = {
@@ -20,10 +22,10 @@ const RUTAS = {
     documentos: "vista-pendiente",
     medios_contactos: "vista-pendiente",
     personas_roles: "vista-pendiente",
-    consultas: "busqueda-consulta-model",
+    consultas: "busqueda-citas-view",
     ordenes_examenes: "vista-pendiente",
     resultados: "vista-pendiente",
-    login: "login-model"
+    login: "login-view"
 };
 
 const contenido = document.querySelector("#contenido");
@@ -77,12 +79,11 @@ window.addEventListener("contexto-seleccionado", () => {
 
 if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("sw.js").catch((err) => {
-        window.dispatchEvent(GeneradorMensajes.crearMensaje(
+        GeneradorMensajes.crearMensaje(
             "Error al registrar el service worker",
             err.message,
-            "ERROR",
-            "app"
-        ));
+            "error"
+        );
     });
 }
 
