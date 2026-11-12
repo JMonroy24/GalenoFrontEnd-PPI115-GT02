@@ -11,5 +11,6 @@ export const ENDPOINTS = Object.freeze({
     ORDENES_EXAMEN: "/ordenes-examen",
     ORDEN_EXAMEN: "/ordenes-examen",
     EXAMENES_RESULTADOS: "/examenes-resultados",
-    EXAMEN_RESULTADO: "/examenes-resultados"
+    EXAMEN_RESULTADO: "/examenes-resultados",
+    CIE10: "/cie10"
 });
