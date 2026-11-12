@@ -1,8 +1,10 @@
 import DefaultService from "./default_service.js";
-import { ENDPOINTS } from "../config.js";
+import { ENDPOINTS } from "../routes.js";
 
-export default class TipoMedioContactoService extends DefaultService {
+export class TipoMedioContactoService extends DefaultService {
     constructor() {
-        super(ENDPOINTS.tiposMedioContacto);
+        super(ENDPOINTS.TIPOS_MEDIO_CONTACTO);
     }
 }
+
+export default TipoMedioContactoService;

@@ -1,8 +1,10 @@
 import DefaultService from "./default_service.js";
-import { ENDPOINTS } from "../config.js";
+import { ENDPOINTS } from "../routes.js";
 
-export default class RolService extends DefaultService {
+export class RolService extends DefaultService {
     constructor() {
-        super(ENDPOINTS.roles);
+        super(ENDPOINTS.ROLES);
     }
 }
+
+export default RolService;

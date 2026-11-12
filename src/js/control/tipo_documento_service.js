@@ -1,8 +1,12 @@
 import DefaultService from "./default_service.js";
-import { ENDPOINTS } from "../config.js";
+import { ENDPOINTS } from "../routes.js";
 
-export default class TipoDocumentoService extends DefaultService {
+export class TipoDocumentoService extends DefaultService {
     constructor() {
-        super(ENDPOINTS.tiposDocumento);
+        super(ENDPOINTS.TIPOS_DOCUMENTO);
     }
 }
+
+export const tipoDocumentoService = new TipoDocumentoService();
+
+export default TipoDocumentoService;
