@@ -109,8 +109,13 @@ export class AuthService extends DefaultService {
                 return null;
             }
 
+            const contexto = {
+                clinicaActiva: datos?.clinicaActiva ?? null,
+                rolSeleccionado: datos?.rolSeleccionado ?? sesion.roles[0] ?? null
+            };
+
             this.sesion = sesion;
-            this._sincronizarStore(sesion);
+            this._sincronizarStore(sesion, contexto);
 
             return sesion;
         } catch {
@@ -160,15 +165,20 @@ export class AuthService extends DefaultService {
         }
     }
 
-    _sincronizarStore(sesion) {
+    _sincronizarStore(sesion, contexto = null) {
         const roles = Array.isArray(sesion?.roles) ? sesion.roles : [];
-
-        store.setState({
+        const cambios = {
             token: sesion?.token ?? null,
             usuario: sesion?.perfil ?? null,
             roles,
-            rolSeleccionado: roles[0] ?? null
-        });
+            rolSeleccionado: contexto?.rolSeleccionado ?? roles[0] ?? null
+        };
+
+        if (contexto) {
+            cambios.clinicaActiva = contexto.clinicaActiva ?? null;
+        }
+
+        store.setState(cambios);
     }
 
     _obtenerAlmacen() {
