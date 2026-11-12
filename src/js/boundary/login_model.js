@@ -32,12 +32,11 @@ export default class LoginModel extends HTMLElement {
                 });
             })
             .catch((err) => {
-                this.dispatchEvent(GeneradorMensajes.crearMensaje(
+                GeneradorMensajes.crearMensaje(
                     "Error al cargar clínicas",
                     err.mensaje,
-                    "ERROR",
-                    "login_model"
-                ));
+                    "error"
+                );
             });
 
         this.rolService.findRange(0, 100)
@@ -50,12 +49,11 @@ export default class LoginModel extends HTMLElement {
                 });
             })
             .catch((err) => {
-                this.dispatchEvent(GeneradorMensajes.crearMensaje(
+                GeneradorMensajes.crearMensaje(
                     "Error al cargar roles",
                     err.mensaje,
-                    "ERROR",
-                    "login_model"
-                ));
+                    "error"
+                );
             });
 
         btnEntrar.addEventListener("click", () => {
@@ -70,12 +68,11 @@ export default class LoginModel extends HTMLElement {
             try {
                 sessionStorage.setItem("contexto", JSON.stringify(contexto));
             } catch (err) {
-                this.dispatchEvent(GeneradorMensajes.crearMensaje(
+                GeneradorMensajes.crearMensaje(
                     "Error al guardar el contexto",
                     err.mensaje,
-                    "ERROR",
-                    "login_model"
-                ));
+                    "error"
+                );
                 return;
             }
 
