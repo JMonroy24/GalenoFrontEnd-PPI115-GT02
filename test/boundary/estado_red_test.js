@@ -22,7 +22,7 @@ suite("EstadoRed (unitaria)", () => {
 
     teardown(() => {
         host?.remove();
-        store.setState({ online: onlineOriginal });
+        store.setState({ online: onlineOriginal ?? true });
     });
 
     test("con conexión el aviso permanece oculto", () => {

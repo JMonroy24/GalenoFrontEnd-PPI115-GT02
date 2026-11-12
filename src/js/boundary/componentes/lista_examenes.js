@@ -50,7 +50,10 @@ export class ListaExamenesAsignables extends HTMLElement {
         this._actualizarBoton();
     }
 
-    attributeChangedCallback() {
+    attributeChangedCallback(nombre, valorViejo, valorNuevo) {
+        if (nombre === "id-consulta") {
+            this._idConsulta = valorNuevo;
+        }
         this._actualizarBoton();
     }
 

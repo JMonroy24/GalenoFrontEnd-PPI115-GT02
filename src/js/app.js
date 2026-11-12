@@ -13,6 +13,7 @@ import "./boundary/vistas/login_view.js";
 import GeneradorMensajes from "./control/generador_mensajes.js";
 import { initRouter, navigate } from "./router.js";
 import "./boundary/componentes/estado_red.js";
+import "./boundary/componentes/lista_examenes.js";
 
 initRouter({ containerSelector: "#contenido" });
 

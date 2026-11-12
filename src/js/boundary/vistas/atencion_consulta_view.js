@@ -4,6 +4,7 @@ import GeneradorMensajes from "../../control/generador_mensajes.js";
 import { navigate, parseRouteParams } from "../../router.js";
 import "../../boundary/componentes/stepper_progreso.js";
 import "../../boundary/componentes/autocomplete_cie10.js";
+import "../../boundary/componentes/lista_examenes.js";
 
 /** Límite de caracteres para Notas de la Consulta. */
 const MAX_NOTAS = 2000;
@@ -665,6 +666,14 @@ export class AtencionConsultaView extends HTMLElement {
                     ></auto-complete-cie10>
                 </div>
 
+                <!-- ── Órdenes de Exámenes ── -->
+                <div class="campo" id="grupo-examenes">
+                    <lista-examenes-asignables
+                        id="lista-examenes"
+                        id-consulta="${this._escapar(String(this._idConsulta() ?? ""))}"
+                    ></lista-examenes-asignables>
+                </div>
+
                 <hr class="divisor" aria-hidden="true">
 
                 <!-- ── Acciones ── -->
@@ -925,6 +934,15 @@ export class AtencionConsultaView extends HTMLElement {
     }
 
     // ─── Ayudantes de datos ───────────────────────────────────────────────────
+
+    _idConsulta() {
+        return (
+            this._consulta?.idConsulta ??
+            this._consulta?.id ??
+            this._consulta?.cita?.idConsulta ??
+            null
+        );
+    }
 
     _nombrePaciente(consulta) {
         if (!consulta) return "";

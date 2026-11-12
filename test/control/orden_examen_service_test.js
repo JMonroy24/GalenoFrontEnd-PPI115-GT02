@@ -16,7 +16,7 @@ suite("OrdenExamenService (unitaria)", () => {
 
     const cuerpoEnviado = (llamada) => JSON.parse(llamada.args[1].body);
 
-    teardown(() => fetchStub.restore());
+    teardown(() => fetchStub?.restore());
 
     test("usa el endpoint /ordenes-examen del backend", () => {
         fetchStub = sinon.stub(window, "fetch");
