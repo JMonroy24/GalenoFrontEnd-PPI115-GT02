@@ -15,7 +15,7 @@ const MENU = {
         { id: "personas_roles", texto: "Roles de Persona" }
     ],
     "Atención clínica": [
-        { id: "consultas", texto: "Consultas" },
+        { id: "buscar-citas", texto: "Consultas" },
         { id: "ordenes_examenes", texto: "Órdenes de Examen" },
         { id: "resultados", texto: "Resultados de Examen" }
     ],
