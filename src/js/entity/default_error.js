@@ -1,4 +1,4 @@
-export default class DefaultError extends Error {
+export class DefaultError extends Error {
     constructor(mensaje = "", error = null) {
         super(mensaje);
         this.name = "DefaultError";
@@ -12,3 +12,5 @@ export default class DefaultError extends Error {
         this.tipo = null;
     }
 }
+
+export default DefaultError;

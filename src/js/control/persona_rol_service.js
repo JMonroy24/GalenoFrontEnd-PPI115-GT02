@@ -1,12 +1,21 @@
 import DefaultService from "./default_service.js";
-import { ENDPOINTS } from "../config.js";
+import { DEFAULT_PAGE_SIZE } from "../config.js";
+import { ENDPOINTS } from "../routes.js";
 
-export default class PersonaRolService extends DefaultService {
+export class PersonaRolService extends DefaultService {
     constructor() {
-        super(ENDPOINTS.personasRoles);
+        super(ENDPOINTS.PERSONAS_ROLES);
     }
 
-    buscarPacientes(q, first = 0, max = 10) {
+    buscarRolesPorPersona(q, first = 0, max = DEFAULT_PAGE_SIZE) {
+        return this.findRange(first, max, q);
+    }
+
+    buscarPacientes(q, first = 0, max = DEFAULT_PAGE_SIZE) {
         return this.findRange(first, max, q);
     }
 }
+
+export const personaRolService = new PersonaRolService();
+
+export default PersonaRolService;

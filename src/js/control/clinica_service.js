@@ -1,8 +1,12 @@
 import DefaultService from "./default_service.js";
-import { ENDPOINTS } from "../config.js";
+import { ENDPOINTS } from "../routes.js";
 
-export default class ClinicaService extends DefaultService {
+export class ClinicaService extends DefaultService {
     constructor() {
-        super(ENDPOINTS.clinicas);
+        super(ENDPOINTS.CLINICAS);
     }
 }
+
+export const clinicaService = new ClinicaService();
+
+export default ClinicaService;

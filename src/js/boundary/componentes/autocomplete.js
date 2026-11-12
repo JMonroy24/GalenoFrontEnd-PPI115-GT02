@@ -213,12 +213,11 @@ export default class AutoComplete extends HTMLElement {
     }
 
     _notificarError(err) {
-        this.dispatchEvent(GeneradorMensajes.crearMensaje(
+        GeneradorMensajes.crearMensaje(
             "Error en la búsqueda",
             err.mensaje,
-            "ERROR",
-            "autocomplete"
-        ));
+            "error"
+        );
     }
 }
 

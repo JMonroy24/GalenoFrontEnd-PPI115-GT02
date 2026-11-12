@@ -36,12 +36,11 @@ export default class BusquedaConsultaModel extends HTMLElement {
                 });
             })
             .catch((err) => {
-                this.dispatchEvent(GeneradorMensajes.crearMensaje(
+                GeneradorMensajes.crearMensaje(
                     "Error al cargar consultas",
                     err.mensaje,
-                    "ERROR",
-                    "busqueda_consulta_model"
-                ));
+                    "error"
+                );
             });
     }
 }

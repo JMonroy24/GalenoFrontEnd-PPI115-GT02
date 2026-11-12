@@ -39,21 +39,19 @@ export default class BuscadorPersona extends HTMLElement {
                             composed: true
                         }));
                     } else {
-                        this.dispatchEvent(GeneradorMensajes.crearMensaje(
+                        GeneradorMensajes.crearMensaje(
                             "No se encontró ninguna persona con ese DUI",
                             "",
-                            "INFO",
-                            "buscador_persona"
-                        ));
+                            "info"
+                        );
                     }
                 })
                 .catch((err) => {
-                    this.dispatchEvent(GeneradorMensajes.crearMensaje(
+                    GeneradorMensajes.crearMensaje(
                         "Error al buscar persona",
                         err.mensaje,
-                        "ERROR",
-                        "buscador_persona"
-                    ));
+                        "error"
+                    );
                 });
         });
 
