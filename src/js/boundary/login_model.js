@@ -22,9 +22,9 @@ export default class LoginModel extends HTMLElement {
         const selRol = this.shadowRoot.querySelector("#selRol");
         const btnEntrar = this.shadowRoot.querySelector("#btnEntrar");
 
-        this.clinicaService.buscarActivos()
+        this.clinicaService.findRange(0, 100)
             .then((respuesta) => {
-                respuesta.datos.forEach((clinica) => {
+                respuesta.items.forEach((clinica) => {
                     const opcion = document.createElement("option");
                     opcion.value = clinica.idClinica ?? clinica.id;
                     opcion.textContent = clinica.nombre;
@@ -40,9 +40,9 @@ export default class LoginModel extends HTMLElement {
                 ));
             });
 
-        this.rolService.buscarActivos()
+        this.rolService.findRange(0, 100)
             .then((respuesta) => {
-                respuesta.datos.forEach((rol) => {
+                respuesta.items.forEach((rol) => {
                     const opcion = document.createElement("option");
                     opcion.value = rol.idRol ?? rol.id;
                     opcion.textContent = rol.nombre;
