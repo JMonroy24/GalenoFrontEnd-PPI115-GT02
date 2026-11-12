@@ -181,9 +181,9 @@ suite("DashboardView (unitaria)", () => {
         expect(store.getState().consultaSeleccionada).to.deep.equal(citasFicticias[0]);
         // Verifica que se guardó en la instancia
         expect(host.consultaSeleccionada).to.deep.equal(citasFicticias[0]);
-        // Verifica que navegó a #atencion
+        // Verifica que navegó a #atencion/<id>
         expect(navigateStub.calledOnce).to.be.true;
-        expect(navigateStub.firstCall.args[0]).to.equal("#atencion");
+        expect(navigateStub.firstCall.args[0]).to.equal("#atencion/101");
         assert.isTrue(eventoDisparado);
     });
 

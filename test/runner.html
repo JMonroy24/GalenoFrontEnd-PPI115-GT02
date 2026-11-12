@@ -1,10 +1,12 @@
 <!DOCTYPE html>
 <html lang="es">
+
 <head>
     <meta charset="UTF-8">
     <title>GalenoSV - Pruebas unitarias TDD</title>
     <link rel="stylesheet" href="lib/mocha/mocha.css">
 </head>
+
 <body>
     <div id="mocha"></div>
     <script src="lib/mocha/mocha.js"></script>
@@ -14,13 +16,17 @@
     <script type="module" src="control/store_test.js"></script>
     <script type="module" src="control/router_test.js"></script>
     <script type="module" src="control/auth_service_test.js"></script>
+    <script type="module" src="control/orden_examen_service_test.js"></script>
     <script type="module" src="boundary/dashboard_view_test.js"></script>
     <script type="module" src="boundary/stepper_progreso_test.js"></script>
     <script type="module" src="boundary/atencion_consulta_view_test.js"></script>
     <script type="module" src="boundary/autocomplete_cie10_test.js"></script>
     <script type="module" src="boundary/asistente_busqueda_test.js"></script>
+    <script type="module" src="boundary/lista_examenes_test.js"></script>
+    <script type="module" src="boundary/estado_red_test.js"></script>
     <script type="module">
         mocha.run();
     </script>
 </body>
+
 </html>

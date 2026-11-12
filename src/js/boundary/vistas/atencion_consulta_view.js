@@ -518,7 +518,7 @@ export class AtencionConsultaView extends HTMLElement {
                     ></stepper-progreso>
                 </div>
 
-                <div class="tarjeta" role="main">
+                <div class="tarjeta">
                     <h2 class="tarjeta-titulo" id="titulo-vista">Registro de Atención Médica</h2>
 
                     ${this._consulta
@@ -653,15 +653,15 @@ export class AtencionConsultaView extends HTMLElement {
 
                 <!-- ── Campo: Diagnósticos CIE-10 ── -->
                 <div class="campo" id="grupo-cie10">
-                    <label class="etiqueta">
+                    <span class="etiqueta" id="etiqueta-cie10">
                         Diagnósticos CIE-10
                         <span class="campo-cie10-descripcion">
                             Busque y seleccione uno o varios códigos de diagnóstico.
                         </span>
-                    </label>
+                    </span>
                     <auto-complete-cie10
                         id="cie10-busqueda"
-                        aria-label="Buscador de diagnósticos CIE-10"
+                        aria-labelledby="etiqueta-cie10"
                     ></auto-complete-cie10>
                 </div>
 
@@ -918,6 +918,10 @@ export class AtencionConsultaView extends HTMLElement {
             const btnVolver = this.shadowRoot?.querySelector("#btn-volver");
             btnVolver?.addEventListener("click", () => this._volverAlDashboard());
         }
+
+        // La lista de exámenes debe apuntar siempre a la consulta vigente.
+        this.shadowRoot?.querySelector("#lista-examenes")
+            ?.setAttribute("id-consulta", String(this._idConsulta() ?? ""));
     }
 
     // ─── Ayudantes de datos ───────────────────────────────────────────────────
