@@ -26,7 +26,8 @@ suite("Store (unitaria)", () => {
             usuario: null,
             roles: [],
             rolSeleccionado: null,
-            clinicaActiva: null
+            clinicaActiva: null,
+            online: true
         });
     });
 

@@ -4,6 +4,7 @@ import GeneradorMensajes from "../../control/generador_mensajes.js";
 import { navigate, parseRouteParams } from "../../router.js";
 import "../../boundary/componentes/stepper_progreso.js";
 import "../../boundary/componentes/autocomplete_cie10.js";
+import "../../boundary/componentes/lista_examenes.js";
 
 /** Límite de caracteres para Notas de la Consulta. */
 const MAX_NOTAS = 2000;
@@ -969,7 +970,7 @@ export class AtencionConsultaView extends HTMLElement {
                     ></stepper-progreso>
                 </div>
 
-                <div class="tarjeta" role="main">
+                <div class="tarjeta">
                     <h2 class="tarjeta-titulo" id="titulo-vista">Registro de Atención Médica</h2>
 
                     ${this._consulta
@@ -1104,16 +1105,24 @@ export class AtencionConsultaView extends HTMLElement {
 
                 <!-- ── Campo: Diagnósticos CIE-10 ── -->
                 <div class="campo" id="grupo-cie10">
-                    <label class="etiqueta">
+                    <span class="etiqueta" id="etiqueta-cie10">
                         Diagnósticos CIE-10
                         <span class="campo-cie10-descripcion">
                             Busque y seleccione uno o varios códigos de diagnóstico.
                         </span>
-                    </label>
+                    </span>
                     <auto-complete-cie10
                         id="cie10-busqueda"
-                        aria-label="Buscador de diagnósticos CIE-10"
+                        aria-labelledby="etiqueta-cie10"
                     ></auto-complete-cie10>
+                </div>
+
+                <!-- ── Órdenes de Exámenes ── -->
+                <div class="campo" id="grupo-examenes">
+                    <lista-examenes-asignables
+                        id="lista-examenes"
+                        id-consulta="${this._escapar(String(this._idConsulta() ?? ""))}"
+                    ></lista-examenes-asignables>
                 </div>
 
                 <hr class="divisor" aria-hidden="true">
@@ -1599,9 +1608,22 @@ export class AtencionConsultaView extends HTMLElement {
             const btnVolver = this.shadowRoot?.querySelector("#btn-volver");
             btnVolver?.addEventListener("click", () => this._volverAlDashboard());
         }
+
+        // La lista de exámenes debe apuntar siempre a la consulta vigente.
+        this.shadowRoot?.querySelector("#lista-examenes")
+            ?.setAttribute("id-consulta", String(this._idConsulta() ?? ""));
     }
 
     // ─── Ayudantes de datos ───────────────────────────────────────────────────
+
+    _idConsulta() {
+        return (
+            this._consulta?.idConsulta ??
+            this._consulta?.id ??
+            this._consulta?.cita?.idConsulta ??
+            null
+        );
+    }
 
     _nombrePaciente(consulta) {
         if (!consulta) return "";

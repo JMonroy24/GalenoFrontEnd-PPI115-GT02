@@ -7,4 +7,6 @@ export class TipoExamenService extends DefaultService {
     }
 }
 
+export const tipoExamenService = new TipoExamenService();
+
 export default TipoExamenService;

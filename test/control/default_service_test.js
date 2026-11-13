@@ -1,5 +1,6 @@
 import DefaultService from "../../src/js/control/default_service.js";
 import GeneradorMensajes from "../../src/js/control/generador_mensajes.js";
+import DefaultResponse from "../../src/js/entity/default_response.js";
 import DefaultError from "../../src/js/entity/default_error.js";
 import store from "../../src/js/store.js";
 import { assert, expect } from "../lib/chai/index.js";

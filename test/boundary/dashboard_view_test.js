@@ -76,8 +76,8 @@ suite("DashboardView (unitaria)", () => {
         if (host && host.parentNode) {
             host.parentNode.removeChild(host);
         }
-        buscarCitasStub.restore();
-        navigateStub.restore();
+        buscarCitasStub?.restore();
+        navigateStub?.restore();
         sinon.restore();
     });
 
