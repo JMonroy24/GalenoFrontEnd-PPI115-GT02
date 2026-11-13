@@ -388,12 +388,12 @@ export class DashboardView extends HTMLElement {
         const filtros = {
             periodo: this.periodo || "hoy"
         };
-        const clinicaId = this._idClinica(estado?.clinicaActiva ?? estado?.activeClinic);
+        const idClinica = this._idClinica(estado?.clinicaActiva ?? estado?.activeClinic);
         const rolId = this._idRol(estado?.rolSeleccionado ?? estado?.selectedRole ?? estado?.rolActivo);
         const busqueda = (this.busqueda ?? "").trim();
 
-        if (clinicaId !== "") {
-            filtros.idClinica = clinicaId;
+        if (idClinica !== "") {
+            filtros.idClinica = idClinica;
         }
 
         if (rolId !== "") {

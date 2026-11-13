@@ -80,7 +80,7 @@ export class AsistenteBusqueda extends HTMLElement {
 
                 <div class="campo">
                     <label for="clinica">Clínica</label>
-                    <select id="clinica" name="clinicaId" class="form-control" aria-label="Clínica"></select>
+                    <select id="clinica" name="idClinica" class="form-control" aria-label="Clínica"></select>
                 </div>
 
                 <div class="campo">
@@ -141,7 +141,7 @@ export class AsistenteBusqueda extends HTMLElement {
                 detail: {
                     tipoDocumento: this.tipoDocumento || buscador.value || "",
                     numeroDocumento: numeroDocumento.value.trim(),
-                    clinicaId: this.shadowRoot.querySelector("#clinica").value,
+                    idClinica: this.shadowRoot.querySelector("#clinica").value,
                     fechaDesde: this.shadowRoot.querySelector("#fecha-desde").value,
                     fechaHasta: this.shadowRoot.querySelector("#fecha-hasta").value
                 }

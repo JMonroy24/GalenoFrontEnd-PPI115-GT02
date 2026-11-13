@@ -142,7 +142,7 @@ suite("AsistenteBusqueda (unitaria)", () => {
                 expect(evento.detail).to.deep.equal({
                     tipoDocumento: "1",
                     numeroDocumento: "09876543-2",
-                    clinicaId: "2",
+                    idClinica: "2",
                     fechaDesde: "2026-11-01",
                     fechaHasta: "2026-11-30"
                 });
