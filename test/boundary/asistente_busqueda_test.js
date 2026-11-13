@@ -1,45 +1,145 @@
 import { AsistenteBusqueda } from "../../src/js/boundary/componentes/asistente_busqueda.js";
-import { clinicaService } from "../../src/js/control/clinica_service.js";
+import { personaService } from "../../src/js/control/persona_service.js";
 import { assert, expect } from "../lib/chai/index.js";
 
 mocha.setup("tdd");
 
 suite("AsistenteBusqueda (unitaria)", () => {
     let host;
-    let findRangeStub;
+    let buscarClinicasPacienteStub;
 
     const clinicasFicticias = [
         { idClinica: 1, nombre: "Clínica Escalón" },
         { idClinica: 2, nombre: "Clínica Santa Tecla" }
     ];
 
+    const esperar = (ms = 20) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    const ingresarDocumento = (documento, tipo = "1", codigo = "DUI") => {
+        const buscadorTipo = host.shadowRoot.querySelector("buscador-tipo-documentos");
+        const inputDoc = host.shadowRoot.querySelector("#numero-documento");
+
+        buscadorTipo.dispatchEvent(new CustomEvent("tipo-documento-change", {
+            detail: { value: tipo, item: { codigo } }
+        }));
+
+        inputDoc.value = documento;
+        inputDoc.dispatchEvent(new Event("input"));
+        inputDoc.dispatchEvent(new Event("blur"));
+
+        return inputDoc;
+    };
+
     setup(async () => {
-        findRangeStub = sinon.stub(clinicaService, "findRange").resolves({
-            items: clinicasFicticias
-        });
+        buscarClinicasPacienteStub = sinon
+            .stub(personaService, "buscarClinicasPaciente")
+            .resolves(clinicasFicticias);
 
         host = document.createElement("asistente-busqueda");
         document.body.appendChild(host);
 
-        // Espera a que termine la carga asíncrona de clínicas en connectedCallback
-        await new Promise((resolve) => setTimeout(resolve, 20));
+        await esperar();
     });
 
     teardown(() => {
-        findRangeStub?.restore();
+        buscarClinicasPacienteStub?.restore();
         host?.remove();
     });
 
-    test("renderiza estructura del formulario y carga lista de clínicas", () => {
+    test("renderiza estructura del formulario con la clínica deshabilitada", () => {
         const selectClinica = host.shadowRoot.querySelector("#clinica");
-        expect(selectClinica).to.exist;
+        const ayuda = host.shadowRoot.querySelector("#clinica-ayuda");
 
-        const opciones = selectClinica.querySelectorAll("option");
-        expect(opciones).to.have.length(2);
-        expect(opciones[0].value).to.equal("1");
-        expect(opciones[0].textContent).to.equal("Clínica Escalón");
-        expect(opciones[1].value).to.equal("2");
-        expect(opciones[1].textContent).to.equal("Clínica Santa Tecla");
+        expect(selectClinica).to.exist;
+        expect(selectClinica.disabled).to.be.true;
+        expect(selectClinica.querySelectorAll("option")).to.have.length(0);
+        expect(ayuda.textContent).to.contain("Seleccione un tipo y número de documento");
+        expect(buscarClinicasPacienteStub.called).to.be.false;
+    });
+
+    suite("Carga dinámica de clínicas del paciente", () => {
+        test("consulta las clínicas asociadas al completar un documento válido", async () => {
+            ingresarDocumento("098765432");
+            await esperar();
+
+            const selectClinica = host.shadowRoot.querySelector("#clinica");
+            const ayuda = host.shadowRoot.querySelector("#clinica-ayuda");
+
+            expect(buscarClinicasPacienteStub.calledOnce).to.be.true;
+            expect(buscarClinicasPacienteStub.firstCall.args).to.deep.equal([
+                "1",
+                "09876543-2"
+            ]);
+            expect(selectClinica.disabled).to.be.false;
+            expect(selectClinica.querySelectorAll("option")).to.have.length(2);
+            expect(selectClinica.value).to.equal("1");
+            expect(ayuda.textContent).to.contain("2 clínicas asociadas");
+        });
+
+        test("mantiene la clínica deshabilitada si el paciente no tiene clínicas", async () => {
+            buscarClinicasPacienteStub.resolves([]);
+
+            ingresarDocumento("098765432");
+            await esperar();
+
+            const selectClinica = host.shadowRoot.querySelector("#clinica");
+            const ayuda = host.shadowRoot.querySelector("#clinica-ayuda");
+
+            expect(selectClinica.disabled).to.be.true;
+            expect(selectClinica.querySelectorAll("option")).to.have.length(0);
+            expect(ayuda.textContent).to.contain("No se encontraron clínicas asociadas");
+        });
+
+        test("deshabilita y limpia las clínicas al deseleccionar el tipo de documento", async () => {
+            ingresarDocumento("098765432");
+            await esperar();
+
+            const buscadorTipo = host.shadowRoot.querySelector("buscador-tipo-documentos");
+            const selectClinica = host.shadowRoot.querySelector("#clinica");
+
+            buscadorTipo.dispatchEvent(new CustomEvent("tipo-documento-change", {
+                detail: { value: "", item: null }
+            }));
+
+            expect(selectClinica.disabled).to.be.true;
+            expect(selectClinica.querySelectorAll("option")).to.have.length(0);
+        });
+    });
+
+    suite("Captura secuencial de tipo y número de documento", () => {
+        test("inicia con el número de documento deshabilitado", () => {
+            const inputDoc = host.shadowRoot.querySelector("#numero-documento");
+            expect(inputDoc.disabled).to.be.true;
+        });
+
+        test("habilita, limpia y enfoca el número de documento al elegir un tipo válido", () => {
+            const buscadorTipo = host.shadowRoot.querySelector("buscador-tipo-documentos");
+            const inputDoc = host.shadowRoot.querySelector("#numero-documento");
+
+            inputDoc.value = "01234567-8";
+
+            buscadorTipo.dispatchEvent(new CustomEvent("tipo-documento-change", {
+                detail: { value: "1", item: { codigo: "DUI" } }
+            }));
+
+            expect(inputDoc.disabled).to.be.false;
+            expect(inputDoc.value).to.equal("");
+            expect(host.shadowRoot.activeElement).to.equal(inputDoc);
+        });
+
+        test("vuelve a deshabilitar el número de documento al deseleccionar el tipo", () => {
+            const buscadorTipo = host.shadowRoot.querySelector("buscador-tipo-documentos");
+            const inputDoc = host.shadowRoot.querySelector("#numero-documento");
+
+            buscadorTipo.dispatchEvent(new CustomEvent("tipo-documento-change", {
+                detail: { value: "1", item: { codigo: "DUI" } }
+            }));
+            buscadorTipo.dispatchEvent(new CustomEvent("tipo-documento-change", {
+                detail: { value: "", item: null }
+            }));
+
+            expect(inputDoc.disabled).to.be.true;
+        });
     });
 
     suite("Validación regex de número de documento", () => {
@@ -124,32 +224,33 @@ suite("AsistenteBusqueda (unitaria)", () => {
     });
 
     suite("Emisión del evento 'buscar-citas'", () => {
-        test("emite 'buscar-citas' con los datos completos del formulario al enviar con datos válidos", (done) => {
+        test("emite 'buscar-citas' con los datos completos del formulario al enviar con datos válidos", async () => {
             const form = host.shadowRoot.querySelector("form");
-            const inputDoc = host.shadowRoot.querySelector("#numero-documento");
             const selectClinica = host.shadowRoot.querySelector("#clinica");
             const inputDesde = host.shadowRoot.querySelector("#fecha-desde");
             const inputHasta = host.shadowRoot.querySelector("#fecha-hasta");
 
-            // Configurar datos válidos
-            inputDoc.value = "09876543-2";
+            ingresarDocumento("098765432");
+            await esperar();
+
             selectClinica.value = "2";
             inputDesde.value = "2026-11-01";
             inputHasta.value = "2026-11-30";
-            host.tipoDocumento = "1";
 
+            let detalle = null;
             host.addEventListener("buscar-citas", (evento) => {
-                expect(evento.detail).to.deep.equal({
-                    tipoDocumento: "1",
-                    numeroDocumento: "09876543-2",
-                    idClinica: "2",
-                    fechaDesde: "2026-11-01",
-                    fechaHasta: "2026-11-30"
-                });
-                done();
+                detalle = evento.detail;
             }, { once: true });
 
             form.dispatchEvent(new Event("submit", { cancelable: true }));
+
+            expect(detalle).to.deep.equal({
+                tipoDocumento: "1",
+                numeroDocumento: "09876543-2",
+                idClinica: "2",
+                fechaDesde: "2026-11-01",
+                fechaHasta: "2026-11-30"
+            });
         });
 
         test("no emite 'buscar-citas' si el documento no es válido", () => {
@@ -168,13 +269,14 @@ suite("AsistenteBusqueda (unitaria)", () => {
             expect(eventoEmitido).to.be.false;
         });
 
-        test("no emite 'buscar-citas' si las fechas tienen un rango inconsistente", () => {
+        test("no emite 'buscar-citas' si las fechas tienen un rango inconsistente", async () => {
             const form = host.shadowRoot.querySelector("form");
-            const inputDoc = host.shadowRoot.querySelector("#numero-documento");
             const inputDesde = host.shadowRoot.querySelector("#fecha-desde");
             const inputHasta = host.shadowRoot.querySelector("#fecha-hasta");
 
-            inputDoc.value = "09876543-2";
+            ingresarDocumento("098765432");
+            await esperar();
+
             inputDesde.value = "2026-12-01";
             inputHasta.value = "2026-11-01"; // Inconsistente
 
