@@ -118,7 +118,14 @@ export class Router {
     }
 
     hasActiveSession() {
-        return Boolean(store.state?.token);
+        if (typeof store.isAuthenticated === "function") {
+            return store.isAuthenticated();
+        }
+
+        return Boolean(
+            store.state?.usuario
+            && (store.state?.clinicaActiva ?? store.state?.clinica)
+        );
     }
 
     isPrivateRoute(route) {

@@ -63,14 +63,20 @@ export class AuthService extends DefaultService {
                 });
             }
 
+            const rolSeleccionado = rolesEmpleado[0] ?? null;
+            const clinicaActiva = this._obtenerClinica(perfil, rolesEmpleado, rolSeleccionado);
             const sesion = {
                 perfil,
+                usuario: perfil,
                 token: this._obtenerToken(payload, perfil, response),
-                roles: rolesEmpleado
+                roles: rolesEmpleado,
+                clinica: clinicaActiva,
+                clinicaActiva,
+                rolSeleccionado
             };
 
             this._guardarSesion(sesion);
-            this._sincronizarStore(sesion);
+            this._sincronizarStore(sesion, { clinicaActiva, rolSeleccionado });
 
             return sesion;
         } catch (error) {
@@ -99,23 +105,26 @@ export class AuthService extends DefaultService {
             }
 
             const datos = JSON.parse(serializada);
+            const perfil = datos?.perfil ?? datos?.usuario ?? null;
+            const roles = Array.isArray(datos?.roles) ? datos.roles : [];
+            const clinicaActiva = datos?.clinicaActiva ?? datos?.clinica ?? null;
+            const rolSeleccionado = datos?.rolSeleccionado ?? roles[0] ?? null;
             const sesion = {
-                perfil: datos?.perfil ?? datos?.usuario ?? null,
+                perfil,
+                usuario: perfil,
                 token: datos?.token ?? null,
-                roles: Array.isArray(datos?.roles) ? datos.roles : []
+                roles,
+                clinica: clinicaActiva,
+                clinicaActiva,
+                rolSeleccionado
             };
 
-            if (!sesion.perfil && !sesion.token) {
+            if (!sesion.perfil && !sesion.token && !sesion.clinicaActiva) {
                 return null;
             }
 
-            const contexto = {
-                clinicaActiva: datos?.clinicaActiva ?? null,
-                rolSeleccionado: datos?.rolSeleccionado ?? sesion.roles[0] ?? null
-            };
-
             this.sesion = sesion;
-            this._sincronizarStore(sesion, contexto);
+            this._sincronizarStore(sesion, { clinicaActiva, rolSeleccionado });
 
             return sesion;
         } catch {
@@ -158,8 +167,12 @@ export class AuthService extends DefaultService {
         try {
             almacen.setItem(SESSION_STORAGE_KEY, JSON.stringify({
                 perfil: sesion.perfil,
-                token: sesion.token,
-                roles: sesion.roles
+                usuario: sesion.usuario ?? sesion.perfil,
+                token: sesion.token ?? null,
+                roles: Array.isArray(sesion.roles) ? sesion.roles : [],
+                clinica: sesion.clinicaActiva ?? sesion.clinica ?? null,
+                clinicaActiva: sesion.clinicaActiva ?? sesion.clinica ?? null,
+                rolSeleccionado: sesion.rolSeleccionado ?? sesion.roles?.[0] ?? null
             }));
         } catch {
         }
@@ -167,18 +180,22 @@ export class AuthService extends DefaultService {
 
     _sincronizarStore(sesion, contexto = null) {
         const roles = Array.isArray(sesion?.roles) ? sesion.roles : [];
-        const cambios = {
+        const clinicaActiva = contexto?.clinicaActiva
+            ?? sesion?.clinicaActiva
+            ?? sesion?.clinica
+            ?? null;
+        const rolSeleccionado = contexto?.rolSeleccionado
+            ?? sesion?.rolSeleccionado
+            ?? roles[0]
+            ?? null;
+
+        store.setState({
             token: sesion?.token ?? null,
-            usuario: sesion?.perfil ?? null,
+            usuario: sesion?.perfil ?? sesion?.usuario ?? null,
             roles,
-            rolSeleccionado: contexto?.rolSeleccionado ?? roles[0] ?? null
-        };
-
-        if (contexto) {
-            cambios.clinicaActiva = contexto.clinicaActiva ?? null;
-        }
-
-        store.setState(cambios);
+            clinicaActiva,
+            rolSeleccionado
+        });
     }
 
     _obtenerAlmacen() {
@@ -201,6 +218,61 @@ export class AuthService extends DefaultService {
         }
 
         return Array.isArray(respuesta) ? respuesta : [];
+    }
+
+    _obtenerClinica(perfil, roles = [], rolSeleccionado = null) {
+        const fuentes = [
+            perfil,
+            rolSeleccionado,
+            ...roles,
+            ...roles.map((personaRol) => personaRol?.rol)
+        ];
+
+        for (const fuente of fuentes) {
+            if (!fuente) {
+                continue;
+            }
+
+            const clinicas = fuente.clinicas ?? fuente.clinicasAsignadas;
+
+            if (Array.isArray(clinicas) && clinicas.length > 0) {
+                return clinicas[0];
+            }
+
+            const clinica = fuente.clinicaActiva ?? fuente.clinica;
+
+            if (this._esClinicaValida(clinica)) {
+                return clinica;
+            }
+        }
+
+        for (const fuente of fuentes) {
+            if (!fuente) {
+                continue;
+            }
+
+            const clinica = fuente.idClinica ?? fuente.idClinicaEmpleado;
+
+            if (!this._esClinicaValida(clinica)) {
+                continue;
+            }
+
+            if (typeof clinica === "object") {
+                return clinica;
+            }
+
+            const nombre = fuente.nombreClinica ?? fuente.clinicaNombre;
+            return nombre ? { idClinica: clinica, nombre } : { idClinica: clinica };
+        }
+
+        return null;
+    }
+
+    _esClinicaValida(clinica) {
+        return clinica !== undefined
+            && clinica !== null
+            && clinica !== ""
+            && !(typeof clinica === "object" && Object.keys(clinica).length === 0);
     }
 
     _extraerPerfil(payload) {
