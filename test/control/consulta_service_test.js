@@ -65,6 +65,49 @@ suite("ConsultaService (unitaria)", () => {
         assert.instanceOf(error, DefaultError);
     });
 
+    test("construirPayloadPaso serializa los campos clínicos en consulta_procedimiento_paso.valor", () => {
+        const payload = servicio.construirPayloadPaso({
+            notasConsulta: "Dolor abdominal",
+            diagnosticos: ["R10"],
+            planTratamiento: "Observación",
+            paso: { indice: 1, estado: "COMPLETADO" }
+        });
+
+        expect(payload.consulta_procedimiento_paso.valor).to.deep.equal({
+            notas: "Dolor abdominal",
+            diagnostico: ["R10"],
+            plan: "Observación"
+        });
+        expect(payload.paso.indice).to.equal(1);
+    });
+
+    test("guardarPaso envía el valor serializado al endpoint de atención", async () => {
+        fetchStub = sinon.stub(window, "fetch").resolves({
+            ok: true,
+            status: 200,
+            text: async () => JSON.stringify({ ok: true })
+        });
+
+        await servicio.guardarPaso(55, {
+            notas: "Control",
+            diagnostico: ["J00"],
+            plan: "Reposo",
+            estadoPaso: "COMPLETADO"
+        });
+
+        const cuerpo = JSON.parse(fetchStub.firstCall.args[1].body);
+
+        expect(fetchStub.firstCall.args[0].toString()).to.contain(
+            "consultas/55/atencion"
+        );
+        expect(cuerpo.consulta_procedimiento_paso.valor).to.deep.equal({
+            notas: "Control",
+            diagnostico: ["J00"],
+            plan: "Reposo"
+        });
+        expect(cuerpo.estadoPaso).to.equal("COMPLETADO");
+    });
+
     test("inyecta el token y cierra la sesión al recibir 401", async () => {
         store.setState("session", { token: "test-token" });
         fetchStub = sinon.stub(window, "fetch").resolves({

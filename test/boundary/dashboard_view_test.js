@@ -162,7 +162,7 @@ suite("DashboardView (unitaria)", () => {
         });
     });
 
-    test("al hacer clic en 'Atender Consulta', guarda la consulta y navega a '#atencion'", async () => {
+    test("al hacer clic en 'Atender Consulta', guarda la consulta y navega a '#atencion/<id>'", async () => {
         await new Promise((r) => setTimeout(r, 50));
 
         const shadow = host.shadowRoot;
@@ -181,9 +181,9 @@ suite("DashboardView (unitaria)", () => {
         expect(store.getState().consultaSeleccionada).to.deep.equal(citasFicticias[0]);
         // Verifica que se guardó en la instancia
         expect(host.consultaSeleccionada).to.deep.equal(citasFicticias[0]);
-        // Verifica que navegó a #atencion
+        // Verifica que navegó a #atencion con el id de la consulta
         expect(navigateStub.calledOnce).to.be.true;
-        expect(navigateStub.firstCall.args[0]).to.equal("#atencion");
+        expect(navigateStub.firstCall.args[0]).to.equal("#atencion/101");
         assert.isTrue(eventoDisparado);
     });
 

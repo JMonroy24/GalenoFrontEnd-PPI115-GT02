@@ -114,6 +114,71 @@ export class ConsultaService extends DefaultService {
         return this.registrarAtencion(idConsulta, atencion);
     }
 
+    /**
+     * Serializa los datos clínicos del formulario al formato estructurado que
+     * consume el backend dentro de `consulta_procedimiento_paso.valor`.
+     *
+     * @param {object} atencion
+     * @returns {{ notas: string, diagnostico: Array<unknown>, plan: string }}
+     */
+    serializarValorPaso(atencion = {}) {
+        const diagnosticos = Array.isArray(atencion.diagnosticos)
+            ? atencion.diagnosticos
+            : atencion.diagnosticos === undefined
+                || atencion.diagnosticos === null
+                || atencion.diagnosticos === ""
+                ? []
+                : [atencion.diagnosticos];
+
+        return {
+            notas: atencion.notas ?? atencion.notasConsulta ?? "",
+            diagnostico: atencion.diagnostico ?? diagnosticos,
+            plan: atencion.plan ?? atencion.planTratamiento ?? ""
+        };
+    }
+
+    /**
+     * Construye el payload de un paso clínico agregando el valor serializado
+     * al atributo `consulta_procedimiento_paso`.
+     *
+     * @param {object} atencion
+     * @returns {object}
+     */
+    construirPayloadPaso(atencion = {}) {
+        const payload = { ...atencion };
+        const clavesDatos = [
+            "notas",
+            "notasConsulta",
+            "diagnostico",
+            "diagnosticos",
+            "plan",
+            "planTratamiento"
+        ];
+        const tieneDatos = clavesDatos.some(
+            (clave) => atencion[clave] !== undefined
+        );
+
+        if (tieneDatos) {
+            payload.consulta_procedimiento_paso = {
+                ...(atencion.consulta_procedimiento_paso ?? {}),
+                valor: this.serializarValorPaso(atencion)
+            };
+        }
+
+        return payload;
+    }
+
+    async guardarPaso(idConsulta, atencion) {
+        return this.registrarAtencion(
+            idConsulta,
+            this.construirPayloadPaso(atencion)
+        );
+    }
+
+    guardarConsultaProcedimientoPaso(idConsulta, atencion) {
+        return this.guardarPaso(idConsulta, atencion);
+    }
+
     async descargarTicketPdf(idConsulta) {
         const url = `${API_BASE}${ENDPOINTS.CONSULTAS}/${encodeURIComponent(idConsulta)}/ticket`;
         const response = await this._request(

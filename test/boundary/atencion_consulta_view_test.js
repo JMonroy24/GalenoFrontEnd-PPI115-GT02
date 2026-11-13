@@ -163,7 +163,7 @@ suite("AtencionConsultaView (unitaria)", () => {
 
     test("obtenerDatosFormulario() devuelve objeto con notasConsulta y planTratamiento vacíos por defecto", () => {
         const datos = host.obtenerDatosFormulario();
-        expect(datos).to.have.keys(["notasConsulta", "planTratamiento"]);
+        expect(datos).to.have.keys(["notasConsulta", "planTratamiento", "diagnosticos"]);
         expect(datos.notasConsulta).to.equal("");
         expect(datos.planTratamiento).to.equal("");
     });
@@ -206,13 +206,20 @@ suite("AtencionConsultaView (unitaria)", () => {
 
     // ── Botones de acción ────────────────────────────────────────────────────
 
-    test("renderiza botones 'Cancelar' y 'Guardar Atención'", () => {
+    test("renderiza la botonera con Cancelar, Anterior y Guardar y Avanzar", () => {
         const btnCancelar = host.shadowRoot.querySelector("#btn-cancelar");
-        const btnGuardar = host.shadowRoot.querySelector("#btn-guardar");
+        const btnAnterior = host.shadowRoot.querySelector("#btn-anterior");
+        const btnSiguiente = host.shadowRoot.querySelector("#btn-siguiente");
+
         assert.isNotNull(btnCancelar, "Debe existir #btn-cancelar");
-        assert.isNotNull(btnGuardar, "Debe existir #btn-guardar");
+        assert.isNotNull(btnAnterior, "Debe existir #btn-anterior");
+        assert.isNotNull(btnSiguiente, "Debe existir #btn-siguiente");
+
         expect(btnCancelar.type).to.equal("button");
-        expect(btnGuardar.type).to.equal("submit");
+        expect(btnAnterior.type).to.equal("button");
+        expect(btnSiguiente.type).to.equal("submit");
+        expect(btnSiguiente.textContent).to.include("Guardar y Avanzar al Siguiente Paso");
+        expect(host.shadowRoot.querySelector("#btn-finalizar")).to.be.null;
     });
 
     test("el botón 'Volver' navega al dashboard al hacer clic", () => {
@@ -265,6 +272,105 @@ suite("AtencionConsultaView (unitaria)", () => {
         expect(eventoGuardado.datos.planTratamiento).to.equal("Reposo y paracetamol");
     });
 
+    // ── Máquina de estados de la botonera ─────────────────────────────────────
+
+    test("el botón Anterior está deshabilitado en el primer paso", () => {
+        store.setState({
+            consultaActiva: {
+                ...consultaFicticia,
+                pasos: [
+                    { nombre: "Triaje", estado: "EN_CURSO" },
+                    { nombre: "Consulta Médica", estado: "PENDIENTE" },
+                    { nombre: "Tratamiento", estado: "PENDIENTE" },
+                    { nombre: "Cierre", estado: "PENDIENTE" }
+                ]
+            }
+        });
+
+        const btnAnterior = host.shadowRoot.querySelector("#btn-anterior");
+        expect(btnAnterior.disabled).to.be.true;
+    });
+
+    test("el botón Anterior retrocede, marca el paso previo EN_CURSO y sincroniza el stepper", async () => {
+        store.setState({
+            consultaActiva: {
+                ...consultaFicticia,
+                pasos: [
+                    { nombre: "Triaje", estado: "COMPLETADO" },
+                    { nombre: "Consulta Médica", estado: "COMPLETADO" },
+                    { nombre: "Tratamiento", estado: "EN_CURSO" },
+                    { nombre: "Cierre", estado: "PENDIENTE" }
+                ]
+            }
+        });
+
+        host.shadowRoot.querySelector("#btn-anterior").click();
+        await new Promise((r) => setTimeout(r, 50));
+
+        expect(registrarAtencionStub.calledOnce).to.be.true;
+        expect(registrarAtencionStub.firstCall.args[1].paso.indice).to.equal(1);
+        expect(registrarAtencionStub.firstCall.args[1].estadoPaso).to.equal("EN_CURSO");
+        expect(host.shadowRoot.querySelector("stepper-progreso").pasoActivo).to.equal(1);
+    });
+
+    test("Guardar y Avanzar completa el paso actual, activa el siguiente y permanece en la vista", async () => {
+        const cie10 = host.shadowRoot.querySelector("#cie10-busqueda");
+        cie10.seleccionados = ["J00"];
+        host.shadowRoot.querySelector("#notas-consulta").value = "Paciente estable";
+        host.shadowRoot.querySelector("#plan-tratamiento").value = "Reposo";
+        host.shadowRoot.querySelector("#btn-siguiente").click();
+
+        await new Promise((r) => setTimeout(r, 50));
+
+        const payload = registrarAtencionStub.firstCall.args[1];
+        expect(registrarAtencionStub.calledOnce).to.be.true;
+        expect(payload.paso.indice).to.equal(1);
+        expect(payload.estadoPaso).to.equal("COMPLETADO");
+        expect(payload.siguientePaso.estado).to.equal("EN_CURSO");
+        expect(payload.consulta_procedimiento_paso.valor).to.deep.equal({
+            notas: "Paciente estable",
+            diagnostico: ["J00"],
+            plan: "Reposo"
+        });
+        expect(host.shadowRoot.querySelector("stepper-progreso").pasoActivo).to.equal(2);
+        expect(navigateStub.called).to.be.false;
+    });
+
+    test("el último paso muestra Finalizar Consulta y navega al dashboard con fecha de fin", async () => {
+        store.setState({
+            consultaActiva: {
+                ...consultaFicticia,
+                pasos: [
+                    { nombre: "Triaje", estado: "COMPLETADO" },
+                    { nombre: "Consulta Médica", estado: "COMPLETADO" },
+                    { nombre: "Tratamiento", estado: "COMPLETADO" },
+                    { nombre: "Cierre", estado: "EN_CURSO" }
+                ]
+            }
+        });
+
+        expect(host.shadowRoot.querySelector("#btn-siguiente")).to.be.null;
+        const btnFinalizar = host.shadowRoot.querySelector("#btn-finalizar");
+        assert.isNotNull(btnFinalizar, "Debe existir #btn-finalizar en el último paso");
+
+        host.shadowRoot.querySelector("#notas-consulta").value = "Alta indicada";
+        btnFinalizar.click();
+
+        await new Promise((r) => setTimeout(r, 50));
+
+        const payload = registrarAtencionStub.firstCall.args[1];
+        expect(registrarAtencionStub.calledOnce).to.be.true;
+        expect(payload.paso.indice).to.equal(3);
+        expect(payload.estadoPaso).to.equal("COMPLETADO");
+        expect(payload.consulta_procedimiento_paso.valor).to.deep.equal({
+            notas: "Alta indicada",
+            diagnostico: [],
+            plan: ""
+        });
+        expect(payload.fechaFin).to.be.a("string");
+        expect(navigateStub.calledWith("#dashboard")).to.be.true;
+    });
+
     // ── Aviso sin consulta activa ────────────────────────────────────────────
 
     test("muestra aviso accesible cuando no hay consulta activa en el store", () => {
@@ -278,5 +384,70 @@ suite("AtencionConsultaView (unitaria)", () => {
         expect(aviso.getAttribute("role")).to.equal("status");
 
         sinConsulta.parentNode.removeChild(sinConsulta);
+    });
+
+    // ── Sincronización con el paso activo del backend ─────────────────────────
+
+    test("detecta el paso EN_CURSO y sincroniza el stepper", () => {
+        store.setState({
+            consultaActiva: {
+                ...consultaFicticia,
+                pasos: [
+                    { nombre: "Triaje", estado: "COMPLETADO" },
+                    { nombre: "Consulta Médica", estado: "EN_CURSO" },
+                    { nombre: "Tratamiento", estado: "PENDIENTE" },
+                    { nombre: "Cierre", estado: "PENDIENTE" }
+                ]
+            }
+        });
+
+        const stepper = host.shadowRoot.querySelector("stepper-progreso");
+        expect(stepper.pasoActivo).to.equal(1);
+    });
+
+    test("detecta el primer paso pendiente cuando no hay ninguno EN_CURSO", () => {
+        store.setState({
+            consultaActiva: {
+                ...consultaFicticia,
+                pasos: [
+                    { nombre: "Triaje", estado: { nombre: "Completado" } },
+                    { nombre: "Consulta Médica", estado: "COMPLETADO" },
+                    { nombre: "Tratamiento", estado: "PENDIENTE" },
+                    { nombre: "Cierre", estado: "PENDIENTE" }
+                ]
+            }
+        });
+
+        const stepper = host.shadowRoot.querySelector("stepper-progreso");
+        expect(stepper.pasoActivo).to.equal(2);
+    });
+
+    test("carga en el formulario los datos guardados en el paso activo", () => {
+        store.setState({
+            consultaActiva: {
+                ...consultaFicticia,
+                pasos: [
+                    { nombre: "Triaje", estado: "COMPLETADO" },
+                    { nombre: "Consulta Médica", estado: "COMPLETADO" },
+                    {
+                        nombre: "Tratamiento",
+                        estado: "EN_CURSO",
+                        datos: {
+                            notasConsulta: "Evolución favorable",
+                            planTratamiento: "Continuar tratamiento",
+                            diagnosticos: ["J00"]
+                        }
+                    },
+                    { nombre: "Cierre", estado: "PENDIENTE" }
+                ]
+            }
+        });
+
+        const notas = host.shadowRoot.querySelector("#notas-consulta");
+        const plan = host.shadowRoot.querySelector("#plan-tratamiento");
+
+        expect(host.shadowRoot.querySelector("stepper-progreso").pasoActivo).to.equal(2);
+        expect(notas.value).to.equal("Evolución favorable");
+        expect(plan.value).to.equal("Continuar tratamiento");
     });
 });
