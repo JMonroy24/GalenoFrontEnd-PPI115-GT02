@@ -17,6 +17,20 @@ export class DefaultService {
     }
 
     async _request(url, options = {}, fallbackMessage = "Error al acceder al repositorio") {
+        const method = String(options.method ?? "GET").toUpperCase();
+
+        if (this._esOperacionEscritura(method) && this._estaSinConexion()) {
+            const mensaje = "Operación no disponible sin conexión. Conéctese a internet para guardar los cambios";
+
+            GeneradorMensajes.crearMensaje("Sin conexión", mensaje, "warning");
+
+            throw new DefaultError(mensaje, {
+                code: "OFFLINE",
+                method,
+                details: { code: "OFFLINE", method }
+            });
+        }
+
         const headers = new Headers(options.headers);
         const session = store.state?.token;
         const token = typeof session === "string"
@@ -73,6 +87,18 @@ export class DefaultService {
             message,
             details
         });
+    }
+
+    _esOperacionEscritura(method) {
+        return ["POST", "PUT", "PATCH", "DELETE"].includes(String(method).toUpperCase());
+    }
+
+    _estaSinConexion() {
+        const navegadorOnline = typeof navigator === "undefined"
+            || navigator.onLine !== false;
+        const storeOnline = store.state?.online;
+
+        return !navegadorOnline || storeOnline === false;
     }
 
     _notificarError(message, details) {

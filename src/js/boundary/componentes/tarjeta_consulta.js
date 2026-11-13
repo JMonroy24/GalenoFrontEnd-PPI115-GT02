@@ -1,3 +1,5 @@
+import "./historial_pasos.js";
+
 export class TarjetaConsulta extends HTMLElement {
     constructor() {
         super();
@@ -25,6 +27,7 @@ export class TarjetaConsulta extends HTMLElement {
         };
         const procedimientos = this._obtenerProcedimientos(datos);
         const estado = this._obtenerEstado(datos);
+        const pasos = this._obtenerPasos(datos);
 
         this.shadowRoot.innerHTML = `
             <link rel="stylesheet" href="recursos/estilos/principal.css">
@@ -134,6 +137,51 @@ export class TarjetaConsulta extends HTMLElement {
                     color: var(--color-text-muted, #475569);
                     font-size: var(--text-sm, 0.875rem);
                 }
+                .historial-pasos {
+                    padding: var(--space-4, 1rem);
+                    border-top: var(--border-width, 1px) solid var(--color-surface-alt, #e2e8f0);
+                }
+                .historial-pasos h4 {
+                    margin: 0 0 var(--space-2, 0.5rem);
+                    color: var(--color-primary, #1e3a8a);
+                    font-size: var(--text-base, 1rem);
+                }
+                .historial-desplegable[hidden] {
+                    display: none;
+                }
+                .historial-desplegable summary {
+                    display: flex;
+                    align-items: center;
+                    justify-content: space-between;
+                    gap: var(--space-2, 0.5rem);
+                    padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
+                    border: var(--border-width, 1px) solid var(--color-border, #64748b);
+                    border-radius: var(--radius-md, 0.5rem);
+                    background-color: var(--color-surface-alt, #e2e8f0);
+                    color: var(--color-primary, #1e3a8a);
+                    font-size: var(--text-sm, 0.875rem);
+                    font-weight: 600;
+                    cursor: pointer;
+                }
+                .historial-desplegable summary::marker {
+                    color: var(--color-secondary, #0284c7);
+                }
+                .historial-contenido {
+                    margin-top: var(--space-3, 0.75rem);
+                }
+                .historial-vacio {
+                    margin: 0;
+                    padding: var(--space-3, 0.75rem);
+                    border: var(--border-width, 1px) dashed var(--color-border, #64748b);
+                    border-radius: var(--radius-md, 0.5rem);
+                    background-color: var(--color-surface-alt, #e2e8f0);
+                    color: var(--color-text-muted, #475569);
+                    font-size: var(--text-sm, 0.875rem);
+                    text-align: center;
+                }
+                .historial-vacio[hidden] {
+                    display: none;
+                }
                 .pie {
                     display: flex;
                     flex-wrap: wrap;
@@ -170,6 +218,19 @@ export class TarjetaConsulta extends HTMLElement {
                     <ul id="lista-procedimientos"></ul>
                     <p class="procedimientos-vacio" id="procedimientos-vacio">Sin procedimientos activos.</p>
                 </section>
+                <section class="historial-pasos" aria-labelledby="titulo-historial-pasos">
+                    <h4 id="titulo-historial-pasos">Historial de pasos</h4>
+                    <details class="historial-desplegable" id="historial-desplegable" open>
+                        <summary>
+                            <span>Pasos ejecutados</span>
+                            <span id="historial-contador"></span>
+                        </summary>
+                        <div class="historial-contenido">
+                            <historial-pasos id="historial-pasos"></historial-pasos>
+                        </div>
+                    </details>
+                    <p class="historial-vacio" id="historial-vacio" hidden>Sin pasos ejecutados.</p>
+                </section>
                 <footer class="pie">
                     <slot name="acciones"></slot>
                 </footer>
@@ -195,6 +256,18 @@ export class TarjetaConsulta extends HTMLElement {
             item.textContent = this._nombreProcedimiento(procedimiento);
             lista.appendChild(item);
         });
+
+        const historial = this.shadowRoot.querySelector("#historial-pasos");
+        const historialDesplegable = this.shadowRoot.querySelector("#historial-desplegable");
+        const historialContador = this.shadowRoot.querySelector("#historial-contador");
+        const historialVacio = this.shadowRoot.querySelector("#historial-vacio");
+
+        historial.pasos = pasos;
+        historialDesplegable.hidden = pasos.length === 0;
+        historialVacio.hidden = pasos.length > 0;
+        historialContador.textContent = pasos.length > 0
+            ? `(${pasos.length})`
+            : "";
     }
 
     _obtenerFecha(datos) {
@@ -283,6 +356,47 @@ export class TarjetaConsulta extends HTMLElement {
             const estado = String(procedimiento?.estado ?? "").toLowerCase();
             return estado !== "inactivo" && estado !== "cancelado" && estado !== "eliminado";
         });
+    }
+
+    _obtenerPasos(datos) {
+        const fuentes = [
+            datos.pasos,
+            datos.pasosEjecutados,
+            datos.historialPasos,
+            datos.historial,
+            datos.atencion?.pasos,
+            datos.atencion?.historial,
+            datos.cita?.pasos,
+            datos.cita?.historial
+        ];
+
+        for (const fuente of fuentes) {
+            const pasos = this._normalizarPasos(fuente);
+
+            if (pasos.length > 0) {
+                return pasos;
+            }
+        }
+
+        return [];
+    }
+
+    _normalizarPasos(valor) {
+        if (Array.isArray(valor)) {
+            return valor;
+        }
+
+        if (!valor || typeof valor !== "object") {
+            return [];
+        }
+
+        const lista = valor.pasos
+            ?? valor.items
+            ?? valor.historial
+            ?? valor.resultado
+            ?? valor.datos;
+
+        return Array.isArray(lista) ? lista : [];
     }
 
     _nombreProcedimiento(procedimiento) {

@@ -107,14 +107,33 @@ suite("Store (unitaria)", () => {
         expect(testStore.state.token).to.equal("tok-3");
     });
 
-    test("responde a eventos 'online' y 'offline' de window actualizando state.online", () => {
-        window.dispatchEvent(new Event("offline"));
-        expect(testStore.state.online).to.be.false;
-        expect(testStore.getState().isOnline).to.be.false;
+    test("responde a eventos 'online' y 'offline' actualizando state.online y notificando", () => {
+        const mensajes = [];
+        const escucharNotificacion = (evento) => mensajes.push(evento.detail);
 
-        window.dispatchEvent(new Event("online"));
-        expect(testStore.state.online).to.be.true;
-        expect(testStore.getState().isOnline).to.be.true;
+        window.addEventListener("notificacion", escucharNotificacion);
+
+        try {
+            window.dispatchEvent(new Event("offline"));
+            expect(testStore.state.online).to.be.false;
+            expect(testStore.getState().isOnline).to.be.false;
+
+            const alerta = mensajes.find((mensaje) => mensaje.tipo === "warning");
+            assert.isDefined(alerta);
+            expect(alerta.titulo).to.equal("Sin conexión a internet");
+            expect(alerta.detalle).to.contain("No hay conexión a internet");
+
+            mensajes.length = 0;
+            window.dispatchEvent(new Event("online"));
+            expect(testStore.state.online).to.be.true;
+            expect(testStore.getState().isOnline).to.be.true;
+
+            const confirmacion = mensajes.find((mensaje) => mensaje.tipo === "success");
+            assert.isDefined(confirmacion);
+            expect(confirmacion.titulo).to.equal("Conexión restablecida");
+        } finally {
+            window.removeEventListener("notificacion", escucharNotificacion);
+        }
     });
 
     test("setContextoTrabajo persiste en sessionStorage y actualiza clinicaActiva y rolSeleccionado", () => {

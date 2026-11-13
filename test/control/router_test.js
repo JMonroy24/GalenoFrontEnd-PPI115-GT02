@@ -21,7 +21,13 @@ suite("Router (unitaria)", () => {
 
     teardown(() => {
         contenedor?.remove();
-        store.setState({ token: null });
+        store.setState({
+            token: null,
+            usuario: null,
+            roles: [],
+            rolSeleccionado: null,
+            clinicaActiva: null
+        });
         window.location.hash = "";
     });
 
@@ -75,13 +81,25 @@ suite("Router (unitaria)", () => {
         });
 
         test("permite acceso a rutas públicas sin sesión activa", () => {
-            store.setState({ token: null });
+            store.setState({
+                token: null,
+                usuario: null,
+                roles: [],
+                rolSeleccionado: null,
+                clinicaActiva: null
+            });
             expect(routerPrueba.canNavigate("buscar-citas")).to.be.true;
             expect(routerPrueba.canNavigate("login")).to.be.true;
         });
 
         test("bloquea ruta privada y redirige a #login si no hay sesión activa", () => {
-            store.setState({ token: null });
+            store.setState({
+                token: null,
+                usuario: null,
+                roles: [],
+                rolSeleccionado: null,
+                clinicaActiva: null
+            });
             window.location.hash = "#dashboard";
 
             const permiso = routerPrueba.canNavigate("dashboard");
@@ -91,7 +109,11 @@ suite("Router (unitaria)", () => {
         });
 
         test("permite navegación a ruta privada si existe sesión activa", () => {
-            store.setState({ token: "token-valido-123" });
+            store.setState({
+                token: null,
+                usuario: { idPersona: 1, nombres: "Usuario Test" },
+                clinicaActiva: { idClinica: 1, nombre: "Clínica Central" }
+            });
             expect(routerPrueba.canNavigate("dashboard")).to.be.true;
             expect(routerPrueba.canNavigate("atencion")).to.be.true;
         });
@@ -108,7 +130,13 @@ suite("Router (unitaria)", () => {
         });
 
         test("navigate a ruta privada sin sesión renderiza login-view y redirige hash a #login", () => {
-            store.setState({ token: null });
+            store.setState({
+                token: null,
+                usuario: null,
+                roles: [],
+                rolSeleccionado: null,
+                clinicaActiva: null
+            });
             const ruta = routerPrueba.navigate("#dashboard");
 
             expect(ruta).to.equal("login");
@@ -118,7 +146,11 @@ suite("Router (unitaria)", () => {
         });
 
         test("navigate a #atencion/<id> con sesión activa preserva el hash completo y renderiza atencion-consulta-view", () => {
-            store.setState({ token: "token-sesion-activa" });
+            store.setState({
+                token: null,
+                usuario: { idPersona: 1, nombres: "Usuario Test" },
+                clinicaActiva: { idClinica: 1, nombre: "Clínica Central" }
+            });
             const ruta = routerPrueba.navigate("#atencion/88");
 
             expect(ruta).to.equal("atencion");
@@ -129,7 +161,11 @@ suite("Router (unitaria)", () => {
         });
 
         test("resolve() resuelve hash actual de la ventana", () => {
-            store.setState({ token: "token-sesion-activa" });
+            store.setState({
+                token: null,
+                usuario: { idPersona: 1, nombres: "Usuario Test" },
+                clinicaActiva: { idClinica: 1, nombre: "Clínica Central" }
+            });
             window.location.hash = "#dashboard";
 
             const resuelta = routerPrueba.resolve();

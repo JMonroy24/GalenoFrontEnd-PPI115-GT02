@@ -3,19 +3,18 @@ const API_PATH = "/resources/v1/";
 
 // Todo lo necesario para arrancar la SPA sin red (App Shell).
 const APP_SHELL = [
-    "/",
-    "/index.html",
-    "/manifest.json",
-    "/recursos/estilos/principal.css",
-    "/recursos/imagenes/galenosv-logo.png",
-    "/recursos/imagenes/icono_192.png",
-    "/recursos/imagenes/icono_512.png",
-    "/js/app.js",
-    "/js/boundary/busqueda_consulta_model.js",
+
+    "/js/config.js",
+    "/js/routes.js",
+    "/js/router.js",
+    "/js/store.js",
+    "/js/boundary/vistas/busqueda_citas_view.js",
+    "/js/boundary/vistas/login_view.js",
+    "/js/boundary/vistas/dashboard_view.js",
+    "/js/boundary/vistas/atencion_consulta_view.js",
     "/js/boundary/componentes/asistente_busqueda.js",
     "/js/boundary/componentes/autocomplete.js",
     "/js/boundary/componentes/autocomplete_cie10.js",
-    "/js/boundary/componentes/buscador_persona.js",
     "/js/boundary/componentes/buscador_tipo_doc.js",
     "/js/boundary/componentes/buscador_tipo_documentos.js",
     "/js/boundary/componentes/encabezado_app.js",

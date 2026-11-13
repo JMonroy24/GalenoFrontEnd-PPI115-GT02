@@ -77,7 +77,7 @@ export class ConsultaService extends DefaultService {
      * @param {object}  opciones
      * @param {string}  [opciones.tipoDocumento]   - Tipo de documento de identidad del paciente.
      * @param {string}  [opciones.numeroDocumento] - Número de documento de identidad del paciente.
-     * @param {string|number} [opciones.clinicaId] - Identificador de la clínica.
+     * @param {string|number} [opciones.idClinica] - Identificador de la clínica.
      * @param {string}  [opciones.fechaDesde]      - Fecha de inicio del rango (ISO 8601, p. ej. "2024-01-01").
      * @param {string}  [opciones.fechaHasta]      - Fecha de fin del rango (ISO 8601, p. ej. "2024-12-31").
      * @param {number}  [first=0]                  - Índice del primer registro (paginación).
@@ -85,14 +85,14 @@ export class ConsultaService extends DefaultService {
      * @returns {Promise<DefaultResponse>}
      */
     async buscarPorPacienteYFechas(
-        { tipoDocumento, numeroDocumento, clinicaId, fechaDesde, fechaHasta } = {},
+        { tipoDocumento, numeroDocumento, idClinica, fechaDesde, fechaHasta } = {},
         first = 0,
         max = DEFAULT_PAGE_SIZE
     ) {
         const filtros = {
             ...(tipoDocumento   ? { tipoDocumento }                : {}),
             ...(numeroDocumento ? { numeroDocumento }              : {}),
-            ...(clinicaId       ? { idClinica: clinicaId }         : {}),
+            ...(idClinica        ? { idClinica }                    : {}),
             ...(fechaDesde      ? { fechaDesde }                   : {}),
             ...(fechaHasta      ? { fechaHasta }                   : {})
         };
@@ -112,6 +112,71 @@ export class ConsultaService extends DefaultService {
 
     registrarAtencionMedica(idConsulta, atencion) {
         return this.registrarAtencion(idConsulta, atencion);
+    }
+
+    /**
+     * Serializa los datos clínicos del formulario al formato estructurado que
+     * consume el backend dentro de `consulta_procedimiento_paso.valor`.
+     *
+     * @param {object} atencion
+     * @returns {{ notas: string, diagnostico: Array<unknown>, plan: string }}
+     */
+    serializarValorPaso(atencion = {}) {
+        const diagnosticos = Array.isArray(atencion.diagnosticos)
+            ? atencion.diagnosticos
+            : atencion.diagnosticos === undefined
+                || atencion.diagnosticos === null
+                || atencion.diagnosticos === ""
+                ? []
+                : [atencion.diagnosticos];
+
+        return {
+            notas: atencion.notas ?? atencion.notasConsulta ?? "",
+            diagnostico: atencion.diagnostico ?? diagnosticos,
+            plan: atencion.plan ?? atencion.planTratamiento ?? ""
+        };
+    }
+
+    /**
+     * Construye el payload de un paso clínico agregando el valor serializado
+     * al atributo `consulta_procedimiento_paso`.
+     *
+     * @param {object} atencion
+     * @returns {object}
+     */
+    construirPayloadPaso(atencion = {}) {
+        const payload = { ...atencion };
+        const clavesDatos = [
+            "notas",
+            "notasConsulta",
+            "diagnostico",
+            "diagnosticos",
+            "plan",
+            "planTratamiento"
+        ];
+        const tieneDatos = clavesDatos.some(
+            (clave) => atencion[clave] !== undefined
+        );
+
+        if (tieneDatos) {
+            payload.consulta_procedimiento_paso = {
+                ...(atencion.consulta_procedimiento_paso ?? {}),
+                valor: this.serializarValorPaso(atencion)
+            };
+        }
+
+        return payload;
+    }
+
+    async guardarPaso(idConsulta, atencion) {
+        return this.registrarAtencion(
+            idConsulta,
+            this.construirPayloadPaso(atencion)
+        );
+    }
+
+    guardarConsultaProcedimientoPaso(idConsulta, atencion) {
+        return this.guardarPaso(idConsulta, atencion);
     }
 
     async descargarTicketPdf(idConsulta) {
