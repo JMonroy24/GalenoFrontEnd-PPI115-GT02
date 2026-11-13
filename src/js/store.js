@@ -1,3 +1,5 @@
+import GeneradorMensajes from "./control/generador_mensajes.js";
+
 const LEGACY_KEYS = Object.freeze({
     session: "token",
     activeClinic: "clinicaActiva",
@@ -53,8 +55,22 @@ export class Store extends EventTarget {
         };
 
         if (typeof window !== "undefined") {
-            window.addEventListener("online", () => this.setState({ online: true }));
-            window.addEventListener("offline", () => this.setState({ online: false }));
+            window.addEventListener("online", () => {
+                this.setState({ online: true });
+                GeneradorMensajes.crearMensaje(
+                    "Conexión restablecida",
+                    "La conexión a internet se ha restablecido.",
+                    "success"
+                );
+            });
+            window.addEventListener("offline", () => {
+                this.setState({ online: false });
+                GeneradorMensajes.crearMensaje(
+                    "Sin conexión a internet",
+                    "No hay conexión a internet. Verifique su red.",
+                    "warning"
+                );
+            });
         }
     }
 
