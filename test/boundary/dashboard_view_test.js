@@ -91,7 +91,7 @@ suite("DashboardView (unitaria)", () => {
         assert.isNotNull(host.shadowRoot);
     });
 
-    test("renderiza la estructura básica: selector de contexto, filtros, grilla de citas y panel historial", () => {
+    test("renderiza la estructura básica: selector de contexto, filtros y grilla de citas", () => {
         const shadow = host.shadowRoot;
 
         // 1. Selector de contexto
@@ -104,20 +104,28 @@ suite("DashboardView (unitaria)", () => {
 
         // 2. Barra de filtros
         const selectPeriodo = shadow.querySelector("#periodo-citas");
+        const inputFechaDesde = shadow.querySelector("#fecha-desde");
+        const inputFechaHasta = shadow.querySelector("#fecha-hasta");
         const inputBusqueda = shadow.querySelector("#busqueda-citas");
         assert.isNotNull(selectPeriodo, "Debe tener select de periodo");
+        assert.isNotNull(inputFechaDesde, "Debe tener input de fecha desde");
+        assert.isNotNull(inputFechaHasta, "Debe tener input de fecha hasta");
         assert.isNotNull(inputBusqueda, "Debe tener input de búsqueda");
         expect(selectPeriodo.querySelector('option[value="hoy"]')).to.exist;
         expect(selectPeriodo.querySelector('option[value="pasado"]')).to.exist;
         expect(selectPeriodo.querySelector('option[value="futuro"]')).to.exist;
+        expect(inputFechaDesde.type).to.equal("date");
+        expect(inputFechaHasta.type).to.equal("date");
+        expect(inputFechaDesde.value).to.not.equal("");
+        expect(inputFechaHasta.value).to.not.equal("");
 
         // 3. Grilla de citas
         const contenedorCitas = shadow.querySelector("#citas");
         assert.isNotNull(contenedorCitas, "Debe existir el contenedor de la grilla de citas");
-
-        // 4. Panel con historial-pasos
-        const historialPasos = shadow.querySelector("historial-pasos");
-        assert.isNotNull(historialPasos, "Debe existir el componente <historial-pasos>");
+        assert.isNull(
+            shadow.querySelector("historial-pasos"),
+            "El historial no debe renderizarse fuera de las tarjetas"
+        );
     });
 
     test("carga citas al conectar y renderiza <tarjeta-consulta> para cada cita", async () => {
@@ -129,24 +137,27 @@ suite("DashboardView (unitaria)", () => {
         expect(tarjetas[0].consulta.idConsulta).to.equal(101);
         expect(tarjetas[1].consulta.idConsulta).to.equal(102);
 
-        // Historial de pasos se inicializa con los pasos de la primera cita
-        const historial = shadow.querySelector("historial-pasos");
-        expect(historial.pasos).to.have.length(1);
-        expect(historial.pasos[0].nombre).to.equal("Triage inicial");
+        const historialPrimera = tarjetas[0].shadowRoot.querySelector("historial-pasos");
+        const historialSegunda = tarjetas[1].shadowRoot.querySelector("historial-pasos");
+
+        expect(historialPrimera.pasos).to.have.length(1);
+        expect(historialPrimera.pasos[0].nombre).to.equal("Triage inicial");
+        expect(historialSegunda.pasos).to.have.length(1);
+        expect(historialSegunda.pasos[0].nombre).to.equal("Limpieza bucal");
     });
 
-    test("al hacer clic en una tarjeta de consulta, actualiza <historial-pasos>", async () => {
+    test("cada tarjeta conserva su propio historial al interactuar con ella", async () => {
         await new Promise((r) => setTimeout(r, 50));
 
         const shadow = host.shadowRoot;
         const tarjetas = shadow.querySelectorAll("tarjeta-consulta");
-        const historial = shadow.querySelector("historial-pasos");
+        const historialPrimera = tarjetas[0].shadowRoot.querySelector("historial-pasos");
+        const historialSegunda = tarjetas[1].shadowRoot.querySelector("historial-pasos");
 
-        // Clic en la segunda tarjeta
         tarjetas[1].click();
 
-        expect(historial.pasos).to.have.length(1);
-        expect(historial.pasos[0].nombre).to.equal("Limpieza bucal");
+        expect(historialPrimera.pasos[0].nombre).to.equal("Triage inicial");
+        expect(historialSegunda.pasos[0].nombre).to.equal("Limpieza bucal");
     });
 
     test("inyecta botón 'Atender Consulta' en slot='acciones' de cada <tarjeta-consulta>", async () => {
@@ -257,6 +268,57 @@ suite("DashboardView (unitaria)", () => {
         expect(buscarCitasStub.secondCall.args[0].periodo).to.equal("futuro");
     });
 
+    test("sincroniza Desde y Hasta al cambiar el periodo temporal", () => {
+        const fechaLocalISO = (fecha) => {
+            const anio = fecha.getFullYear();
+            const mes = String(fecha.getMonth() + 1).padStart(2, "0");
+            const dia = String(fecha.getDate()).padStart(2, "0");
+            return `${anio}-${mes}-${dia}`;
+        };
+        const hoy = fechaLocalISO(new Date());
+        const shadow = host.shadowRoot;
+        const selectPeriodo = shadow.querySelector("#periodo-citas");
+        const inputDesde = shadow.querySelector("#fecha-desde");
+        const inputHasta = shadow.querySelector("#fecha-hasta");
+
+        selectPeriodo.value = "hoy";
+        selectPeriodo.dispatchEvent(new Event("change"));
+        expect(inputDesde.value).to.equal(hoy);
+        expect(inputHasta.value).to.equal(hoy);
+
+        selectPeriodo.value = "pasado";
+        selectPeriodo.dispatchEvent(new Event("change"));
+        expect(inputDesde.value < hoy).to.be.true;
+        expect(inputHasta.value < hoy).to.be.true;
+        expect(inputDesde.value < inputHasta.value).to.be.true;
+
+        selectPeriodo.value = "futuro";
+        selectPeriodo.dispatchEvent(new Event("change"));
+        expect(inputDesde.value > hoy).to.be.true;
+        expect(inputHasta.value > hoy).to.be.true;
+        expect(inputDesde.value < inputHasta.value).to.be.true;
+    });
+
+    test("al modificar manualmente las fechas consulta con fechaDesde, fechaHasta e idClinica", async () => {
+        await new Promise((r) => setTimeout(r, 50));
+
+        const shadow = host.shadowRoot;
+        const inputDesde = shadow.querySelector("#fecha-desde");
+        const inputHasta = shadow.querySelector("#fecha-hasta");
+
+        inputDesde.value = "2026-01-01";
+        inputHasta.value = "2026-01-31";
+        inputHasta.dispatchEvent(new Event("change"));
+
+        await new Promise((r) => setTimeout(r, 50));
+
+        expect(buscarCitasStub.callCount).to.equal(2);
+        const filtros = buscarCitasStub.secondCall.args[0];
+        expect(filtros.fechaDesde).to.equal("2026-01-01");
+        expect(filtros.fechaHasta).to.equal("2026-01-31");
+        expect(filtros.idClinica).to.equal("1");
+    });
+
     test("al presionar Enter en búsqueda, recarga citas con filtro q", async () => {
         await new Promise((r) => setTimeout(r, 50));
         expect(buscarCitasStub.callCount).to.equal(1);
@@ -285,9 +347,7 @@ suite("DashboardView (unitaria)", () => {
         const estadoCitas = shadow.querySelector("#estado-citas");
         expect(estadoCitas.hidden).to.be.false;
         expect(estadoCitas.textContent).to.contain("No se encontraron citas");
-
-        const historial = shadow.querySelector("historial-pasos");
-        expect(historial.pasos).to.be.empty;
+        expect(shadow.querySelector("tarjeta-consulta")).to.be.null;
     });
 
     test("no recarga citas si el cambio en store no afecta clínica ni rol", async () => {
