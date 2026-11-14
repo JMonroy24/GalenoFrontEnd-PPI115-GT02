@@ -70,12 +70,12 @@ export class AsistenteBusqueda extends HTMLElement {
                 }
             </style>
             <form novalidate>
-                <buscador-tipo-documentos id="tipo-documento"></buscador-tipo-documentos>
+                <buscador-tipo-documentos id="tipoDocumento"></buscador-tipo-documentos>
 
                 <div class="campo">
-                    <label for="numero-documento">Número de documento</label>
+                    <label for="numeroDocumento">Número de documento</label>
                     <input
-                        id="numero-documento"
+                        id="numeroDocumento"
                         name="numeroDocumento"
                         type="text"
                         class="form-control"
@@ -122,7 +122,7 @@ export class AsistenteBusqueda extends HTMLElement {
     _conectarEventos() {
         const form = this.shadowRoot.querySelector("form");
         const buscador = this.shadowRoot.querySelector("buscador-tipo-documentos");
-        const numeroDocumento = this.shadowRoot.querySelector("#numero-documento");
+        const numeroDocumento = this.shadowRoot.querySelector("#numeroDocumento");
 
         buscador.addEventListener("tipo-documento-change", (evento) => {
             this.tipoDocumento = evento.detail?.value ?? "";
@@ -216,7 +216,7 @@ export class AsistenteBusqueda extends HTMLElement {
     }
 
     async _cargarClinicasPaciente() {
-        const input = this.shadowRoot.querySelector("#numero-documento");
+        const input = this.shadowRoot.querySelector("#numeroDocumento");
         const numeroDocumento = input.value.trim();
 
         if (this.tipoDocumento === "" || !this._patronDocumento().test(numeroDocumento)) {
@@ -362,13 +362,13 @@ export class AsistenteBusqueda extends HTMLElement {
     }
 
     _sincronizarDocumento(tipoValido) {
-        const input = this.shadowRoot.querySelector("#numero-documento");
+        const input = this.shadowRoot.querySelector("#numeroDocumento");
 
         input.disabled = !tipoValido;
+        input.value = "";
+        this.documentoTocado = false;
 
         if (tipoValido) {
-            input.value = "";
-            this.documentoTocado = false;
             this._validarDocumento(false);
             input.focus();
             return;
@@ -395,7 +395,7 @@ export class AsistenteBusqueda extends HTMLElement {
     }
 
     _validarDocumento(mostrarError) {
-        const input = this.shadowRoot.querySelector("#numero-documento");
+        const input = this.shadowRoot.querySelector("#numeroDocumento");
         const ayuda = this.shadowRoot.querySelector("#numero-documento-ayuda");
         const valor = input.value.trim();
         const valido = this._patronDocumento().test(valor);

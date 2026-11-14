@@ -176,9 +176,9 @@ export class LoginView extends HTMLElement {
 
         try {
             this.sesion = await authService.login(tipoDocumento, numero);
+            navigate("#dashboard");
             this._mostrarBienvenida();
             this._resetearFormulario();
-            navigate("#dashboard");
         } catch (error) {
             GeneradorMensajes.crearMensaje(
                 "Error al iniciar sesión",

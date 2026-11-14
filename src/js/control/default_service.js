@@ -1,8 +1,8 @@
 import {
-    API_BASE,
     DEFAULT_PAGE_SIZE,
     HTTP_TIMEOUT_MS
 } from "../config.js";
+import { ENDPOINTS } from "../routes.js";
 import DefaultError from "../entity/default_error.js";
 import DefaultResponse from "../entity/default_response.js";
 import GeneradorMensajes from "./generador_mensajes.js";
@@ -13,7 +13,7 @@ const INTERCEPTED_STATUSES = new Set([401, 403, 412, 422, 428]);
 export class DefaultService {
     constructor(endpoint = "") {
         this.endpoint = endpoint;
-        this._urlBase = `${API_BASE.replace(/\/+$/, "")}${endpoint}`;
+        this._urlBase = `${ENDPOINTS.API_BASE.replace(/\/+$/, "")}${endpoint}`;
     }
 
     async _request(url, options = {}, fallbackMessage = "Error al acceder al repositorio") {

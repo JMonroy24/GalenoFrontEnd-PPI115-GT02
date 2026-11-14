@@ -193,6 +193,7 @@ export class AuthService extends DefaultService {
             token: sesion?.token ?? null,
             usuario: sesion?.perfil ?? sesion?.usuario ?? null,
             roles,
+            clinica: clinicaActiva,
             clinicaActiva,
             rolSeleccionado
         });

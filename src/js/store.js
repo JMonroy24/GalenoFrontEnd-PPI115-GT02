@@ -51,6 +51,7 @@ export class Store extends EventTarget {
             roles: sesion?.roles ?? [],
             rolSeleccionado: sesion?.rolSeleccionado ?? sesion?.roles?.[0] ?? null,
             clinicaActiva: sesion?.clinicaActiva ?? null,
+            clinica: sesion?.clinicaActiva ?? null,
             online: globalThis.navigator?.onLine ?? true
         };
 
@@ -89,6 +90,14 @@ export class Store extends EventTarget {
         if (changes) {
             Object.assign(this.state, changes);
 
+            if ("clinica" in changes || "clinicaActiva" in changes) {
+                const clinica = "clinicaActiva" in changes
+                    ? changes.clinicaActiva
+                    : changes.clinica;
+                this.state.clinicaActiva = clinica ?? null;
+                this.state.clinica = clinica ?? null;
+            }
+
             if (Object.keys(changes).some((clave) => CAMPOS_SESION.has(clave))) {
                 this._persistirSesion();
             }
@@ -98,10 +107,7 @@ export class Store extends EventTarget {
     }
 
     isAuthenticated() {
-        const autenticado = Boolean(
-            this.state.usuario
-            && (this.state.clinicaActiva ?? this.state.clinica)
-        );
+        const autenticado = Boolean(this.state.usuario && this.state.clinica);
 
         this._persistirSesion();
 
@@ -110,6 +116,7 @@ export class Store extends EventTarget {
 
     setContextoTrabajo(clinicaActiva, rolSeleccionado) {
         this.state.clinicaActiva = clinicaActiva;
+        this.state.clinica = clinicaActiva;
         this.state.rolSeleccionado = rolSeleccionado;
         this._persistirSesion();
         this.dispatchEvent(new CustomEvent("state-changed", { detail: this.state }));
@@ -127,10 +134,11 @@ export class Store extends EventTarget {
         try {
             if (typeof sessionStorage === "undefined") return;
 
-            const { token, usuario, roles, clinicaActiva, rolSeleccionado } = this.state;
+            const { token, usuario, roles, rolSeleccionado } = this.state;
+            const clinica = this.state.clinica ?? this.state.clinicaActiva ?? null;
             const tieneSesion = token
                 || usuario
-                || clinicaActiva
+                || clinica
                 || rolSeleccionado
                 || (Array.isArray(roles) && roles.length > 0);
 
@@ -144,8 +152,8 @@ export class Store extends EventTarget {
                 usuario: this.state.usuario,
                 perfil: this.state.usuario,
                 roles: this.state.roles,
-                clinica: this.state.clinicaActiva,
-                clinicaActiva: this.state.clinicaActiva,
+                clinica,
+                clinicaActiva: clinica,
                 rolSeleccionado: this.state.rolSeleccionado
             }));
         } catch {
@@ -156,8 +164,8 @@ export class Store extends EventTarget {
         return {
             ...this.state,
             session: this.state.token,
-            activeClinic: this.state.clinicaActiva,
-            clinica: this.state.clinicaActiva,
+            activeClinic: this.state.clinicaActiva ?? this.state.clinica,
+            clinica: this.state.clinica ?? this.state.clinicaActiva,
             selectedRole: this.state.rolSeleccionado,
             isOnline: this.state.online
         };

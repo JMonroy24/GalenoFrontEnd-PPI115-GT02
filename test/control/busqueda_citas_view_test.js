@@ -42,7 +42,7 @@ suite("BusquedaCitasView (unitaria)", () => {
     };
 
     const ingresarDocumento = (documento = "01234567-8") => {
-        const input = obtenerAsistente().shadowRoot.querySelector("#numero-documento");
+        const input = obtenerAsistente().shadowRoot.querySelector("#numeroDocumento");
         input.value = documento;
         input.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
         input.dispatchEvent(new Event("blur", { bubbles: true, composed: true }));
@@ -124,7 +124,7 @@ suite("BusquedaCitasView (unitaria)", () => {
 
     test("mantiene número de documento y clínica deshabilitados hasta elegir un tipo", () => {
         const asistente = obtenerAsistente();
-        const numeroDocumento = asistente.shadowRoot.querySelector("#numero-documento");
+        const numeroDocumento = asistente.shadowRoot.querySelector("#numeroDocumento");
         const clinica = asistente.shadowRoot.querySelector("#clinica");
 
         expect(numeroDocumento.disabled).to.be.true;

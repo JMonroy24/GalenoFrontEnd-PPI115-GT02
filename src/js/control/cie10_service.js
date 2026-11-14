@@ -8,7 +8,7 @@ import { DEFAULT_PAGE_SIZE } from "../config.js";
  */
 export class Cie10Service extends DefaultService {
     constructor() {
-        super(ENDPOINTS.CIE10 ?? "/cie10");
+        super(ENDPOINTS.CIE10);
     }
 
     /**
