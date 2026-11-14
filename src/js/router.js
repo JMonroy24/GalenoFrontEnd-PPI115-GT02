@@ -118,7 +118,6 @@ export class Router {
     }
 
     hasActiveSession() {
-    hasActiveSession() {
         if (typeof store?.isAuthenticated === "function") {
             return store.isAuthenticated();
         }
@@ -130,7 +129,6 @@ export class Router {
             store?.state?.token ||
             (store?.state?.usuario && (store?.state?.clinica || store?.state?.clinicaActiva))
         );
-    }
     }
 
     isPrivateRoute(route) {
