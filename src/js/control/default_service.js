@@ -1,8 +1,8 @@
 import {
+    API_BASE,
     DEFAULT_PAGE_SIZE,
     HTTP_TIMEOUT_MS
 } from "../config.js";
-import { ENDPOINTS } from "../routes.js";
 import DefaultError from "../entity/default_error.js";
 import DefaultResponse from "../entity/default_response.js";
 import GeneradorMensajes from "./generador_mensajes.js";
@@ -13,7 +13,7 @@ const INTERCEPTED_STATUSES = new Set([401, 403, 412, 422, 428]);
 export class DefaultService {
     constructor(endpoint = "") {
         this.endpoint = endpoint;
-        this._urlBase = `${ENDPOINTS.API_BASE.replace(/\/+$/, "")}${endpoint}`;
+        this._urlBase = `${API_BASE.replace(/\/+$/, "")}${endpoint}`;
     }
 
     async _request(url, options = {}, fallbackMessage = "Error al acceder al repositorio") {
@@ -183,10 +183,9 @@ export class DefaultService {
             "Error al listar los recursos"
         );
         const payload = await response.json();
-        const items = Array.isArray(payload) ? payload : payload?.items;
 
         return new DefaultResponse(
-            Array.isArray(items) ? items : [],
+            payload?.items ?? [],
             payload?.total ?? 0,
             payload?.first ?? 0,
             payload?.max ?? 0
