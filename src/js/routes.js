@@ -1,4 +1,5 @@
 export const ENDPOINTS = Object.freeze({
+    API_BASE: "http://localhost:9080/galenoSV/resources/v1",
     CLINICAS: "/clinicas",
     TIPOS_DOCUMENTO: "/tipos-documento",
     TIPOS_EXAMEN: "/tipos-examen",

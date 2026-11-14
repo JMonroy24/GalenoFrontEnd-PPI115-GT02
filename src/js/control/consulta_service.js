@@ -1,5 +1,5 @@
 import DefaultService from "./default_service.js";
-import { API_BASE, DEFAULT_PAGE_SIZE } from "../config.js";
+import { DEFAULT_PAGE_SIZE } from "../config.js";
 import DefaultResponse from "../entity/default_response.js";
 import { ENDPOINTS } from "../routes.js";
 
@@ -180,7 +180,7 @@ export class ConsultaService extends DefaultService {
     }
 
     async descargarTicketPdf(idConsulta) {
-        const url = `${API_BASE}${ENDPOINTS.CONSULTAS}/${encodeURIComponent(idConsulta)}/ticket`;
+        const url = `${ENDPOINTS.API_BASE}${ENDPOINTS.CONSULTAS}/${encodeURIComponent(idConsulta)}/ticket`;
         const response = await this._request(
             url,
             { method: "GET" },
