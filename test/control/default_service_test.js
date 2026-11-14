@@ -89,4 +89,66 @@ suite("DefaultService (unitaria)", () => {
         expect(fetchStub.calledOnce).to.be.true;
         expect(mensajeStub.called).to.be.false;
     });
+
+    // ═══════════════════════════════════════════════════════════════════════
+    //  Resiliencia Offline — Intercepción de escrituras POST/PUT (Macro-tarea 6)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    test("intercepta POST si navigator.onLine es false y lanza aviso offline", async () => {
+        const onLineOriginal = navigator.onLine;
+        try {
+            Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
+        } catch {
+        }
+        store.setState({ online: false });
+
+        let eventoMensaje = null;
+        const escuchador = (e) => { eventoMensaje = e.detail; };
+        window.addEventListener("mensaje-global", escuchador);
+
+        let error = null;
+        try {
+            await servicio.create({ nombre: "Prueba offline" });
+        } catch (e) {
+            error = e;
+        } finally {
+            window.removeEventListener("mensaje-global", escuchador);
+            store.setState({ online: true });
+            try {
+                Object.defineProperty(navigator, "onLine", { value: onLineOriginal, configurable: true });
+            } catch {
+            }
+        }
+
+        assert.instanceOf(error, DefaultError);
+        expect(error.message).to.contain("Operación no disponible en modo offline");
+        if (eventoMensaje) {
+            expect(eventoMensaje.mensaje).to.contain("Operación no disponible en modo offline");
+        }
+    });
+
+    test("intercepta PUT si navigator.onLine es false y lanza aviso offline", async () => {
+        const onLineOriginal = navigator.onLine;
+        try {
+            Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
+        } catch {
+        }
+        store.setState({ online: false });
+
+        let error = null;
+        try {
+            await servicio.update(1, { nombre: "Prueba offline update" });
+        } catch (e) {
+            error = e;
+        } finally {
+            store.setState({ online: true });
+            try {
+                Object.defineProperty(navigator, "onLine", { value: onLineOriginal, configurable: true });
+            } catch {
+            }
+        }
+
+        assert.instanceOf(error, DefaultError);
+        expect(error.message).to.contain("Operación no disponible en modo offline");
+    });
 });

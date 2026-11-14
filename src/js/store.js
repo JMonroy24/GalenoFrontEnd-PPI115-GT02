@@ -106,8 +106,15 @@ export class Store extends EventTarget {
         this.dispatchEvent(new CustomEvent("state-changed", { detail: this.state }));
     }
 
+    hasActiveSession() {
+        return Boolean(
+            this.state.token ||
+            (this.state.usuario && (this.state.clinica || this.state.clinicaActiva || (Array.isArray(this.state.roles) && this.state.roles.length > 0)))
+        );
+    }
+
     isAuthenticated() {
-        const autenticado = Boolean(this.state.usuario && this.state.clinica);
+        const autenticado = this.hasActiveSession();
 
         this._persistirSesion();
 
