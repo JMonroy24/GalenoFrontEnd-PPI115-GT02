@@ -104,8 +104,8 @@ suite("DashboardView (unitaria)", () => {
 
         // 2. Barra de filtros
         const selectPeriodo = shadow.querySelector("#periodo-citas");
-        const inputFechaDesde = shadow.querySelector("#fecha-desde");
-        const inputFechaHasta = shadow.querySelector("#fecha-hasta");
+        const inputFechaDesde = shadow.querySelector("#fechaDesde");
+        const inputFechaHasta = shadow.querySelector("#fechaHasta");
         const inputBusqueda = shadow.querySelector("#busqueda-citas");
         assert.isNotNull(selectPeriodo, "Debe tener select de periodo");
         assert.isNotNull(inputFechaDesde, "Debe tener input de fecha desde");
@@ -278,8 +278,8 @@ suite("DashboardView (unitaria)", () => {
         const hoy = fechaLocalISO(new Date());
         const shadow = host.shadowRoot;
         const selectPeriodo = shadow.querySelector("#periodo-citas");
-        const inputDesde = shadow.querySelector("#fecha-desde");
-        const inputHasta = shadow.querySelector("#fecha-hasta");
+        const inputDesde = shadow.querySelector("#fechaDesde");
+        const inputHasta = shadow.querySelector("#fechaHasta");
 
         selectPeriodo.value = "hoy";
         selectPeriodo.dispatchEvent(new Event("change"));
@@ -303,8 +303,8 @@ suite("DashboardView (unitaria)", () => {
         await new Promise((r) => setTimeout(r, 50));
 
         const shadow = host.shadowRoot;
-        const inputDesde = shadow.querySelector("#fecha-desde");
-        const inputHasta = shadow.querySelector("#fecha-hasta");
+        const inputDesde = shadow.querySelector("#fechaDesde");
+        const inputHasta = shadow.querySelector("#fechaHasta");
 
         inputDesde.value = "2026-01-01";
         inputHasta.value = "2026-01-31";

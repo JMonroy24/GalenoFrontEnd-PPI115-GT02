@@ -214,9 +214,9 @@ export class DashboardView extends HTMLElement {
                         </select>
                     </div>
                     <div class="campo">
-                        <label for="fecha-desde">Desde</label>
+                        <label for="fechaDesde">Desde</label>
                         <input
-                            id="fecha-desde"
+                            id="fechaDesde"
                             name="fechaDesde"
                             type="date"
                             class="form-control"
@@ -224,9 +224,9 @@ export class DashboardView extends HTMLElement {
                         >
                     </div>
                     <div class="campo">
-                        <label for="fecha-hasta">Hasta</label>
+                        <label for="fechaHasta">Hasta</label>
                         <input
-                            id="fecha-hasta"
+                            id="fechaHasta"
                             name="fechaHasta"
                             type="date"
                             class="form-control"
@@ -263,8 +263,8 @@ export class DashboardView extends HTMLElement {
         const selectClinica = this.shadowRoot.querySelector("#clinica-activa");
         const selectRol = this.shadowRoot.querySelector("#rol-activo");
         const selectPeriodo = this.shadowRoot.querySelector("#periodo-citas");
-        const inputFechaDesde = this.shadowRoot.querySelector("#fecha-desde");
-        const inputFechaHasta = this.shadowRoot.querySelector("#fecha-hasta");
+        const inputFechaDesde = this.shadowRoot.querySelector("#fechaDesde");
+        const inputFechaHasta = this.shadowRoot.querySelector("#fechaHasta");
         const inputBusqueda = this.shadowRoot.querySelector("#busqueda-citas");
 
         this._cargarOpciones(selectClinica, this.clinicas, (clinica) => this._idClinica(clinica), (clinica) => this._nombreClinica(clinica));
@@ -442,8 +442,8 @@ export class DashboardView extends HTMLElement {
         this.fechaDesde = rango.desde;
         this.fechaHasta = rango.hasta;
 
-        const inputDesde = this.shadowRoot?.querySelector("#fecha-desde");
-        const inputHasta = this.shadowRoot?.querySelector("#fecha-hasta");
+        const inputDesde = this.shadowRoot?.querySelector("#fechaDesde");
+        const inputHasta = this.shadowRoot?.querySelector("#fechaHasta");
 
         if (inputDesde) {
             inputDesde.value = this.fechaDesde;
