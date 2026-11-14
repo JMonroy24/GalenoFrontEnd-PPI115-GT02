@@ -17,7 +17,7 @@ suite("AsistenteBusqueda (unitaria)", () => {
 
     const ingresarDocumento = (documento, tipo = "1", codigo = "DUI") => {
         const buscadorTipo = host.shadowRoot.querySelector("buscador-tipo-documentos");
-        const inputDoc = host.shadowRoot.querySelector("#numero-documento");
+        const inputDoc = host.shadowRoot.querySelector("#numeroDocumento");
 
         buscadorTipo.dispatchEvent(new CustomEvent("tipo-documento-change", {
             detail: { value: tipo, item: { codigo } }
@@ -108,13 +108,13 @@ suite("AsistenteBusqueda (unitaria)", () => {
 
     suite("Captura secuencial de tipo y número de documento", () => {
         test("inicia con el número de documento deshabilitado", () => {
-            const inputDoc = host.shadowRoot.querySelector("#numero-documento");
+            const inputDoc = host.shadowRoot.querySelector("#numeroDocumento");
             expect(inputDoc.disabled).to.be.true;
         });
 
         test("habilita, limpia y enfoca el número de documento al elegir un tipo válido", () => {
             const buscadorTipo = host.shadowRoot.querySelector("buscador-tipo-documentos");
-            const inputDoc = host.shadowRoot.querySelector("#numero-documento");
+            const inputDoc = host.shadowRoot.querySelector("#numeroDocumento");
 
             inputDoc.value = "01234567-8";
 
@@ -127,24 +127,26 @@ suite("AsistenteBusqueda (unitaria)", () => {
             expect(host.shadowRoot.activeElement).to.equal(inputDoc);
         });
 
-        test("vuelve a deshabilitar el número de documento al deseleccionar el tipo", () => {
+        test("vuelve a deshabilitar y limpiar el número de documento al deseleccionar el tipo", () => {
             const buscadorTipo = host.shadowRoot.querySelector("buscador-tipo-documentos");
-            const inputDoc = host.shadowRoot.querySelector("#numero-documento");
+            const inputDoc = host.shadowRoot.querySelector("#numeroDocumento");
 
             buscadorTipo.dispatchEvent(new CustomEvent("tipo-documento-change", {
                 detail: { value: "1", item: { codigo: "DUI" } }
             }));
+            inputDoc.value = "01234567-8";
             buscadorTipo.dispatchEvent(new CustomEvent("tipo-documento-change", {
                 detail: { value: "", item: null }
             }));
 
             expect(inputDoc.disabled).to.be.true;
+            expect(inputDoc.value).to.equal("");
         });
     });
 
     suite("Validación regex de número de documento", () => {
         test("valida y formatea DUI correctamente con regex /^\d{8}-\d$/", () => {
-            const inputDoc = host.shadowRoot.querySelector("#numero-documento");
+            const inputDoc = host.shadowRoot.querySelector("#numeroDocumento");
 
             // Simula ingreso sin guión
             inputDoc.value = "012345678";
@@ -160,7 +162,7 @@ suite("AsistenteBusqueda (unitaria)", () => {
         });
 
         test("marca inválido DUI con caracteres incorrectos o longitud incompleta", () => {
-            const inputDoc = host.shadowRoot.querySelector("#numero-documento");
+            const inputDoc = host.shadowRoot.querySelector("#numeroDocumento");
             const ayuda = host.shadowRoot.querySelector("#numero-documento-ayuda");
 
             inputDoc.value = "12345";
@@ -174,7 +176,7 @@ suite("AsistenteBusqueda (unitaria)", () => {
 
         test("valida formato según tipo de documento PASAPORTE /^[A-Z0-9]{6,12}$/", () => {
             const buscadorTipo = host.shadowRoot.querySelector("buscador-tipo-documentos");
-            const inputDoc = host.shadowRoot.querySelector("#numero-documento");
+            const inputDoc = host.shadowRoot.querySelector("#numeroDocumento");
 
             // Cambiar a PASAPORTE
             buscadorTipo.dispatchEvent(new CustomEvent("tipo-documento-change", {
@@ -255,7 +257,7 @@ suite("AsistenteBusqueda (unitaria)", () => {
 
         test("no emite 'buscar-citas' si el documento no es válido", () => {
             const form = host.shadowRoot.querySelector("form");
-            const inputDoc = host.shadowRoot.querySelector("#numero-documento");
+            const inputDoc = host.shadowRoot.querySelector("#numeroDocumento");
 
             inputDoc.value = "invalido";
             let eventoEmitido = false;
