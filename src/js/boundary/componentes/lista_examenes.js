@@ -13,19 +13,20 @@ const escapar = (texto) => String(texto ?? "")
     .replace(/"/g, "&quot;");
 
 /**
- * <lista-examenes-asignables id-consulta="...">
+ * <lista-examenes-asignables id-consulta="..." id-paso="...">
  * Panel de exámenes asignables con filtro por categoría, casillas de selección
- * y botón "Asignar Exámenes Seleccionados".
+ * y botón "Asignar Exámenes Seleccionados". Las órdenes se registran de forma
+ * asíncrona contra el paso activo de la consulta.
  *
  * Eventos (bubbles + composed):
- *  - "ordenes-asignadas": detail { idConsulta, ordenes, examenes }
+ *  - "ordenes-asignadas": detail { idConsulta, idPaso, ordenes, examenes }
  *
  * Los servicios pueden inyectarse (propiedades tipoExamenService y
  * ordenExamenService) para facilitar las pruebas unitarias.
  */
 export class ListaExamenesAsignables extends HTMLElement {
     static get observedAttributes() {
-        return ["id-consulta"];
+        return ["id-consulta", "id-paso", "id-paso-clinico"];
     }
 
     constructor() {
@@ -34,6 +35,8 @@ export class ListaExamenesAsignables extends HTMLElement {
         this.tipoExamenService = tipoExamenService;
         this.ordenExamenService = ordenExamenService;
         this._idConsulta = null;
+        this._idPaso = null;
+        this._paso = null;
         this._examenes = [];
         this._seleccion = new Set();
         this._categoria = TODAS;
@@ -50,10 +53,42 @@ export class ListaExamenesAsignables extends HTMLElement {
         this._actualizarBoton();
     }
 
+    get idPaso() {
+        return this._idPaso
+            ?? this.getAttribute("id-paso")
+            ?? this.getAttribute("id-paso-clinico");
+    }
+
+    set idPaso(valor) {
+        this._idPaso = valor;
+        this._actualizarBoton();
+    }
+
+    get paso() {
+        return this._paso;
+    }
+
+    set paso(valor) {
+        this._paso = valor ?? null;
+        this._idPaso = valor?.idPaso
+            ?? valor?.idPasoClinico
+            ?? valor?.id
+            ?? null;
+
+        if (this._idPaso !== null && this._idPaso !== undefined) {
+            this.setAttribute("id-paso", String(this._idPaso));
+        }
+
+        this._actualizarBoton();
+    }
+
     attributeChangedCallback(nombre, valorViejo, valorNuevo) {
         if (nombre === "id-consulta") {
             this._idConsulta = valorNuevo;
+        } else if (nombre === "id-paso" || nombre === "id-paso-clinico") {
+            this._idPaso = valorNuevo;
         }
+
         this._actualizarBoton();
     }
 
@@ -111,6 +146,16 @@ export class ListaExamenesAsignables extends HTMLElement {
         return this._categoria === TODAS
             ? this._examenes
             : this._examenes.filter((e) => e.categoria === this._categoria);
+    }
+
+    _contextoPaso() {
+        const idPaso = this.idPaso;
+
+        if (idPaso === null || idPaso === undefined || idPaso === "") {
+            return {};
+        }
+
+        return { idPaso };
     }
 
     _estado(texto) {
@@ -190,12 +235,19 @@ export class ListaExamenesAsignables extends HTMLElement {
         }
 
         const ids = this.obtenerSeleccionados();
+        const contexto = this._contextoPaso();
 
         this._enviando = true;
         this._actualizarBoton();
 
         try {
-            const ordenes = await this.ordenExamenService.crearOrdenes(this.idConsulta, ids);
+            const servicio = this.ordenExamenService;
+            const tieneContexto = Object.keys(contexto).length > 0;
+            const ordenes = typeof servicio.crearOrdenes === "function"
+                ? tieneContexto
+                    ? await servicio.crearOrdenes(this.idConsulta, ids, contexto)
+                    : await servicio.crearOrdenes(this.idConsulta, ids)
+                : await servicio.asignarOrdenes(this.idConsulta, ids);
 
             GeneradorMensajes.crearMensaje(
                 "Exámenes asignados",
@@ -206,7 +258,12 @@ export class ListaExamenesAsignables extends HTMLElement {
             this.dispatchEvent(new CustomEvent("ordenes-asignadas", {
                 bubbles: true,
                 composed: true,
-                detail: { idConsulta: this.idConsulta, ordenes, examenes: ids }
+                detail: {
+                    idConsulta: this.idConsulta,
+                    ...contexto,
+                    ordenes,
+                    examenes: ids
+                }
             }));
             this._seleccion.clear();
             this._pintarLista();

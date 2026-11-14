@@ -118,13 +118,19 @@ export class Router {
     }
 
     hasActiveSession() {
+    hasActiveSession() {
+        if (typeof store?.isAuthenticated === "function") {
+            return store.isAuthenticated();
+        }
         if (typeof store?.hasActiveSession === "function") {
             return store.hasActiveSession();
         }
+
         return Boolean(
-            store.state?.token ||
-            (store.state?.usuario && (store.state?.clinica || store.state?.clinicaActiva || (Array.isArray(store.state?.roles) && store.state.roles.length > 0)))
+            store?.state?.token ||
+            (store?.state?.usuario && (store?.state?.clinica || store?.state?.clinicaActiva))
         );
+    }
     }
 
     isPrivateRoute(route) {

@@ -14,18 +14,28 @@ const MAX_NOTAS = 2000;
 const MAX_PLAN = 2000;
 
 /**
- * Etapas del flujo clínico mostradas en el stepper por defecto.
+ * Etapas del flujo clínico mostradas en el stepper.
+ * Índice 1 corresponde a "Consulta Médica", que es el paso activo en esta vista.
  */
 const ETAPAS_FLUJO = Object.freeze(["Triaje", "Consulta Médica", "Tratamiento", "Cierre"]);
 
-/**
- * Estados posibles de un paso dentro del procedimiento.
- */
+/** Índice del paso activo en esta vista dentro de ETAPAS_FLUJO. */
+const PASO_ACTIVO = 1;
+
+/** Estados de los pasos clínicos. */
+const ESTADO_PENDIENTE = "PENDIENTE";
+const ESTADO_EN_CURSO = "EN_CURSO";
+const ESTADO_COMPLETADO = "COMPLETADO";
+
 export const EstadoPaso = Object.freeze({
-    PENDIENTE: "PENDIENTE",
-    EN_CURSO: "EN_CURSO",
-    COMPLETADO: "COMPLETADO"
+    PENDIENTE: ESTADO_PENDIENTE,
+    EN_CURSO: ESTADO_EN_CURSO,
+    COMPLETADO: ESTADO_COMPLETADO
 });
+
+/** Textos de acción de la botonera. */
+const TEXTO_SIGUIENTE = "Guardar y Avanzar al Siguiente Paso >";
+const TEXTO_FINALIZAR = "Finalizar Consulta";
 
 /**
  * Vista de atención médica de una consulta.
@@ -50,17 +60,14 @@ export class AtencionConsultaView extends HTMLElement {
         /** @type {Array<object|string>} Diagnósticos CIE-10 seleccionados. */
         this._diagnosticos = [];
 
-        /** @type {string[]} Secuencia de etapas activas. */
-        this._etapas = [...ETAPAS_FLUJO];
-
         /** @type {number} Paso activo en el stepper (0-based). */
-        this._pasoActivo = 1;
+        this._pasoActivo = PASO_ACTIVO;
 
-        /** @type {Record<number, object>} Datos almacenados por cada paso. */
-        this._datosPorPaso = {};
+        /** @type {object|null} Paso detectado en la secuencia clínica. */
+        this._pasoDetectado = null;
 
-        /** @type {Record<string|number, Array<object|string>>} Órdenes de exámenes asociadas al paso. */
-        this._ordenesPorPaso = {};
+        /** @type {Array<object>} Pasos normalizados de la secuencia clínica. */
+        this._pasosFlujo = [];
 
         this._alCambioStore = (evento) => {
             const estado = evento?.detail ?? store.getState();
@@ -72,8 +79,9 @@ export class AtencionConsultaView extends HTMLElement {
 
             if (consultaDelStore && consultaDelStore !== this._consulta) {
                 this._consulta = consultaDelStore;
-                this._sincronizarEtapasDeConsulta();
-                this._actualizarResumenConsulta();
+                this._sincronizarPasoActivo();
+                this.render();
+                this._cargarDatosPasoActivo();
             }
         };
     }
@@ -87,8 +95,6 @@ export class AtencionConsultaView extends HTMLElement {
             estado?.consulta ??
             null;
 
-        this._sincronizarEtapasDeConsulta();
-
         // Si el hash incluye un id (#atencion/<id>), intenta cargar la consulta
         // directamente desde el servicio para soportar acceso directo por URL.
         const { params } = parseRouteParams(window.location.hash);
@@ -96,64 +102,14 @@ export class AtencionConsultaView extends HTMLElement {
             this._cargarConsultaPorId(params.id);
         }
 
+        this._sincronizarPasoActivo();
         this.render();
+        this._cargarDatosPasoActivo();
         store.addEventListener("state-changed", this._alCambioStore);
     }
 
     disconnectedCallback() {
         store.removeEventListener("state-changed", this._alCambioStore);
-    }
-
-    /**
-     * Sincroniza la lista de etapas del Stepper a partir de la secuencia real de pasos de la consulta.
-     */
-    _sincronizarEtapasDeConsulta() {
-        if (!this._consulta) {
-            this._etapas = [...ETAPAS_FLUJO];
-            return;
-        }
-
-        const pasos = this._consulta.pasos
-            ?? this._consulta.pasosProcedimiento
-            ?? this._consulta.procedimiento?.pasos
-            ?? this._consulta.procedimientos?.[0]?.pasos
-            ?? null;
-
-        if (Array.isArray(pasos) && pasos.length > 0) {
-            this._etapas = pasos.map((p, idx) => p?.nombre ?? p?.descripcion ?? `Paso ${idx + 1}`);
-        } else {
-            this._etapas = [...ETAPAS_FLUJO];
-        }
-
-        if (this._pasoActivo >= this._etapas.length) {
-            this._pasoActivo = Math.max(0, this._etapas.length - 1);
-        }
-    }
-
-    /**
-     * Determina si el paso activo actual es el último de la secuencia.
-     * @returns {boolean}
-     */
-    _esUltimoPaso() {
-        return this._pasoActivo >= this._etapas.length - 1;
-    }
-
-    /**
-     * Devuelve el identificador del paso activo.
-     * @returns {string|number}
-     */
-    _obtenerIdPasoActivo() {
-        const pasos = this._consulta?.pasos
-            ?? this._consulta?.pasosProcedimiento
-            ?? this._consulta?.procedimiento?.pasos
-            ?? null;
-
-        if (Array.isArray(pasos) && pasos[this._pasoActivo]) {
-            const paso = pasos[this._pasoActivo];
-            return paso?.idPaso ?? paso?.id ?? this._pasoActivo;
-        }
-
-        return this._pasoActivo;
     }
 
     /**
@@ -181,6 +137,7 @@ export class AtencionConsultaView extends HTMLElement {
             }
 
             this._consulta = consulta;
+            this._sincronizarPasoActivo();
 
             store.setState({
                 consultaActiva: consulta,
@@ -190,6 +147,7 @@ export class AtencionConsultaView extends HTMLElement {
 
             // Actualiza la vista con la consulta cargada
             this.render();
+            this._cargarDatosPasoActivo();
         } catch (error) {
             GeneradorMensajes.crearMensaje(
                 "Error al cargar la consulta",
@@ -211,25 +169,12 @@ export class AtencionConsultaView extends HTMLElement {
         const notas = this.shadowRoot?.querySelector("#notas-consulta");
         const plan = this.shadowRoot?.querySelector("#plan-tratamiento");
         const cie10 = this.shadowRoot?.querySelector("#cie10-busqueda");
-        const diags = cie10?.obtenerSeleccionados?.() ?? [...this._diagnosticos];
 
-        const resultado = {
+        return {
             notasConsulta: (notas?.value ?? "").trim(),
-            planTratamiento: (plan?.value ?? "").trim()
+            planTratamiento: (plan?.value ?? "").trim(),
+            diagnosticos: cie10?.obtenerSeleccionados() ?? [...this._diagnosticos]
         };
-
-        if (Array.isArray(diags) && diags.length > 0) {
-            resultado.diagnosticos = diags;
-        } else {
-            Object.defineProperty(resultado, "diagnosticos", {
-                value: [],
-                writable: true,
-                enumerable: false,
-                configurable: true
-            });
-        }
-
-        return resultado;
     }
 
     /**
@@ -251,6 +196,440 @@ export class AtencionConsultaView extends HTMLElement {
             plan.value = datos.planTratamiento;
             this._actualizarContador("contador-plan", plan.value.length, MAX_PLAN);
             this._ajustarAltura(plan);
+        }
+    }
+
+    // ─── Sincronización de pasos clínicos ────────────────────────────────────
+
+    /**
+     * Detecta el paso activo real de la secuencia clínica y lo sincroniza con
+     * el stepper. Prioriza el paso en estado EN_CURSO y, si no existe, el
+     * primer paso pendiente.
+     */
+    _sincronizarPasoActivo() {
+        const pasos = this._obtenerListaPasos(this._consulta);
+        const detectado = this._detectarPasoActivo(this._consulta);
+
+        this._pasoActivo = detectado.indice;
+        this._pasoDetectado = detectado.paso;
+        this._pasosFlujo = pasos.length > 0
+            ? pasos
+            : this._crearPasosFlujoPorDefecto(detectado.indice);
+
+        this._sincronizarStepper();
+        this._sincronizarListaExamenes();
+        return detectado;
+    }
+
+    _crearPasosFlujoPorDefecto(indiceActivo) {
+        return ETAPAS_FLUJO.map((nombre, indice) => ({
+            nombre,
+            estado: indice < indiceActivo
+                ? ESTADO_COMPLETADO
+                : indice === indiceActivo
+                    ? ESTADO_EN_CURSO
+                    : ESTADO_PENDIENTE
+        }));
+    }
+
+    _sincronizarStepper() {
+        const stepper = this.shadowRoot?.querySelector("#stepper-flujo");
+
+        if (!stepper) {
+            return;
+        }
+
+        stepper.etapas = [...ETAPAS_FLUJO];
+        stepper.estados = ETAPAS_FLUJO.map((_, indice) => (
+            this._obtenerEstadoPaso(this._buscarPasoPorIndice(this._pasosFlujo, indice))
+        ));
+        stepper.pasoActivo = this._pasoActivo;
+    }
+
+    _esPrimerPaso() {
+        return this._pasoActivo <= 0;
+    }
+
+    _esUltimoPaso() {
+        return this._pasoActivo >= ETAPAS_FLUJO.length - 1;
+    }
+
+    _detectarPasoActivo(consulta) {
+        const pasos = this._obtenerListaPasos(consulta);
+        let enCurso = null;
+        let primerPendiente = null;
+
+        pasos.forEach((paso) => {
+            const indice = this._indiceEtapa(this._obtenerNombrePaso(paso));
+
+            if (indice < 0) {
+                return;
+            }
+
+            const estado = this._obtenerEstadoPaso(paso);
+
+            if (this._esEstadoEnCurso(estado) && (!enCurso || indice < enCurso.indice)) {
+                enCurso = { indice, paso };
+            }
+
+            if (this._esEstadoPendiente(estado) && (!primerPendiente || indice < primerPendiente.indice)) {
+                primerPendiente = { indice, paso };
+            }
+        });
+
+        if (enCurso) {
+            return enCurso;
+        }
+
+        if (primerPendiente) {
+            return primerPendiente;
+        }
+
+        const explicito =
+            consulta?.pasoActivo ??
+            consulta?.pasoActual ??
+            consulta?.etapaActiva ??
+            consulta?.etapaActual ??
+            consulta?.indicePasoActivo ??
+            null;
+        const indiceExplicito = this._resolverIndicePaso(explicito);
+
+        if (indiceExplicito >= 0) {
+            return {
+                indice: indiceExplicito,
+                paso: this._buscarPasoPorIndice(pasos, indiceExplicito)
+            };
+        }
+
+        return {
+            indice: PASO_ACTIVO,
+            paso: this._buscarPasoPorIndice(pasos, PASO_ACTIVO)
+        };
+    }
+
+    _obtenerListaPasos(consulta) {
+        if (!consulta || typeof consulta !== "object") {
+            return [];
+        }
+
+        const candidatos = [
+            consulta.pasosClinicos,
+            consulta.pasos_clinicos,
+            consulta.pasos,
+            consulta.etapas,
+            consulta.flujo,
+            consulta.historialPasos,
+            consulta.historial,
+            consulta.atencion?.pasos,
+            consulta.consulta?.pasos
+        ];
+
+        for (const candidato of candidatos) {
+            const lista = this._normalizarListaPasos(candidato);
+
+            if (lista.length > 0) {
+                return lista;
+            }
+        }
+
+        return [];
+    }
+
+    _normalizarListaPasos(valor) {
+        if (Array.isArray(valor)) {
+            return valor;
+        }
+
+        if (!valor || typeof valor !== "object") {
+            return [];
+        }
+
+        const lista = valor.items
+            ?? valor.pasos
+            ?? valor.datos
+            ?? valor.resultado
+            ?? valor.etapas;
+
+        if (Array.isArray(lista)) {
+            return lista;
+        }
+
+        return lista && typeof lista === "object"
+            ? this._normalizarListaPasos(lista)
+            : [];
+    }
+
+    _obtenerNombrePaso(paso) {
+        if (typeof paso === "string") {
+            return paso;
+        }
+
+        if (!paso || typeof paso !== "object") {
+            return "";
+        }
+
+        return String(
+            paso.nombrePaso
+            ?? paso.nombre
+            ?? paso.etapa
+            ?? paso.titulo
+            ?? paso.procedimiento?.nombre
+            ?? paso.idProcedimiento?.nombre
+            ?? ""
+        ).trim();
+    }
+
+    _obtenerEstadoPaso(paso) {
+        if (!paso || typeof paso !== "object") {
+            return "";
+        }
+
+        const estado = paso.estadoPaso
+            ?? paso.estado
+            ?? paso.status
+            ?? paso.estadoActual
+            ?? paso.situacion
+            ?? "";
+
+        if (estado && typeof estado === "object") {
+            return this._normalizarTexto(
+                estado.nombre
+                ?? estado.descripcion
+                ?? estado.codigo
+                ?? estado.estado
+                ?? estado.valor
+                ?? ""
+            );
+        }
+
+        return this._normalizarTexto(estado);
+    }
+
+    _esEstadoEnCurso(estado) {
+        return [
+            "EN CURSO",
+            "EN PROCESO",
+            "ACTIVO",
+            "ACTIVA",
+            "INICIADO",
+            "INICIADA",
+            "EN ATENCION"
+        ].includes(estado);
+    }
+
+    _esEstadoPendiente(estado) {
+        return [
+            "PENDIENTE",
+            "POR INICIAR",
+            "NO INICIADO",
+            "NO INICIADA",
+            "SIN INICIAR",
+            "PROGRAMADO",
+            "PROGRAMADA"
+        ].includes(estado);
+    }
+
+    _indiceEtapa(nombre) {
+        const texto = this._normalizarTexto(nombre);
+
+        if (texto === "") {
+            return -1;
+        }
+
+        if (texto.includes("TRIAGE") || texto.includes("TRIAJE")) {
+            return 0;
+        }
+
+        if (texto.includes("TRATAMIENTO")) {
+            return 2;
+        }
+
+        if (texto.includes("CIERRE") || texto.includes("ALTA")) {
+            return 3;
+        }
+
+        if (
+            texto.includes("CONSULTA")
+            || texto.includes("ATENCION")
+            || texto.includes("EVALUACION")
+        ) {
+            return 1;
+        }
+
+        return -1;
+    }
+
+    _resolverIndicePaso(valor) {
+        if (valor === undefined || valor === null || valor === "") {
+            return -1;
+        }
+
+        if (typeof valor === "object") {
+            const indicePorNombre = this._indiceEtapa(this._obtenerNombrePaso(valor));
+
+            if (indicePorNombre >= 0) {
+                return indicePorNombre;
+            }
+
+            return this._resolverIndicePaso(
+                valor.indice
+                ?? valor.paso
+                ?? valor.posicion
+                ?? valor.orden
+            );
+        }
+
+        if (typeof valor === "number") {
+            return Number.isFinite(valor) && valor >= 0 && valor < ETAPAS_FLUJO.length
+                ? Math.floor(valor)
+                : -1;
+        }
+
+        const texto = String(valor).trim();
+
+        if (/^\d+$/.test(texto)) {
+            const numero = Number(texto);
+            return numero >= 0 && numero < ETAPAS_FLUJO.length ? numero : -1;
+        }
+
+        return this._indiceEtapa(texto);
+    }
+
+    _buscarPasoPorIndice(pasos, indice) {
+        const pasoPorNombre = pasos.find(
+            (paso) => this._indiceEtapa(this._obtenerNombrePaso(paso)) === indice
+        );
+
+        return pasoPorNombre ?? pasos[indice] ?? null;
+    }
+
+    _normalizarTexto(valor) {
+        return String(valor ?? "")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/[_-]+/g, " ")
+            .replace(/\s+/g, " ")
+            .trim()
+            .toUpperCase();
+    }
+
+    /**
+     * Recupera los datos guardados previamente en el paso activo y los aplica
+     * al formulario clínico.
+     */
+    _cargarDatosPasoActivo() {
+        const datos = this._obtenerDatosPasoActivo();
+
+        if (!datos || Object.keys(datos).length === 0) {
+            return;
+        }
+
+        this.cargarDatosFormulario(datos);
+
+        if (datos.diagnosticos !== undefined) {
+            this._diagnosticos = Array.isArray(datos.diagnosticos)
+                ? [...datos.diagnosticos]
+                : [datos.diagnosticos];
+
+            const cie10 = this.shadowRoot?.querySelector("#cie10-busqueda");
+            if (cie10) {
+                cie10.seleccionados = [...this._diagnosticos];
+            }
+        }
+    }
+
+    _obtenerDatosPasoActivo() {
+        const datos = {};
+        const paso = this._pasoDetectado;
+        const consulta = this._consulta;
+        const fuentes = [
+            paso?.datos,
+            paso?.formulario,
+            paso?.contenido,
+            paso?.detalle,
+            paso?.registro,
+            paso?.atencion,
+            paso,
+            consulta?.atencion,
+            consulta?.datos,
+            consulta?.consulta,
+            consulta
+        ];
+
+        fuentes.forEach((fuente) => this._acumularDatosFormulario(datos, fuente));
+
+        return datos;
+    }
+
+    _acumularDatosFormulario(destino, fuente) {
+        if (!fuente || typeof fuente !== "object" || Array.isArray(fuente)) {
+            return;
+        }
+
+        const asignarTexto = (clave, valores) => {
+            if (destino[clave] !== undefined) {
+                return;
+            }
+
+            for (const valor of valores) {
+                if (valor === undefined || valor === null) {
+                    continue;
+                }
+
+                const texto = String(valor).trim();
+                if (texto !== "") {
+                    destino[clave] = texto;
+                    return;
+                }
+            }
+        };
+
+        asignarTexto("notasConsulta", [
+            fuente.notasConsulta,
+            fuente.notas,
+            fuente.notaConsulta,
+            fuente.observaciones,
+            fuente.anamnesis,
+            fuente.notasMedicas,
+            fuente.notas_clinicas
+        ]);
+
+        asignarTexto("planTratamiento", [
+            fuente.planTratamiento,
+            fuente.plan,
+            fuente.tratamiento,
+            fuente.planManejo,
+            fuente.indicaciones,
+            fuente.planTerapeutico,
+            fuente.plan_manejo
+        ]);
+
+        if (destino.diagnosticos === undefined) {
+            const diagnosticos = fuente.diagnosticos
+                ?? fuente.diagnostico
+                ?? fuente.cie10
+                ?? fuente.codigosCie10
+                ?? fuente.codigosCIE10
+                ?? fuente.diagnosticosCie10;
+
+            if (diagnosticos !== undefined && diagnosticos !== null && diagnosticos !== "") {
+                if (Array.isArray(diagnosticos)) {
+                    if (diagnosticos.length > 0) {
+                        destino.diagnosticos = diagnosticos;
+                    }
+                } else if (typeof diagnosticos === "string") {
+                    const lista = diagnosticos
+                        .split(",")
+                        .map((item) => item.trim())
+                        .filter((item) => item !== "");
+
+                    if (lista.length > 0) {
+                        destino.diagnosticos = lista;
+                    }
+                } else {
+                    destino.diagnosticos = [diagnosticos];
+                }
+            }
         }
     }
 
@@ -602,7 +981,7 @@ export class AtencionConsultaView extends HTMLElement {
                     ></stepper-progreso>
                 </div>
 
-                <div class="tarjeta">
+                <div class="tarjeta" role="main">
                     <h2 class="tarjeta-titulo" id="titulo-vista">Registro de Atención Médica</h2>
 
                     ${this._consulta
@@ -737,15 +1116,15 @@ export class AtencionConsultaView extends HTMLElement {
 
                 <!-- ── Campo: Diagnósticos CIE-10 ── -->
                 <div class="campo" id="grupo-cie10">
-                    <span class="etiqueta" id="etiqueta-cie10">
+                    <label class="etiqueta">
                         Diagnósticos CIE-10
                         <span class="campo-cie10-descripcion">
                             Busque y seleccione uno o varios códigos de diagnóstico.
                         </span>
-                    </span>
+                    </label>
                     <auto-complete-cie10
                         id="cie10-busqueda"
-                        aria-labelledby="etiqueta-cie10"
+                        aria-label="Buscador de diagnósticos CIE-10"
                     ></auto-complete-cie10>
                 </div>
 
@@ -754,11 +1133,19 @@ export class AtencionConsultaView extends HTMLElement {
                     <lista-examenes-asignables
                         id="lista-examenes"
                         id-consulta="${this._escapar(String(this._idConsulta() ?? ""))}"
+                        id-paso="${this._escapar(String(this._idPasoActivo() ?? ""))}"
                     ></lista-examenes-asignables>
                 </div>
 
                 <hr class="divisor" aria-hidden="true">
 
+                ${this._htmlAcciones()}
+            </form>
+        `;
+    }
+
+    _htmlAcciones() {
+        return `
                 <!-- ── Acciones ── -->
                 <div class="acciones">
                     <button type="button" class="btn btn-cancelar" id="btn-cancelar">
@@ -768,24 +1155,22 @@ export class AtencionConsultaView extends HTMLElement {
                         type="button"
                         class="btn btn-anterior"
                         id="btn-anterior"
-                        ${this._pasoActivo === 0 ? "disabled" : ""}
-                        aria-label="Volver al paso anterior"
+                        ${this._esPrimerPaso() ? "disabled" : ""}
                     >
                         &lt; Anterior
                     </button>
-                    <button
-                        type="submit"
-                        class="btn btn-guardar ${this._esUltimoPaso() ? 'btn-finalizar' : 'btn-avanzar'}"
-                        id="btn-guardar"
-                        aria-busy="false"
-                    >
+                    ${this._esUltimoPaso()
+                        ? `
+                    <button type="submit" class="btn btn-guardar btn-finalizar" id="btn-finalizar" aria-busy="false">
                         <span class="spinner" aria-hidden="true"></span>
-                        <span class="btn-guardar-texto">
-                            ${this._esUltimoPaso() ? "Finalizar Consulta" : "Guardar y Avanzar al Siguiente Paso &gt;"}
-                        </span>
-                    </button>
+                        <span class="btn-guardar-texto">${TEXTO_FINALIZAR}</span>
+                    </button>`
+                        : `
+                    <button type="submit" class="btn btn-guardar" id="btn-siguiente" aria-busy="false">
+                        <span class="spinner" aria-hidden="true"></span>
+                        <span class="btn-guardar-texto">${TEXTO_SIGUIENTE}</span>
+                    </button>`}
                 </div>
-            </form>
         `;
     }
 
@@ -801,34 +1186,17 @@ export class AtencionConsultaView extends HTMLElement {
     // ─── Eventos ──────────────────────────────────────────────────────────────
 
     _conectarEventos() {
-        // Intercepta querySelector para soportar selectores de botones dinámicos
-        const origQuery = this.shadowRoot.querySelector.bind(this.shadowRoot);
-        this.shadowRoot.querySelector = (selector) => {
-            if (selector === "#btn-avanzar") {
-                return !this._esUltimoPaso() ? origQuery("#btn-guardar") : null;
-            }
-            if (selector === "#btn-finalizar") {
-                return this._esUltimoPaso() ? origQuery("#btn-guardar") : null;
-            }
-            return origQuery(selector);
-        };
-
         const form = this.shadowRoot.querySelector("#form-clinico");
         const btnVolver = this.shadowRoot.querySelector("#btn-volver");
-        const btnCancelar = this.shadowRoot.querySelector("#btn-cancelar");
-        const btnAnterior = this.shadowRoot.querySelector("#btn-anterior");
         const textareaNotas = this.shadowRoot.querySelector("#notas-consulta");
         const textareaPlan = this.shadowRoot.querySelector("#plan-tratamiento");
 
-        btnAnterior?.addEventListener("click", () => this.retrocederPaso());
-
-        // ── Stepper: sincronizar etapas y escuchar clics de paso ──
+        // ── Stepper: sincronizar estados y escuchar clics de paso ──
         const stepper = this.shadowRoot.querySelector("#stepper-flujo");
         if (stepper) {
-            stepper.etapas = [...this._etapas];
-            stepper.pasoActivo = this._pasoActivo;
+            this._sincronizarStepper();
             stepper.addEventListener("paso-click", (evento) => {
-                this._irAlPaso(evento.detail.indice);
+                this._seleccionarPaso(evento.detail?.indice);
             });
         }
 
@@ -843,22 +1211,17 @@ export class AtencionConsultaView extends HTMLElement {
             });
         }
 
-        // ── Órdenes de exámenes asociadas al paso activo ──
+        // ── Órdenes de exámenes: vincular siempre al paso activo ──
         const listaExamenes = this.shadowRoot.querySelector("#lista-examenes");
         if (listaExamenes) {
+            this._sincronizarListaExamenes();
             listaExamenes.addEventListener("ordenes-asignadas", (evento) => {
-                const idPaso = this._obtenerIdPasoActivo();
-                if (idPaso !== null && evento.detail) {
-                    this._ordenesPorPaso[idPaso] = [
-                        ...(this._ordenesPorPaso[idPaso] || []),
-                        ...(evento.detail.ordenes || evento.detail.examenes || [])
-                    ];
-                }
+                this._alAsignarOrdenesExamen(evento.detail);
             });
         }
 
         btnVolver?.addEventListener("click", () => this._volverAlDashboard());
-        btnCancelar?.addEventListener("click", () => this._cancelar());
+        this._conectarEventosAcciones();
 
         if (textareaNotas) {
             textareaNotas.addEventListener("input", () => {
@@ -878,72 +1241,265 @@ export class AtencionConsultaView extends HTMLElement {
 
         form?.addEventListener("submit", (evento) => {
             evento.preventDefault();
-            this._guardar();
+            this._alEnviarFormulario();
         });
     }
 
-    retrocederPaso() {
-        if (this._pasoActivo > 0) {
-            this._irAlPaso(this._pasoActivo - 1);
-        }
-    }
+    _conectarEventosAcciones() {
+        const btnCancelar = this.shadowRoot.querySelector("#btn-cancelar");
+        const btnAnterior = this.shadowRoot.querySelector("#btn-anterior");
 
-    _irAlPaso(indice) {
-        if (indice < 0 || indice >= this._etapas.length) {
-            return;
-        }
-
-        // Guarda datos temporales del formulario del paso actual
-        this._datosPorPaso[this._pasoActivo] = this.obtenerDatosFormulario();
-
-        this._pasoActivo = indice;
-
-        // Actualiza el stepper
-        const stepper = this.shadowRoot.querySelector("#stepper-flujo");
-        if (stepper) {
-            stepper.setPaso(this._pasoActivo);
-        }
-
-        // Carga los datos almacenados de ese paso si existieran
-        const datosPrevios = this._datosPorPaso[this._pasoActivo];
-        if (datosPrevios) {
-            this.cargarDatosFormulario(datosPrevios);
-        }
-
-        this._actualizarBotonesAccion();
-    }
-
-    _actualizarBotonesAccion() {
-        const btnAnterior = this.shadowRoot?.querySelector("#btn-anterior");
-        const btnGuardar = this.shadowRoot?.querySelector("#btn-guardar");
-        const textoBtn = btnGuardar?.querySelector(".btn-guardar-texto");
-
-        if (btnAnterior) {
-            btnAnterior.disabled = this._pasoActivo === 0;
-        }
-
-        if (btnGuardar) {
-            const esUltimo = this._esUltimoPaso();
-            btnGuardar.classList.toggle("btn-finalizar", esUltimo);
-            btnGuardar.classList.toggle("btn-avanzar", !esUltimo);
-
-            if (textoBtn && !this._enviando) {
-                textoBtn.innerHTML = esUltimo
-                    ? "Finalizar Consulta"
-                    : "Guardar y Avanzar al Siguiente Paso &gt;";
-            }
-        }
+        btnCancelar?.addEventListener("click", () => this._cancelar());
+        btnAnterior?.addEventListener("click", () => this._retrocederPaso());
     }
 
     // ─── Lógica de negocio ────────────────────────────────────────────────────
 
-    async _guardar() {
-        if (this._enviando) {
+    _idConsulta() {
+        return this._consulta?.idConsulta ?? this._consulta?.id ?? null;
+    }
+
+    _idPasoActivo() {
+        const pasoLocal = this._buscarPasoPorIndice(this._pasosFlujo, this._pasoActivo);
+        const idLocal = pasoLocal?.idPaso
+            ?? pasoLocal?.idPasoClinico
+            ?? pasoLocal?.id
+            ?? null;
+
+        if (idLocal !== null) {
+            return idLocal;
+        }
+
+        return this._pasoDetectado?.idPaso
+            ?? this._pasoDetectado?.idPasoClinico
+            ?? this._pasoDetectado?.id
+            ?? null;
+    }
+
+    _sincronizarListaExamenes() {
+        const lista = this.shadowRoot?.querySelector("#lista-examenes");
+
+        if (!lista) {
             return;
         }
 
+        const idConsulta = this._idConsulta();
+        const idPaso = this._idPasoActivo();
+
+        if (idConsulta === null || idConsulta === undefined || idConsulta === "") {
+            lista.removeAttribute("id-consulta");
+        } else {
+            lista.setAttribute("id-consulta", String(idConsulta));
+        }
+
+        lista.removeAttribute("id-paso-clinico");
+
+        if (idPaso === null || idPaso === undefined || idPaso === "") {
+            lista.removeAttribute("id-paso");
+        } else {
+            lista.setAttribute("id-paso", String(idPaso));
+        }
+    }
+
+    _alAsignarOrdenesExamen(detalle) {
+        if (!detalle) {
+            return;
+        }
+
+        const paso = this._buscarPasoPorIndice(this._pasosFlujo, this._pasoActivo)
+            ?? this._pasoDetectado;
+
+        if (paso) {
+            paso.ordenesExamen = [
+                ...(Array.isArray(paso.ordenesExamen) ? paso.ordenesExamen : []),
+                ...(Array.isArray(detalle.ordenes) ? detalle.ordenes : [])
+            ];
+        }
+
+        this.dispatchEvent(new CustomEvent("ordenes-examen-asignadas", {
+            bubbles: true,
+            composed: true,
+            detail: detalle
+        }));
+    }
+
+    _datosAtencion(datos = {}) {
+        const diagnosticos = Array.isArray(datos.diagnosticos)
+            ? datos.diagnosticos
+            : [];
+
+        return {
+            notasConsulta: datos.notasConsulta || null,
+            planTratamiento: datos.planTratamiento || null,
+            diagnosticos: diagnosticos.length > 0 ? diagnosticos : null
+        };
+    }
+
+    _crearPayloadPaso(indice, estado, datos = {}, extra = {}) {
+        const nombre = ETAPAS_FLUJO[indice] ?? "";
+        const pasoLocal = this._buscarPasoPorIndice(this._pasosFlujo, indice);
+        const idPaso = pasoLocal?.idPaso
+            ?? pasoLocal?.idPasoClinico
+            ?? pasoLocal?.id
+            ?? null;
+        const payload = {};
+
+        if (datos && Object.keys(datos).length > 0) {
+            Object.assign(payload, this._datosAtencion(datos), {
+                consulta_procedimiento_paso: {
+                    valor: consultaProcedimientoService.serializarValorPaso(datos)
+                }
+            });
+        }
+
+        Object.assign(payload, {
+            paso: { idPaso, indice, nombre, estado },
+            idPaso,
+            indicePaso: indice,
+            nombrePaso: nombre,
+            etapa: nombre,
+            estado,
+            estadoPaso: estado,
+            ...extra
+        });
+
+        return payload;
+    }
+
+    async _persistirPaso(indice, estado, datos = {}, extra = {}) {
+        const idConsulta = this._idConsulta();
+
+        if (!idConsulta) {
+            return null;
+        }
+
+        return consultaProcedimientoService.guardarPaso(
+            idConsulta,
+            this._crearPayloadPaso(indice, estado, datos, extra)
+        );
+    }
+
+    _actualizarEstadoPasoLocal(indice, estado, datos = null) {
+        let paso = this._buscarPasoPorIndice(this._pasosFlujo, indice);
+
+        if (!paso) {
+            paso = { nombre: ETAPAS_FLUJO[indice] ?? "", estado };
+            this._pasosFlujo[indice] = paso;
+        }
+
+        paso.estado = estado;
+        paso.estadoPaso = estado;
+
+        if (estado === ESTADO_COMPLETADO) {
+            paso.fechaHoraEjecucion =
+                paso.fechaHoraEjecucion ?? new Date().toISOString();
+
+            if (datos) {
+                paso.datos = { ...(paso.datos ?? {}), ...datos };
+            }
+        }
+
+        return paso;
+    }
+
+    _seleccionarPaso(indice) {
+        if (this._enviando) {
+            return null;
+        }
+
+        const indicePaso = this._resolverIndicePaso(indice);
+
+        if (indicePaso < 0 || indicePaso >= ETAPAS_FLUJO.length) {
+            return null;
+        }
+
+        this._pasoActivo = indicePaso;
+        this._pasoDetectado = this._buscarPasoPorIndice(this._pasosFlujo, indicePaso);
+
+        this._limpiarFormularioPaso();
+        this._cargarDatosPasoActivo();
+        this._aplicarValidacionesPaso(indicePaso);
+        this._sincronizarStepper();
+        this._sincronizarListaExamenes();
+        this._actualizarBotonera();
+
+        return this._pasoDetectado;
+    }
+
+    _limpiarFormularioPaso() {
+        const notas = this.shadowRoot?.querySelector("#notas-consulta");
+        const plan = this.shadowRoot?.querySelector("#plan-tratamiento");
+        const cie10 = this.shadowRoot?.querySelector("#cie10-busqueda");
+
+        if (notas) {
+            notas.value = "";
+            this._actualizarContador("contador-notas", 0, MAX_NOTAS);
+            this._ajustarAltura(notas);
+        }
+
+        if (plan) {
+            plan.value = "";
+            this._actualizarContador("contador-plan", 0, MAX_PLAN);
+            this._ajustarAltura(plan);
+        }
+
+        if (cie10) {
+            cie10.seleccionados = [];
+        }
+
+        this._diagnosticos = [];
+    }
+
+    _aplicarValidacionesPaso(indicePaso) {
+        const paso = this._buscarPasoPorIndice(this._pasosFlujo, indicePaso);
+        const estado = this._obtenerEstadoPaso(paso);
+
+        this._limpiarErrorCampo("notas");
+        this._limpiarErrorCampo("plan");
+
+        const formulario = this.shadowRoot?.querySelector("#form-clinico");
+        if (formulario) {
+            formulario.dataset.paso = String(indicePaso);
+            formulario.dataset.estadoPaso = estado || ESTADO_PENDIENTE;
+        }
+    }
+
+    _actualizarBotonera() {
+        const acciones = this.shadowRoot?.querySelector(".acciones");
+
+        if (!acciones) {
+            return;
+        }
+
+        const btnAnterior = acciones.querySelector("#btn-anterior");
+        const btnFinalizar = acciones.querySelector("#btn-finalizar");
+
+        if (btnAnterior) {
+            btnAnterior.disabled = this._esPrimerPaso();
+        }
+
+        if (this._esUltimoPaso() === Boolean(btnFinalizar)) {
+            return;
+        }
+
+        acciones.outerHTML = this._htmlAcciones();
+        this._conectarEventosAcciones();
+    }
+
+    _irAPaso(indice) {
+        this._pasoActivo = indice;
+        this._pasoDetectado = this._buscarPasoPorIndice(this._pasosFlujo, indice);
+        this._diagnosticos = [];
+        this.render();
+        this._sincronizarListaExamenes();
+        this._cargarDatosPasoActivo();
+    }
+
+    _obtenerDatosValidados() {
         const datos = this.obtenerDatosFormulario();
-        const hayDatos = datos.notasConsulta.length > 0 || datos.planTratamiento.length > 0;
+        const hayDatos =
+            datos.notasConsulta.length > 0 ||
+            datos.planTratamiento.length > 0;
 
         if (!hayDatos) {
             this._marcarError(
@@ -951,68 +1507,158 @@ export class AtencionConsultaView extends HTMLElement {
                 "Complete al menos uno de los campos antes de guardar."
             );
             this.shadowRoot.querySelector("#notas-consulta")?.focus();
+            return null;
+        }
+
+        return datos;
+    }
+
+    _alEnviarFormulario() {
+        if (this._esUltimoPaso()) {
+            return this._finalizarConsulta();
+        }
+
+        return this._avanzarPaso();
+    }
+
+    async _retrocederPaso() {
+        if (this._enviando || this._esPrimerPaso()) {
             return;
         }
 
-        const idConsulta =
-            this._consulta?.idConsulta ??
-            this._consulta?.id ??
-            null;
-
-        const idPaso = this._obtenerIdPasoActivo();
-        const esUltimo = this._esUltimoPaso();
+        const pasoActual = this._pasoActivo;
+        const pasoAnterior = pasoActual - 1;
 
         this._establecerEnviando(true);
 
         try {
-            // Serializa en el atributo valor del paso
-            const valorLegible = consultaProcedimientoService.serializarValorPaso(datos);
+            await this._persistirPaso(pasoAnterior, ESTADO_EN_CURSO);
 
-            if (idConsulta) {
-                await consultaService.registrarAtencion(idConsulta, {
-                    notasConsulta: datos.notasConsulta || null,
-                    planTratamiento: datos.planTratamiento || null,
-                    diagnosticos: (datos.diagnosticos && datos.diagnosticos.length > 0) ? datos.diagnosticos : null,
-                    idPaso,
-                    valor: valorLegible,
-                    estado: "COMPLETADO",
-                    ...(esUltimo ? { fechaFin: new Date().toISOString() } : {})
-                });
-            }
+            this._actualizarEstadoPasoLocal(pasoActual, ESTADO_PENDIENTE);
+            this._actualizarEstadoPasoLocal(pasoAnterior, ESTADO_EN_CURSO);
+            this._irAPaso(pasoAnterior);
+        } catch (error) {
+            GeneradorMensajes.crearMensaje(
+                "Error al retroceder",
+                error?.mensaje ?? error?.message ?? "No se pudo actualizar el paso anterior.",
+                "error"
+            );
+        } finally {
+            this._establecerEnviando(false);
+        }
+    }
 
-            // Almacena datos del paso completado
-            this._datosPorPaso[this._pasoActivo] = datos;
+    async _avanzarPaso() {
+        if (this._enviando || this._esUltimoPaso()) {
+            return;
+        }
+
+        const datos = this._obtenerDatosValidados();
+
+        if (!datos) {
+            return;
+        }
+
+        const pasoActual = this._pasoActivo;
+        const pasoSiguiente = pasoActual + 1;
+        const nombreSiguiente = ETAPAS_FLUJO[pasoSiguiente] ?? "";
+
+        this._establecerEnviando(true);
+
+        try {
+            await this._persistirPaso(pasoActual, ESTADO_COMPLETADO, datos, {
+                siguientePaso: {
+                    indice: pasoSiguiente,
+                    nombre: nombreSiguiente,
+                    estado: ESTADO_EN_CURSO
+                }
+            });
+
+            this._actualizarEstadoPasoLocal(pasoActual, ESTADO_COMPLETADO, datos);
+            this._actualizarEstadoPasoLocal(pasoSiguiente, ESTADO_EN_CURSO);
+            this._irAPaso(pasoSiguiente);
+
+            GeneradorMensajes.crearMensaje(
+                "Paso guardado",
+                "Puede continuar con el siguiente paso de la atención.",
+                "success"
+            );
 
             this.dispatchEvent(new CustomEvent("consulta-guardada", {
                 bubbles: true,
                 composed: true,
-                detail: { datos, consulta: this._consulta, pasoActivo: this._pasoActivo, esUltimo }
-            }));
-
-            if (esUltimo) {
-                GeneradorMensajes.crearMensaje(
-                    "Consulta finalizada",
-                    "Los datos de la consulta se guardaron correctamente.",
-                    "success"
-                );
-                this._volverAlDashboard();
-            } else {
-                GeneradorMensajes.crearMensaje(
-                    "Paso guardado",
-                    `Paso "${this._etapas[this._pasoActivo]}" guardado. Avanzando al siguiente paso.`,
-                    "success"
-                );
-                this._pasoActivo++;
-                const stepper = this.shadowRoot.querySelector("#stepper-flujo");
-                if (stepper) {
-                    stepper.setPaso(this._pasoActivo);
+                detail: {
+                    datos,
+                    consulta: this._consulta,
+                    pasoActivo: pasoSiguiente
                 }
-                this._actualizarBotonesAccion();
-            }
+            }));
         } catch (error) {
             GeneradorMensajes.crearMensaje(
                 "Error al guardar",
-                error?.mensaje ?? error?.message ?? "No se pudo guardar la atención.",
+                error?.mensaje ?? error?.message ?? "No se pudo guardar el paso.",
+                "error"
+            );
+        } finally {
+            this._establecerEnviando(false);
+        }
+    }
+
+    async _finalizarConsulta() {
+        if (this._enviando || !this._esUltimoPaso()) {
+            return;
+        }
+
+        const datos = this._obtenerDatosValidados();
+
+        if (!datos) {
+            return;
+        }
+
+        const pasoActual = this._pasoActivo;
+        const fechaFin = new Date().toISOString();
+
+        this._establecerEnviando(true);
+
+        try {
+            await this._persistirPaso(pasoActual, ESTADO_COMPLETADO, datos, {
+                fechaFin,
+                fechaHoraFin: fechaFin,
+                finalizada: true,
+                estadoConsulta: "FINALIZADA"
+            });
+
+            this._actualizarEstadoPasoLocal(pasoActual, ESTADO_COMPLETADO, datos);
+
+            if (this._consulta) {
+                this._consulta.fechaFin = fechaFin;
+                this._consulta.fechaHoraFin = fechaFin;
+                this._consulta.estado = "FINALIZADA";
+            }
+
+            GeneradorMensajes.crearMensaje(
+                "Consulta finalizada",
+                "La atención médica se registró y cerró correctamente.",
+                "success"
+            );
+
+            this.dispatchEvent(new CustomEvent("consulta-guardada", {
+                bubbles: true,
+                composed: true,
+                detail: {
+                    datos,
+                    consulta: this._consulta,
+                    pasoActivo: pasoActual,
+                    fechaFin,
+                    finalizada: true
+                }
+            }));
+
+            this._volverAlDashboard();
+        } catch (error) {
+            GeneradorMensajes.crearMensaje(
+                "Error al finalizar",
+                error?.mensaje ?? error?.message ?? "No se pudo finalizar la consulta.",
                 "error"
             );
         } finally {
@@ -1102,7 +1748,8 @@ export class AtencionConsultaView extends HTMLElement {
      */
     _establecerEnviando(enviando) {
         this._enviando = enviando;
-        const btn = this.shadowRoot?.querySelector("#btn-guardar");
+        const btn = this.shadowRoot?.querySelector("#btn-siguiente, #btn-finalizar");
+        const btnAnterior = this.shadowRoot?.querySelector("#btn-anterior");
         const btnCancelar = this.shadowRoot?.querySelector("#btn-cancelar");
         const textareaNotas = this.shadowRoot?.querySelector("#notas-consulta");
         const textareaPlan = this.shadowRoot?.querySelector("#plan-tratamiento");
@@ -1113,10 +1760,17 @@ export class AtencionConsultaView extends HTMLElement {
             btn.classList.toggle("enviando", enviando);
             const textoBtn = btn.querySelector(".btn-guardar-texto");
             if (textoBtn) {
-                textoBtn.textContent = enviando ? "Guardando…" : "Guardar Atención";
+                const textoOriginal = btn.id === "btn-finalizar"
+                    ? TEXTO_FINALIZAR
+                    : TEXTO_SIGUIENTE;
+
+                textoBtn.textContent = enviando ? "Guardando…" : textoOriginal;
             }
         }
 
+        if (btnAnterior) {
+            btnAnterior.disabled = enviando || this._esPrimerPaso();
+        }
         if (btnCancelar) btnCancelar.disabled = enviando;
         if (textareaNotas) textareaNotas.disabled = enviando;
         if (textareaPlan) textareaPlan.disabled = enviando;
@@ -1134,21 +1788,10 @@ export class AtencionConsultaView extends HTMLElement {
             btnVolver?.addEventListener("click", () => this._volverAlDashboard());
         }
 
-        // La lista de exámenes debe apuntar siempre a la consulta vigente.
-        this.shadowRoot?.querySelector("#lista-examenes")
-            ?.setAttribute("id-consulta", String(this._idConsulta() ?? ""));
+        this._sincronizarListaExamenes();
     }
 
     // ─── Ayudantes de datos ───────────────────────────────────────────────────
-
-    _idConsulta() {
-        return (
-            this._consulta?.idConsulta ??
-            this._consulta?.id ??
-            this._consulta?.cita?.idConsulta ??
-            null
-        );
-    }
 
     _nombrePaciente(consulta) {
         if (!consulta) return "";

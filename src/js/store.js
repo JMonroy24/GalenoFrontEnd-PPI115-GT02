@@ -1,12 +1,24 @@
+import GeneradorMensajes from "./control/generador_mensajes.js";
+
 const LEGACY_KEYS = Object.freeze({
     session: "token",
     activeClinic: "clinicaActiva",
-    clinica: "clinicaActiva",
     selectedRole: "rolSeleccionado",
-    isOnline: "online"
+    isOnline: "online",
+    clinica: "clinicaActiva"
 });
 
 const SESSION_KEY = "galeno_session";
+
+const CAMPOS_SESION = new Set([
+    "token",
+    "usuario",
+    "perfil",
+    "roles",
+    "clinica",
+    "clinicaActiva",
+    "rolSeleccionado"
+]);
 
 function _leerSesionStorage() {
     try {
@@ -20,7 +32,7 @@ function _leerSesionStorage() {
         const clinicaActiva = datos?.clinicaActiva ?? datos?.clinica ?? null;
         const rolSeleccionado = datos?.rolSeleccionado ?? roles[0] ?? null;
         if (!token && !perfil && !clinicaActiva && !rolSeleccionado) return null;
-        return { token, perfil, roles, clinicaActiva, clinica: clinicaActiva, rolSeleccionado };
+        return { token, perfil, roles, clinicaActiva, rolSeleccionado };
     } catch {
         return null;
     }
@@ -44,26 +56,69 @@ export class Store extends EventTarget {
         };
 
         if (typeof window !== "undefined") {
-            window.addEventListener("online", () => this.setState({ online: true }));
-            window.addEventListener("offline", () => this.setState({ online: false }));
+            window.addEventListener("online", () => {
+                this.setState({ online: true });
+                GeneradorMensajes.crearMensaje(
+                    "Conexión restablecida",
+                    "La conexión a internet se ha restablecido.",
+                    "success"
+                );
+            });
+            window.addEventListener("offline", () => {
+                this.setState({ online: false });
+                GeneradorMensajes.crearMensaje(
+                    "Sin conexión a internet",
+                    "No hay conexión a internet. Verifique su red.",
+                    "warning"
+                );
+            });
         }
     }
 
     setState(partialState, value) {
-        const changes = typeof partialState === "string"
-            ? { [LEGACY_KEYS[partialState] ?? partialState]: value }
-            : partialState;
+        let changes = null;
 
-        if (changes && typeof changes === "object") {
+        if (typeof partialState === "string") {
+            changes = { [LEGACY_KEYS[partialState] ?? partialState]: value };
+        } else if (partialState && typeof partialState === "object") {
+            changes = {};
+            Object.entries(partialState).forEach(([clave, valor]) => {
+                changes[LEGACY_KEYS[clave] ?? clave] = valor;
+            });
+        }
+
+        if (changes) {
             Object.assign(this.state, changes);
-            if (changes.clinicaActiva !== undefined && changes.clinica === undefined) {
-                this.state.clinica = changes.clinicaActiva;
-            } else if (changes.clinica !== undefined && changes.clinicaActiva === undefined) {
-                this.state.clinicaActiva = changes.clinica;
+
+            if ("clinica" in changes || "clinicaActiva" in changes) {
+                const clinica = "clinicaActiva" in changes
+                    ? changes.clinicaActiva
+                    : changes.clinica;
+                this.state.clinicaActiva = clinica ?? null;
+                this.state.clinica = clinica ?? null;
+            }
+
+            if (Object.keys(changes).some((clave) => CAMPOS_SESION.has(clave))) {
+                this._persistirSesion();
             }
         }
 
         this.dispatchEvent(new CustomEvent("state-changed", { detail: this.state }));
+    }
+
+    hasActiveSession() {
+        return Boolean(
+            this.state.token ||
+            (this.state.usuario && (this.state.clinica || this.state.clinicaActiva || (Array.isArray(this.state.roles) && this.state.roles.length > 0)))
+        );
+    }
+
+    isAuthenticated() {
+        const autenticado = this.hasActiveSession();
+
+        this._persistirSesion();
+
+        return autenticado;
     }
 
     setContextoTrabajo(clinicaActiva, rolSeleccionado) {
@@ -85,33 +140,39 @@ export class Store extends EventTarget {
     _persistirSesion() {
         try {
             if (typeof sessionStorage === "undefined") return;
+
+            const { token, usuario, roles, rolSeleccionado } = this.state;
+            const clinica = this.state.clinica ?? this.state.clinicaActiva ?? null;
+            const tieneSesion = token
+                || usuario
+                || clinica
+                || rolSeleccionado
+                || (Array.isArray(roles) && roles.length > 0);
+
+            if (!tieneSesion) {
+                sessionStorage.removeItem(SESSION_KEY);
+                return;
+            }
+
             sessionStorage.setItem(SESSION_KEY, JSON.stringify({
                 token: this.state.token,
-                perfil: this.state.usuario,
                 usuario: this.state.usuario,
+                perfil: this.state.usuario,
                 roles: this.state.roles,
-                clinicaActiva: this.state.clinicaActiva,
-                clinica: this.state.clinicaActiva,
-                rolSeleccionado: this.state.rolSeleccionado,
-                sesionActiva: this.hasActiveSession()
+                clinica,
+                clinicaActiva: clinica,
+                rolSeleccionado: this.state.rolSeleccionado
             }));
         } catch {
         }
-    }
-
-    hasActiveSession() {
-        return Boolean(
-            this.state.token ||
-            (this.state.usuario && (this.state.clinicaActiva || this.state.clinica || (Array.isArray(this.state.roles) && this.state.roles.length > 0)))
-        );
     }
 
     getState() {
         return {
             ...this.state,
             session: this.state.token,
-            activeClinic: this.state.clinicaActiva,
-            clinica: this.state.clinicaActiva,
+            activeClinic: this.state.clinicaActiva ?? this.state.clinica,
+            clinica: this.state.clinica ?? this.state.clinicaActiva,
             selectedRole: this.state.rolSeleccionado,
             isOnline: this.state.online
         };

@@ -1,7 +1,8 @@
 import "./buscador_tipo_doc.js";
-import { clinicaService } from "../../control/clinica_service.js";
-import { personaRolService } from "../../control/persona_rol_service.js";
+import { personaService } from "../../control/persona_service.js";
 import GeneradorMensajes from "../../control/generador_mensajes.js";
+
+const DEBOUNCE_DOCUMENTO_MS = 500;
 
 export class AsistenteBusqueda extends HTMLElement {
     constructor() {
@@ -10,12 +11,18 @@ export class AsistenteBusqueda extends HTMLElement {
         this.tipoDocumento = "";
         this.itemTipoDocumento = null;
         this.documentoTocado = false;
+        this.temporizadorDocumento = null;
+        this.solicitudClinicas = 0;
+        this.documentoConsultado = "";
     }
 
-    async connectedCallback() {
+    connectedCallback() {
         this._renderEstructura();
         this._conectarEventos();
-        await this._cargarClinicas();
+    }
+
+    disconnectedCallback() {
+        this._cancelarBusquedaClinicas();
     }
 
     _renderEstructura() {
@@ -63,12 +70,12 @@ export class AsistenteBusqueda extends HTMLElement {
                 }
             </style>
             <form novalidate>
-                <buscador-tipo-documentos id="tipo-documento"></buscador-tipo-documentos>
+                <buscador-tipo-documentos id="tipoDocumento"></buscador-tipo-documentos>
 
                 <div class="campo">
-                    <label for="numero-documento">Número de documento</label>
+                    <label for="numeroDocumento">Número de documento</label>
                     <input
-                        id="numero-documento"
+                        id="numeroDocumento"
                         name="numeroDocumento"
                         type="text"
                         class="form-control"
@@ -82,7 +89,17 @@ export class AsistenteBusqueda extends HTMLElement {
 
                 <div class="campo">
                     <label for="clinica">Clínica</label>
-                    <select id="clinica" name="clinicaId" class="form-control" aria-label="Clínica"></select>
+                    <select
+                        id="clinica"
+                        name="idClinica"
+                        class="form-control"
+                        aria-label="Clínica"
+                        aria-describedby="clinica-ayuda"
+                        disabled
+                    ></select>
+                    <span id="clinica-ayuda" class="ayuda" aria-live="polite">
+                        Seleccione un tipo y número de documento.
+                    </span>
                 </div>
 
                 <div class="campo">
@@ -105,34 +122,44 @@ export class AsistenteBusqueda extends HTMLElement {
     _conectarEventos() {
         const form = this.shadowRoot.querySelector("form");
         const buscador = this.shadowRoot.querySelector("buscador-tipo-documentos");
-        const numeroDocumento = this.shadowRoot.querySelector("#numero-documento");
+        const numeroDocumento = this.shadowRoot.querySelector("#numeroDocumento");
 
         buscador.addEventListener("tipo-documento-change", (evento) => {
             this.tipoDocumento = evento.detail?.value ?? "";
             this.itemTipoDocumento = evento.detail?.item ?? null;
-            const tieneTipo = Boolean(this.tipoDocumento && String(this.tipoDocumento).trim() !== "");
-            numeroDocumento.disabled = !tieneTipo;
-            if (!tieneTipo) {
-                numeroDocumento.value = "";
-                numeroDocumento.classList.remove("valido", "invalido");
-            } else {
-                this._validarDocumento(false);
-            }
+            this._invalidarBusquedaClinicas();
+            this._sincronizarDocumento(Boolean(this.tipoDocumento));
+            this._reiniciarClinicas(
+                this.tipoDocumento
+                    ? "Ingrese el número de documento para buscar sus clínicas."
+                    : "Seleccione un tipo y número de documento."
+            );
         });
 
         numeroDocumento.addEventListener("input", () => {
             this.documentoTocado = true;
+            this._invalidarBusquedaClinicas();
             numeroDocumento.value = this._formatearDocumento(numeroDocumento.value);
-            this._validarDocumento(true);
+
+            if (this._validarDocumento(true)) {
+                this._programarBusquedaClinicas();
+                return;
+            }
+
+            this._reiniciarClinicas("Ingrese un número de documento válido.");
         });
 
         numeroDocumento.addEventListener("blur", () => {
             this.documentoTocado = true;
+            this._cancelarBusquedaClinicas();
             numeroDocumento.value = this._formatearDocumento(numeroDocumento.value);
-            const valido = this._validarDocumento(true);
-            if (valido) {
-                this.cargarClinicasPorPaciente(numeroDocumento.value.trim());
+
+            if (this._validarDocumento(true)) {
+                this._cargarClinicasPaciente();
+                return;
             }
+
+            this._reiniciarClinicas("Ingrese un número de documento válido.");
         });
 
         form.addEventListener("submit", (evento) => {
@@ -142,99 +169,110 @@ export class AsistenteBusqueda extends HTMLElement {
 
             const documentoValido = this._validarDocumento(true);
             const fechasValidas = this._validarFechas();
+            const selectClinica = this.shadowRoot.querySelector("#clinica");
+            const clinicaValida = !selectClinica.disabled && selectClinica.value !== "";
 
-            if (!documentoValido || !fechasValidas) {
-                return;
+            if (!clinicaValida) {
+                this._mostrarAyudaClinica("Seleccione una clínica para continuar.");
             }
 
-            const clinicaValor = this.shadowRoot.querySelector("#clinica")?.value ?? "";
-            const detail = {
-                tipoDocumento: this.tipoDocumento || buscador.value || "",
-                numeroDocumento: numeroDocumento.value.trim(),
-                clinicaId: clinicaValor,
-                fechaDesde: this.shadowRoot.querySelector("#fecha-desde")?.value ?? "",
-                fechaHasta: this.shadowRoot.querySelector("#fecha-hasta")?.value ?? ""
-            };
-            Object.defineProperty(detail, "idClinica", {
-                value: clinicaValor,
-                writable: true,
-                enumerable: false,
-                configurable: true
-            });
+            if (!documentoValido || !fechasValidas || !clinicaValida) {
+                return;
+            }
 
             this.dispatchEvent(new CustomEvent("buscar-citas", {
                 bubbles: true,
                 composed: true,
-                detail
+                detail: {
+                    tipoDocumento: this.tipoDocumento || buscador.value || "",
+                    numeroDocumento: numeroDocumento.value.trim(),
+                    idClinica: selectClinica.value,
+                    fechaDesde: this.shadowRoot.querySelector("#fecha-desde").value,
+                    fechaHasta: this.shadowRoot.querySelector("#fecha-hasta").value
+                }
             }));
         });
     }
 
-    async _cargarClinicas() {
-        try {
-            const respuesta = await clinicaService.findRange();
-            const clinicas = Array.isArray(respuesta?.items)
-                ? respuesta.items
-                : Array.isArray(respuesta?.datos)
-                    ? respuesta.datos
-                    : Array.isArray(respuesta)
-                        ? respuesta
-                        : [];
+    _cancelarBusquedaClinicas() {
+        if (this.temporizadorDocumento !== null) {
+            clearTimeout(this.temporizadorDocumento);
+            this.temporizadorDocumento = null;
+        }
+    }
 
-            this._poblarSelectClinicas(clinicas);
+    _invalidarBusquedaClinicas() {
+        this._cancelarBusquedaClinicas();
+        this.solicitudClinicas += 1;
+        this.documentoConsultado = "";
+    }
+
+    _programarBusquedaClinicas() {
+        this._cancelarBusquedaClinicas();
+        this.temporizadorDocumento = setTimeout(() => {
+            this.temporizadorDocumento = null;
+            this._cargarClinicasPaciente();
+        }, DEBOUNCE_DOCUMENTO_MS);
+    }
+
+    async _cargarClinicasPaciente() {
+        const input = this.shadowRoot.querySelector("#numeroDocumento");
+        const numeroDocumento = input.value.trim();
+
+        if (this.tipoDocumento === "" || !this._patronDocumento().test(numeroDocumento)) {
+            this._reiniciarClinicas("Ingrese un número de documento válido.");
+            return;
+        }
+
+        const clave = `${this.tipoDocumento}|${numeroDocumento}`;
+
+        if (this.documentoConsultado === clave) {
+            return;
+        }
+
+        this.documentoConsultado = clave;
+        const solicitud = ++this.solicitudClinicas;
+        this._establecerEstadoClinicas(false, "Buscando clínicas del paciente...");
+
+        try {
+            const respuesta = await personaService.buscarClinicasPaciente(
+                this.tipoDocumento,
+                numeroDocumento
+            );
+
+            if (solicitud !== this.solicitudClinicas) {
+                return;
+            }
+
+            const clinicas = this._normalizarClinicas(respuesta);
+
+            if (clinicas.length === 0) {
+                this._reiniciarClinicas(
+                    "No se encontraron clínicas asociadas a este paciente."
+                );
+                return;
+            }
+
+            this._poblarClinicas(clinicas);
         } catch (error) {
+            if (solicitud !== this.solicitudClinicas) {
+                return;
+            }
+
+            this.documentoConsultado = "";
+            this._reiniciarClinicas(
+                "No se pudieron obtener las clínicas del paciente."
+            );
             GeneradorMensajes.crearMensaje(
-                "Error al cargar clínicas",
+                "Error al buscar clínicas del paciente",
                 error?.mensaje ?? error?.message ?? "",
                 "error"
             );
         }
     }
 
-    async cargarClinicasPorPaciente(numeroDocOPersona) {
-        try {
-            const idPersona = typeof numeroDocOPersona === "object"
-                ? (numeroDocOPersona.idPersona ?? numeroDocOPersona.id)
-                : numeroDocOPersona;
-
-            const respuesta = await personaRolService.buscarRolesPorPersona(idPersona);
-            const roles = Array.isArray(respuesta?.items)
-                ? respuesta.items
-                : Array.isArray(respuesta?.datos)
-                    ? respuesta.datos
-                    : Array.isArray(respuesta)
-                        ? respuesta
-                        : [];
-
-            const clinicasPaciente = [];
-            const idsVistos = new Set();
-
-            roles.forEach((pr) => {
-                const rolNombre = String(pr?.rol?.nombre ?? pr?.nombreRol ?? "").toUpperCase();
-                const esPaciente = rolNombre.includes("PACIENTE") || pr?.esEmpleado === false;
-
-                if (esPaciente) {
-                    const clinica = pr?.clinica ?? (pr?.idClinica ? { idClinica: pr.idClinica, nombre: pr.nombreClinica ?? `Clínica ${pr.idClinica}` } : null);
-                    const idClinica = clinica?.idClinica ?? clinica?.id;
-                    if (idClinica && !idsVistos.has(String(idClinica))) {
-                        idsVistos.add(String(idClinica));
-                        clinicasPaciente.push(clinica);
-                    }
-                }
-            });
-
-            if (clinicasPaciente.length > 0) {
-                this._poblarSelectClinicas(clinicasPaciente);
-            }
-        } catch {
-        }
-    }
-
-    _poblarSelectClinicas(clinicas) {
+    _poblarClinicas(clinicas) {
         const select = this.shadowRoot.querySelector("#clinica");
-        if (!select) {
-            return;
-        }
 
         select.replaceChildren();
 
@@ -244,6 +282,99 @@ export class AsistenteBusqueda extends HTMLElement {
             opcion.textContent = clinica.nombre ?? clinica.name ?? "";
             select.appendChild(opcion);
         });
+
+        this._establecerEstadoClinicas(
+            true,
+            clinicas.length === 1
+                ? "1 clínica asociada al paciente."
+                : `${clinicas.length} clínicas asociadas al paciente.`
+        );
+    }
+
+    _normalizarClinicas(valor) {
+        let lista = valor;
+
+        if (!Array.isArray(lista)) {
+            if (!lista || typeof lista !== "object") {
+                return [];
+            }
+
+            lista = lista.clinicas
+                ?? lista.items
+                ?? lista.datos
+                ?? lista.resultado
+                ?? [];
+        }
+
+        if (!Array.isArray(lista)) {
+            return [];
+        }
+
+        const clinicas = new Map();
+
+        lista.forEach((item) => {
+            const fuente = item?.clinica ?? item?.idClinica ?? item;
+            const id = typeof fuente === "object"
+                ? fuente?.idClinica ?? fuente?.id ?? fuente?.codigo
+                : fuente;
+            const nombre = typeof fuente === "object"
+                ? fuente?.nombre ?? fuente?.name ?? fuente?.descripcion
+                : item?.nombreClinica ?? item?.nombre;
+
+            if (id === undefined || id === null || String(id).trim() === "") {
+                return;
+            }
+
+            const clave = String(id);
+
+            if (!clinicas.has(clave)) {
+                clinicas.set(clave, {
+                    idClinica: id,
+                    nombre: nombre ?? item?.nombreClinica ?? item?.nombre ?? clave
+                });
+            }
+        });
+
+        return Array.from(clinicas.values());
+    }
+
+    _reiniciarClinicas(mensaje) {
+        const select = this.shadowRoot.querySelector("#clinica");
+
+        select.replaceChildren();
+        select.disabled = true;
+        this._mostrarAyudaClinica(mensaje);
+    }
+
+    _establecerEstadoClinicas(habilitado, mensaje) {
+        const select = this.shadowRoot.querySelector("#clinica");
+
+        select.disabled = !habilitado;
+        this._mostrarAyudaClinica(mensaje);
+    }
+
+    _mostrarAyudaClinica(mensaje) {
+        const ayuda = this.shadowRoot.querySelector("#clinica-ayuda");
+
+        if (ayuda) {
+            ayuda.textContent = mensaje;
+        }
+    }
+
+    _sincronizarDocumento(tipoValido) {
+        const input = this.shadowRoot.querySelector("#numeroDocumento");
+
+        input.disabled = !tipoValido;
+        input.value = "";
+        this.documentoTocado = false;
+
+        if (tipoValido) {
+            this._validarDocumento(false);
+            input.focus();
+            return;
+        }
+
+        this._validarDocumento(false);
     }
 
     _formatearDocumento(valor) {
@@ -264,7 +395,7 @@ export class AsistenteBusqueda extends HTMLElement {
     }
 
     _validarDocumento(mostrarError) {
-        const input = this.shadowRoot.querySelector("#numero-documento");
+        const input = this.shadowRoot.querySelector("#numeroDocumento");
         const ayuda = this.shadowRoot.querySelector("#numero-documento-ayuda");
         const valor = input.value.trim();
         const valido = this._patronDocumento().test(valor);

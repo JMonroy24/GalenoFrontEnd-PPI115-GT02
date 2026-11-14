@@ -63,29 +63,20 @@ export class AuthService extends DefaultService {
                 });
             }
 
-            const primerRol = rolesEmpleado[0];
-            const clinicaInicial = primerRol?.clinica
-                ?? primerRol?.idClinica
-                ?? primerRol?.clinicaActiva
-                ?? perfil?.clinica
-                ?? perfil?.idClinica
-                ?? null;
-
+            const rolSeleccionado = rolesEmpleado[0] ?? null;
+            const clinicaActiva = this._obtenerClinica(perfil, rolesEmpleado, rolSeleccionado);
             const sesion = {
                 perfil,
+                usuario: perfil,
                 token: this._obtenerToken(payload, perfil, response),
                 roles: rolesEmpleado,
-                clinicaActiva: clinicaInicial,
-                clinica: clinicaInicial,
-                rolSeleccionado: primerRol ?? null
+                clinica: clinicaActiva,
+                clinicaActiva,
+                rolSeleccionado
             };
 
             this._guardarSesion(sesion);
-            this._sincronizarStore(sesion, {
-                clinicaActiva: clinicaInicial,
-                clinica: clinicaInicial,
-                rolSeleccionado: primerRol ?? null
-            });
+            this._sincronizarStore(sesion, { clinicaActiva, rolSeleccionado });
 
             return sesion;
         } catch (error) {
@@ -115,36 +106,25 @@ export class AuthService extends DefaultService {
 
             const datos = JSON.parse(serializada);
             const perfil = datos?.perfil ?? datos?.usuario ?? null;
-            const token = datos?.token ?? null;
             const roles = Array.isArray(datos?.roles) ? datos.roles : [];
-            const clinica = datos?.clinicaActiva ?? datos?.clinica ?? null;
+            const clinicaActiva = datos?.clinicaActiva ?? datos?.clinica ?? null;
             const rolSeleccionado = datos?.rolSeleccionado ?? roles[0] ?? null;
+            const sesion = {
+                perfil,
+                usuario: perfil,
+                token: datos?.token ?? null,
+                roles,
+                clinica: clinicaActiva,
+                clinicaActiva,
+                rolSeleccionado
+            };
 
-            // Validación de sesión tolerante a tokens:
-            // Activa si existe token O si existen datos de usuario con rol o clínica
-            const tieneSesionValida = Boolean(token || (perfil && (roles.length > 0 || clinica)));
-
-            if (!tieneSesionValida) {
+            if (!sesion.perfil && !sesion.token && !sesion.clinicaActiva) {
                 return null;
             }
 
-            const sesion = {
-                perfil,
-                token,
-                roles,
-                clinicaActiva: clinica,
-                clinica,
-                rolSeleccionado
-            };
-
-            const contexto = {
-                clinicaActiva: clinica,
-                clinica,
-                rolSeleccionado
-            };
-
             this.sesion = sesion;
-            this._sincronizarStore(sesion, contexto);
+            this._sincronizarStore(sesion, { clinicaActiva, rolSeleccionado });
 
             return sesion;
         } catch {
@@ -173,8 +153,7 @@ export class AuthService extends DefaultService {
             usuario: null,
             roles: [],
             rolSeleccionado: null,
-            clinicaActiva: null,
-            clinica: null
+            clinicaActiva: null
         });
     }
 
@@ -186,18 +165,14 @@ export class AuthService extends DefaultService {
         }
 
         try {
-            const clinica = sesion.clinicaActiva ?? sesion.clinica ?? store.state?.clinicaActiva ?? null;
-            const sesionActiva = Boolean(sesion.token || (sesion.perfil && (clinica || (Array.isArray(sesion.roles) && sesion.roles.length > 0))));
-
             almacen.setItem(SESSION_STORAGE_KEY, JSON.stringify({
                 perfil: sesion.perfil,
-                usuario: sesion.perfil,
-                token: sesion.token,
-                roles: sesion.roles,
-                clinicaActiva: clinica,
-                clinica: clinica,
-                rolSeleccionado: sesion.rolSeleccionado ?? sesion.roles?.[0] ?? null,
-                sesionActiva
+                usuario: sesion.usuario ?? sesion.perfil,
+                token: sesion.token ?? null,
+                roles: Array.isArray(sesion.roles) ? sesion.roles : [],
+                clinica: sesion.clinicaActiva ?? sesion.clinica ?? null,
+                clinicaActiva: sesion.clinicaActiva ?? sesion.clinica ?? null,
+                rolSeleccionado: sesion.rolSeleccionado ?? sesion.roles?.[0] ?? null
             }));
         } catch {
         }
@@ -205,17 +180,23 @@ export class AuthService extends DefaultService {
 
     _sincronizarStore(sesion, contexto = null) {
         const roles = Array.isArray(sesion?.roles) ? sesion.roles : [];
-        const clinica = contexto?.clinicaActiva ?? contexto?.clinica ?? sesion?.clinicaActiva ?? sesion?.clinica ?? null;
-        const cambios = {
+        const clinicaActiva = contexto?.clinicaActiva
+            ?? sesion?.clinicaActiva
+            ?? sesion?.clinica
+            ?? null;
+        const rolSeleccionado = contexto?.rolSeleccionado
+            ?? sesion?.rolSeleccionado
+            ?? roles[0]
+            ?? null;
+
+        store.setState({
             token: sesion?.token ?? null,
             usuario: sesion?.perfil ?? sesion?.usuario ?? null,
             roles,
-            rolSeleccionado: contexto?.rolSeleccionado ?? sesion?.rolSeleccionado ?? roles[0] ?? null,
-            clinicaActiva: clinica,
-            clinica: clinica
-        };
-
-        store.setState(cambios);
+            clinica: clinicaActiva,
+            clinicaActiva,
+            rolSeleccionado
+        });
     }
 
     _obtenerAlmacen() {
@@ -238,6 +219,61 @@ export class AuthService extends DefaultService {
         }
 
         return Array.isArray(respuesta) ? respuesta : [];
+    }
+
+    _obtenerClinica(perfil, roles = [], rolSeleccionado = null) {
+        const fuentes = [
+            perfil,
+            rolSeleccionado,
+            ...roles,
+            ...roles.map((personaRol) => personaRol?.rol)
+        ];
+
+        for (const fuente of fuentes) {
+            if (!fuente) {
+                continue;
+            }
+
+            const clinicas = fuente.clinicas ?? fuente.clinicasAsignadas;
+
+            if (Array.isArray(clinicas) && clinicas.length > 0) {
+                return clinicas[0];
+            }
+
+            const clinica = fuente.clinicaActiva ?? fuente.clinica;
+
+            if (this._esClinicaValida(clinica)) {
+                return clinica;
+            }
+        }
+
+        for (const fuente of fuentes) {
+            if (!fuente) {
+                continue;
+            }
+
+            const clinica = fuente.idClinica ?? fuente.idClinicaEmpleado;
+
+            if (!this._esClinicaValida(clinica)) {
+                continue;
+            }
+
+            if (typeof clinica === "object") {
+                return clinica;
+            }
+
+            const nombre = fuente.nombreClinica ?? fuente.clinicaNombre;
+            return nombre ? { idClinica: clinica, nombre } : { idClinica: clinica };
+        }
+
+        return null;
+    }
+
+    _esClinicaValida(clinica) {
+        return clinica !== undefined
+            && clinica !== null
+            && clinica !== ""
+            && !(typeof clinica === "object" && Object.keys(clinica).length === 0);
     }
 
     _extraerPerfil(payload) {

@@ -64,20 +64,118 @@ function parsearEtapas(valor) {
     return [...ETAPAS_POR_DEFECTO];
 }
 
+const ESTADOS_PASO = Object.freeze({
+    PENDIENTE: "PENDIENTE",
+    EN_CURSO: "EN_CURSO",
+    COMPLETADO: "COMPLETADO"
+});
+
+const CLASE_ESTADO = Object.freeze({
+    [ESTADOS_PASO.PENDIENTE]: "pendiente",
+    [ESTADOS_PASO.EN_CURSO]: "activo",
+    [ESTADOS_PASO.COMPLETADO]: "completado"
+});
+
+/**
+ * Normaliza un estado de paso proveniente del backend.
+ * @param {unknown} valor - Estado en texto u objeto.
+ * @returns {"PENDIENTE"|"EN_CURSO"|"COMPLETADO"|""} Estado normalizado.
+ */
+function normalizarEstadoPaso(valor) {
+    if (valor && typeof valor === "object") {
+        return normalizarEstadoPaso(
+            valor.estadoPaso
+            ?? valor.estado
+            ?? valor.status
+            ?? valor.situacion
+            ?? valor.nombre
+            ?? valor.valor
+            ?? ""
+        );
+    }
+
+    const texto = String(valor ?? "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[_-]+/g, " ")
+        .replace(/\s+/g, " ")
+        .trim()
+        .toUpperCase();
+
+    if (["COMPLETADO", "COMPLETADA", "FINALIZADO", "FINALIZADA", "HECHO", "HECHA"].includes(texto)) {
+        return ESTADOS_PASO.COMPLETADO;
+    }
+
+    if (["EN CURSO", "EN PROCESO", "ACTIVO", "ACTIVA", "INICIADO", "INICIADA", "EN ATENCION"].includes(texto)) {
+        return ESTADOS_PASO.EN_CURSO;
+    }
+
+    if (["PENDIENTE", "POR INICIAR", "NO INICIADO", "NO INICIADA", "SIN INICIAR", "PROGRAMADO", "PROGRAMADA"].includes(texto)) {
+        return ESTADOS_PASO.PENDIENTE;
+    }
+
+    return "";
+}
+
+/**
+ * Parsea un valor (array, string JSON o string separado por comas) en estados de paso.
+ * @param {unknown} valor - Entrada a parsear.
+ * @returns {string[]} Lista de estados normalizados.
+ */
+function parsearEstados(valor) {
+    if (!valor) {
+        return [];
+    }
+
+    if (Array.isArray(valor)) {
+        return valor.map(normalizarEstadoPaso);
+    }
+
+    if (typeof valor === "string") {
+        const textoLimpio = valor.trim();
+
+        if (textoLimpio.startsWith("[") && textoLimpio.endsWith("]")) {
+            try {
+                return parsearEstados(JSON.parse(textoLimpio));
+            } catch (_) {
+            }
+        }
+
+        return textoLimpio
+            .split(",")
+            .map(normalizarEstadoPaso)
+            .filter(Boolean);
+    }
+
+    if (typeof valor === "object") {
+        return parsearEstados(
+            valor.estados
+            ?? valor.items
+            ?? valor.pasos
+            ?? valor.datos
+            ?? []
+        );
+    }
+
+    return [];
+}
+
 /**
  * Web Component nativo `<stepper-progreso>` con Shadow DOM.
  * Muestra el progreso de un proceso a través de un indicador horizontal accesible.
  */
 export class StepperProgreso extends HTMLElement {
     static get observedAttributes() {
-        return ["etapas", "paso-activo", "pasoactivo"];
+        return ["etapas", "estados", "paso-activo", "pasoactivo"];
     }
 
     constructor() {
         super();
         this.attachShadow({ mode: "open" });
         this._etapas = [...ETAPAS_POR_DEFECTO];
+        this._estados = [];
         this._pasoActivo = 0;
+        this._pasoActivoDefinido = false;
         this._bloqueoAtributos = false;
     }
 
@@ -99,6 +197,23 @@ export class StepperProgreso extends HTMLElement {
     }
 
     /**
+     * Estados explícitos de las etapas, alineados con la secuencia del backend.
+     * @returns {string[]}
+     */
+    get estados() {
+        return [...this._estados];
+    }
+
+    /**
+     * Establece los estados de las etapas (array, JSON o string separado por comas).
+     * @param {string[]|string} valor
+     */
+    set estados(valor) {
+        this._estados = parsearEstados(valor);
+        this.render();
+    }
+
+    /**
      * Identificador o índice de la etapa activa.
      * @returns {number|string}
      */
@@ -112,6 +227,7 @@ export class StepperProgreso extends HTMLElement {
      */
     set pasoActivo(valor) {
         this._pasoActivo = valor;
+        this._pasoActivoDefinido = true;
         this.render();
     }
 
@@ -129,8 +245,12 @@ export class StepperProgreso extends HTMLElement {
         if (name === "etapas") {
             this._etapas = parsearEtapas(newValue);
             this.render();
+        } else if (name === "estados") {
+            this._estados = parsearEstados(newValue);
+            this.render();
         } else if (name === "paso-activo" || name === "pasoactivo") {
             this._pasoActivo = newValue;
+            this._pasoActivoDefinido = true;
             this.render();
         }
     }
@@ -139,10 +259,15 @@ export class StepperProgreso extends HTMLElement {
         if (this.hasAttribute("etapas")) {
             this._etapas = parsearEtapas(this.getAttribute("etapas"));
         }
+        if (this.hasAttribute("estados")) {
+            this._estados = parsearEstados(this.getAttribute("estados"));
+        }
         if (this.hasAttribute("paso-activo")) {
             this._pasoActivo = this.getAttribute("paso-activo");
+            this._pasoActivoDefinido = true;
         } else if (this.hasAttribute("pasoactivo")) {
             this._pasoActivo = this.getAttribute("pasoactivo");
+            this._pasoActivoDefinido = true;
         }
         this.render();
     }
@@ -153,13 +278,17 @@ export class StepperProgreso extends HTMLElement {
      */
     setPaso(indice) {
         this.pasoActivo = indice;
+
+        const indiceActivo = this.obtenerIndiceActivo();
+
         this.dispatchEvent(new CustomEvent("cambio-paso", {
             bubbles: true,
             composed: true,
             detail: {
                 paso: this._pasoActivo,
-                indice: this.obtenerIndiceActivo(),
-                etapa: this._etapas[this.obtenerIndiceActivo()] ?? null
+                indice: indiceActivo,
+                etapa: this._etapas[indiceActivo] ?? null,
+                estado: this._estados[indiceActivo] ?? ESTADOS_PASO.EN_CURSO
             }
         }));
     }
@@ -170,6 +299,14 @@ export class StepperProgreso extends HTMLElement {
      * @returns {number} Índice de la etapa activa.
      */
     obtenerIndiceActivo() {
+        if (!this._pasoActivoDefinido) {
+            const indiceEnCurso = this._estados.indexOf(ESTADOS_PASO.EN_CURSO);
+
+            if (indiceEnCurso !== -1) {
+                return indiceEnCurso;
+            }
+        }
+
         if (this._pasoActivo === null || this._pasoActivo === undefined) {
             return 0;
         }
@@ -208,12 +345,26 @@ export class StepperProgreso extends HTMLElement {
      */
     obtenerEstadoPaso(indicePaso) {
         const indiceActivo = this.obtenerIndiceActivo();
+        const estadoExplicito = this._estados[indicePaso];
+
+        if (indicePaso === indiceActivo) {
+            return estadoExplicito === ESTADOS_PASO.COMPLETADO
+                ? "completado"
+                : "activo";
+        }
+
+        if (estadoExplicito) {
+            if (estadoExplicito === ESTADOS_PASO.EN_CURSO) {
+                return indicePaso < indiceActivo ? "completado" : "pendiente";
+            }
+
+            return CLASE_ESTADO[estadoExplicito] ?? "pendiente";
+        }
+
         if (indicePaso < indiceActivo) {
             return "completado";
         }
-        if (indicePaso === indiceActivo) {
-            return "activo";
-        }
+
         return "pendiente";
     }
 
@@ -223,7 +374,6 @@ export class StepperProgreso extends HTMLElement {
     render() {
         const etapas = this._etapas.length > 0 ? this._etapas : [...ETAPAS_POR_DEFECTO];
         const total = etapas.length;
-        const indiceActivo = this.obtenerIndiceActivo();
 
         const pasosHtml = etapas.map((nombreEtapa, i) => {
             const estado = this.obtenerEstadoPaso(i);
@@ -233,7 +383,7 @@ export class StepperProgreso extends HTMLElement {
 
             // Conector izquierdo (del límite izquierdo al círculo)
             const izqOculto = i === 0;
-            const izqCompletado = !izqOculto && indiceActivo >= i;
+            const izqCompletado = !izqOculto && this.obtenerEstadoPaso(i - 1) === "completado";
             const clasesIzq = [
                 "stepper-conector",
                 "stepper-conector--izq",
@@ -243,7 +393,7 @@ export class StepperProgreso extends HTMLElement {
 
             // Conector derecho (del círculo al límite derecho)
             const derOculto = i === total - 1;
-            const derCompletado = !derOculto && indiceActivo >= i + 1;
+            const derCompletado = !derOculto && esCompletado;
             const clasesDer = [
                 "stepper-conector",
                 "stepper-conector--der",

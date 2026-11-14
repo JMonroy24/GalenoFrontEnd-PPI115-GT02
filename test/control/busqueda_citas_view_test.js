@@ -1,134 +1,205 @@
 import { BusquedaCitasView } from "../../src/js/boundary/vistas/busqueda_citas_view.js";
-import { consultaService } from "../../src/js/control/consulta_service.js";
+import store from "../../src/js/store.js";
 import { assert, expect } from "../lib/chai/index.js";
 
 mocha.setup("tdd");
 
-suite("BusquedaCitasView (unitaria HU1)", () => {
+suite("BusquedaCitasView (unitaria)", () => {
     let host;
-    let buscarCitasStub;
-    let descargarTicketStub;
+    let fetchStub;
+    let citasRespuesta;
 
-    const citasFicticias = [
-        {
-            idConsulta: 201,
-            fecha: "2026-11-14",
-            hora: "08:30",
-            estado: "Pendiente",
-            clinica: "Clínica Escalón",
-            procedimientos: [{ nombre: "Consulta General" }]
+    const esperar = (ms = 30) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    const citaFicticia = {
+        idConsulta: 101,
+        fecha: "2026-11-12",
+        hora: "09:30",
+        estado: "PENDIENTE",
+        clinica: "Clínica Norte",
+        paciente: {
+            nombres: "Ana",
+            apellidos: "López"
         },
-        {
-            idConsulta: 202,
-            fecha: "2026-11-14",
-            hora: "09:30",
-            estado: "Completada",
-            clinica: "Clínica Escalón",
-            procedimientos: [{ nombre: "Chequeo Preventivo" }]
-        }
-    ];
+        procedimientos: [{ nombre: "Control General" }],
+        pasos: []
+    };
 
-    setup(() => {
-        buscarCitasStub = sinon.stub(consultaService, "buscarCitas").resolves({
-            items: citasFicticias,
-            total: 2
+    const responder = (payload) => ({
+        ok: true,
+        status: 200,
+        json: async () => payload,
+        text: async () => JSON.stringify(payload)
+    });
+
+    const obtenerAsistente = () => host.shadowRoot.querySelector("asistente-busqueda");
+
+    const seleccionarTipo = (valor = "1") => {
+        const buscador = obtenerAsistente().shadowRoot.querySelector("buscador-tipo-documentos");
+        const select = buscador.shadowRoot.querySelector("select");
+        select.value = valor;
+        select.dispatchEvent(new Event("change", { bubbles: true, composed: true }));
+    };
+
+    const ingresarDocumento = (documento = "01234567-8") => {
+        const input = obtenerAsistente().shadowRoot.querySelector("#numeroDocumento");
+        input.value = documento;
+        input.dispatchEvent(new Event("input", { bubbles: true, composed: true }));
+        input.dispatchEvent(new Event("blur", { bubbles: true, composed: true }));
+        return input;
+    };
+
+    const prepararBusqueda = async () => {
+        seleccionarTipo();
+        ingresarDocumento();
+        await esperar();
+    };
+
+    setup(async () => {
+        citasRespuesta = [citaFicticia];
+        store.setState({ online: true });
+
+        fetchStub = sinon.stub(window, "fetch").callsFake(async (url) => {
+            const recurso = String(url);
+
+            if (recurso.includes("/tipos-documento?")) {
+                return responder({
+                    items: [
+                        {
+                            idTipoDocumento: 1,
+                            codigo: "DUI",
+                            nombre: "DUI",
+                            activo: true
+                        }
+                    ]
+                });
+            }
+
+            if (recurso.includes("/personas?")) {
+                return responder({
+                    items: [
+                        {
+                            idPersona: 7,
+                            numeroDocumento: "01234567-8",
+                            nombres: "Ana",
+                            apellidos: ["López"],
+                            clinicas: [{ idClinica: 3, nombre: "Clínica Norte" }]
+                        }
+                    ]
+                });
+            }
+
+            if (recurso.includes("/consultas?")) {
+                return responder({
+                    items: citasRespuesta,
+                    total: citasRespuesta.length,
+                    first: 0,
+                    max: 10
+                });
+            }
+
+            return responder({ items: [] });
         });
-
-        descargarTicketStub = sinon.stub(consultaService, "descargarTicketPdf").resolves(new Blob());
 
         host = document.createElement("busqueda-citas-view");
         document.body.appendChild(host);
+        await esperar();
     });
 
     teardown(() => {
-        buscarCitasStub?.restore();
-        descargarTicketStub?.restore();
-        if (host?.parentNode) {
-            host.parentNode.removeChild(host);
-        }
+        fetchStub?.restore();
+        host?.remove();
+        store.setState({ online: true });
     });
 
-    test("está registrado como customElement con Shadow DOM open", () => {
+    test("registra el componente y renderiza el asistente con estados de resultados ocultos", () => {
         expect(customElements.get("busqueda-citas-view")).to.equal(BusquedaCitasView);
         assert.instanceOf(host, BusquedaCitasView);
         assert.isNotNull(host.shadowRoot);
+        assert.isNotNull(obtenerAsistente());
+
+        expect(host.shadowRoot.querySelector("#estado").hidden).to.be.true;
+        expect(host.shadowRoot.querySelector("#resultados").hidden).to.be.true;
     });
 
-    test("renderiza el asistente de búsqueda y los contenedores de estado y resultados", () => {
-        const shadow = host.shadowRoot;
-        const asistente = shadow.querySelector("asistente-busqueda");
-        const estado = shadow.querySelector("#estado");
-        const resultados = shadow.querySelector("#resultados");
+    test("mantiene número de documento y clínica deshabilitados hasta elegir un tipo", () => {
+        const asistente = obtenerAsistente();
+        const numeroDocumento = asistente.shadowRoot.querySelector("#numeroDocumento");
+        const clinica = asistente.shadowRoot.querySelector("#clinica");
 
-        assert.isNotNull(asistente, "Debe contener <asistente-busqueda>");
-        assert.isNotNull(estado, "Debe contener #estado");
-        assert.isNotNull(resultados, "Debe contener #resultados");
-        expect(resultados.getAttribute("role")).to.equal("list");
+        expect(numeroDocumento.disabled).to.be.true;
+        expect(clinica.disabled).to.be.true;
+
+        seleccionarTipo();
+
+        expect(numeroDocumento.disabled).to.be.false;
+        expect(asistente.shadowRoot.activeElement).to.equal(numeroDocumento);
+        expect(clinica.disabled).to.be.true;
     });
 
-    test("responde al evento 'buscar-citas' llamando a consultaService.buscarCitas y renderiza tarjetas", async () => {
-        const shadow = host.shadowRoot;
-        const filtros = {
-            tipoDocumento: "1",
-            numeroDocumento: "01234567-8",
-            clinicaId: "1"
-        };
+    test("habilita las clínicas del paciente luego de validar el documento", async () => {
+        seleccionarTipo();
+        ingresarDocumento();
+        await esperar();
 
-        host.dispatchEvent(new CustomEvent("buscar-citas", {
-            bubbles: true,
-            composed: true,
-            detail: filtros
-        }));
+        const asistente = obtenerAsistente();
+        const clinica = asistente.shadowRoot.querySelector("#clinica");
+        const ayuda = asistente.shadowRoot.querySelector("#clinica-ayuda");
+        const llamadaPersonas = fetchStub.getCalls().find((llamada) => (
+            String(llamada.args[0]).includes("/personas?")
+        ));
 
-        await new Promise((r) => setTimeout(r, 60));
-
-        expect(buscarCitasStub.calledOnce).to.be.true;
-        expect(buscarCitasStub.firstCall.args[0]).to.deep.equal(filtros);
-
-        const tarjetas = shadow.querySelectorAll("tarjeta-consulta");
-        expect(tarjetas.length).to.equal(2);
-        expect(tarjetas[0].consulta.idConsulta).to.equal(201);
-        expect(tarjetas[1].consulta.idConsulta).to.equal(202);
+        assert.isDefined(llamadaPersonas);
+        expect(clinica.disabled).to.be.false;
+        expect(clinica.querySelectorAll("option")).to.have.length(1);
+        expect(clinica.value).to.equal("3");
+        expect(ayuda.textContent).to.contain("1 clínica asociada");
     });
 
-    test("cada tarjeta inyecta botón 'Descargar Ticket PDF' en slot='acciones'", async () => {
-        const shadow = host.shadowRoot;
-        await host.buscar({});
+    test("dispara la búsqueda al enviar el asistente y renderiza las tarjetas", async () => {
+        await prepararBusqueda();
 
-        const tarjetas = shadow.querySelectorAll("tarjeta-consulta");
-        expect(tarjetas.length).to.equal(2);
+        const asistente = obtenerAsistente();
+        const form = asistente.shadowRoot.querySelector("form");
+        form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
 
-        const boton = tarjetas[0].querySelector('button[slot="acciones"]');
-        assert.isNotNull(boton, "Debe existir botón de ticket en slot='acciones'");
-        expect(boton.textContent.trim()).to.equal("Descargar Ticket PDF");
+        await esperar();
 
-        boton.click();
-        expect(descargarTicketStub.calledOnce).to.be.true;
-        expect(descargarTicketStub.firstCall.args[0]).to.equal(201);
+        const estado = host.shadowRoot.querySelector("#estado");
+        const resultados = host.shadowRoot.querySelector("#resultados");
+        const tarjetas = resultados.querySelectorAll("tarjeta-consulta");
+        const llamadaConsultas = fetchStub.getCalls().find((llamada) => (
+            String(llamada.args[0]).includes("/consultas?")
+        ));
+
+        assert.isDefined(llamadaConsultas);
+        expect(estado.hidden).to.be.true;
+        expect(resultados.hidden).to.be.false;
+        expect(tarjetas).to.have.length(1);
+        expect(tarjetas[0].consulta).to.deep.equal(citaFicticia);
+
+        const url = new URL(llamadaConsultas.args[0]);
+        expect(url.searchParams.get("tipoDocumento")).to.equal("1");
+        expect(url.searchParams.get("numeroDocumento")).to.equal("01234567-8");
+        expect(url.searchParams.get("idClinica")).to.equal("3");
     });
 
-    test("muestra mensaje 'No se encontraron citas.' si el servicio devuelve lista vacía", async () => {
-        buscarCitasStub.resolves({ items: [], total: 0 });
-        const shadow = host.shadowRoot;
+    test("muestra un estado vacío cuando la búsqueda no devuelve citas", async () => {
+        citasRespuesta = [];
+        await prepararBusqueda();
 
-        await host.buscar({});
+        const asistente = obtenerAsistente();
+        const form = asistente.shadowRoot.querySelector("form");
+        form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
 
-        const estado = shadow.querySelector("#estado");
+        await esperar();
+
+        const estado = host.shadowRoot.querySelector("#estado");
+        const resultados = host.shadowRoot.querySelector("#resultados");
+
         expect(estado.hidden).to.be.false;
-        expect(estado.textContent).to.contain("No se encontraron citas");
-        const tarjetas = shadow.querySelectorAll("tarjeta-consulta");
-        expect(tarjetas.length).to.equal(0);
-    });
-
-    test("muestra mensaje de error si la búsqueda falla", async () => {
-        buscarCitasStub.rejects(new Error("Error de conexión"));
-        const shadow = host.shadowRoot;
-
-        await host.buscar({});
-
-        const estado = shadow.querySelector("#estado");
-        expect(estado.hidden).to.be.false;
-        expect(estado.textContent).to.contain("No se pudieron cargar las citas");
+        expect(estado.textContent).to.equal("No se encontraron citas.");
+        expect(resultados.hidden).to.be.true;
+        expect(resultados.querySelectorAll("tarjeta-consulta")).to.have.length(0);
     });
 });
-

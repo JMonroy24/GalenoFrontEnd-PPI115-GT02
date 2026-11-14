@@ -1,8 +1,8 @@
 import {
-    API_BASE,
     DEFAULT_PAGE_SIZE,
     HTTP_TIMEOUT_MS
 } from "../config.js";
+import { ENDPOINTS } from "../routes.js";
 import DefaultError from "../entity/default_error.js";
 import DefaultResponse from "../entity/default_response.js";
 import GeneradorMensajes from "./generador_mensajes.js";
@@ -13,21 +13,21 @@ const INTERCEPTED_STATUSES = new Set([401, 403, 412, 422, 428]);
 export class DefaultService {
     constructor(endpoint = "") {
         this.endpoint = endpoint;
-        this._urlBase = `${API_BASE.replace(/\/+$/, "")}${endpoint}`;
+        this._urlBase = `${ENDPOINTS.API_BASE.replace(/\/+$/, "")}${endpoint}`;
     }
 
     async _request(url, options = {}, fallbackMessage = "Error al acceder al repositorio") {
         const method = String(options.method ?? "GET").toUpperCase();
-        const esEscritura = method === "POST" || method === "PUT";
-        const estaOffline = (globalThis.navigator?.onLine === false) || (store?.state?.online === false);
 
-        if (esEscritura && estaOffline) {
-            const mensajeOffline = "Operación no disponible en modo offline. Conéctese a internet para guardar los cambios";
-            GeneradorMensajes.crearMensaje("Modo Offline", mensajeOffline, "error");
-            throw new DefaultError(mensajeOffline, {
-                status: 0,
-                offline: true,
-                message: mensajeOffline
+        if (this._esOperacionEscritura(method) && this._estaSinConexion()) {
+            const mensaje = "Operación no disponible sin conexión. Conéctese a internet para guardar los cambios";
+
+            GeneradorMensajes.crearMensaje("Sin conexión", mensaje, "warning");
+
+            throw new DefaultError(mensaje, {
+                code: "OFFLINE",
+                method,
+                details: { code: "OFFLINE", method }
             });
         }
 
@@ -87,6 +87,18 @@ export class DefaultService {
             message,
             details
         });
+    }
+
+    _esOperacionEscritura(method) {
+        return ["POST", "PUT", "PATCH", "DELETE"].includes(String(method).toUpperCase());
+    }
+
+    _estaSinConexion() {
+        const navegadorOnline = typeof navigator === "undefined"
+            || navigator.onLine !== false;
+        const storeOnline = store.state?.online;
+
+        return !navegadorOnline || storeOnline === false;
     }
 
     _notificarError(message, details) {

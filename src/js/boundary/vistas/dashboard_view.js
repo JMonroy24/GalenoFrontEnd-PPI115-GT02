@@ -1,11 +1,11 @@
 import { store } from "../../store.js";
 import { consultaService } from "../../control/consulta_service.js";
 import "../componentes/tarjeta_consulta.js";
-import "../componentes/historial_pasos.js";
 import { navigate } from "../../router.js";
 import GeneradorMensajes from "../../control/generador_mensajes.js";
 
 const DEBOUNCE_BUSQUEDA_MS = 300;
+const DIAS_RANGO_PERIODO = 30;
 
 export class DashboardView extends HTMLElement {
     constructor() {
@@ -15,13 +15,15 @@ export class DashboardView extends HTMLElement {
         this.clinicas = [];
         this.roles = [];
         this.periodo = "hoy";
-        this.fechaDesde = "";
-        this.fechaHasta = "";
         this.busqueda = "";
         this.consultaSeleccionada = null;
         this.temporizadorBusqueda = null;
         this.solicitudActual = 0;
         this.contextoPrevio = "";
+
+        const rangoInicial = this._calcularRangoPeriodo(this.periodo);
+        this.fechaDesde = rangoInicial.desde;
+        this.fechaHasta = rangoInicial.hasta;
 
         this.actualizarDesdeStore = (evento) => {
             if (!this.isConnected) {
@@ -124,15 +126,7 @@ export class DashboardView extends HTMLElement {
                     flex: 1 1 18rem;
                 }
                 .panel-principal {
-                    display: grid;
-                    grid-template-columns: minmax(0, 1fr) minmax(18rem, 24rem);
-                    gap: var(--space-4, 1rem);
-                    align-items: start;
-                }
-                @media (max-width: 1024px) {
-                    .panel-principal {
-                        grid-template-columns: 1fr;
-                    }
+                    display: block;
                 }
                 .seccion-citas {
                     display: flex;
@@ -157,23 +151,6 @@ export class DashboardView extends HTMLElement {
                     background-color: var(--color-surface, #ffffff);
                     color: var(--color-text-muted, #475569);
                     text-align: center;
-                }
-                .panel-historial,
-                .seccion-historial {
-                    display: flex;
-                    flex-direction: column;
-                    gap: var(--space-3, 0.75rem);
-                    padding: var(--space-4, 1rem);
-                    border: var(--border-width, 1px) solid var(--color-border, #64748b);
-                    border-radius: var(--radius-lg, 0.75rem);
-                    background-color: var(--color-surface, #ffffff);
-                    box-shadow: var(--shadow-sm, 0 1px 2px rgb(15 23 42 / 0.08));
-                }
-                .historial-titulo {
-                    margin: 0;
-                    color: var(--color-primary, #1e3a8a);
-                    font-size: var(--text-base, 1rem);
-                    font-weight: 600;
                 }
                 .btn-atender {
                     display: inline-flex;
@@ -243,7 +220,7 @@ export class DashboardView extends HTMLElement {
                             name="fechaDesde"
                             type="date"
                             class="form-control"
-                            aria-label="Fecha inicial del rango"
+                            aria-label="Fecha desde"
                         >
                     </div>
                     <div class="campo">
@@ -253,7 +230,7 @@ export class DashboardView extends HTMLElement {
                             name="fechaHasta"
                             type="date"
                             class="form-control"
-                            aria-label="Fecha final del rango"
+                            aria-label="Fecha hasta"
                         >
                     </div>
                     <div class="campo campo-busqueda">
@@ -279,10 +256,6 @@ export class DashboardView extends HTMLElement {
                         ></div>
                         <div id="citas" class="citas grilla-citas" role="list" hidden></div>
                     </section>
-                    <section class="panel-historial seccion-historial" id="panel-historial" aria-labelledby="titulo-historial">
-                        <h3 id="titulo-historial" class="historial-titulo">Historial de Pasos</h3>
-                        <historial-pasos id="historial-pasos"></historial-pasos>
-                    </section>
                 </div>
             </section>
         `;
@@ -298,27 +271,26 @@ export class DashboardView extends HTMLElement {
         this._cargarOpciones(selectRol, this.roles, (rol) => this._idRol(rol), (rol) => this._nombreRol(rol));
 
         selectPeriodo.value = this.periodo;
-        if (inputFechaDesde) inputFechaDesde.value = this.fechaDesde || "";
-        if (inputFechaHasta) inputFechaHasta.value = this.fechaHasta || "";
+        inputFechaDesde.value = this.fechaDesde;
+        inputFechaHasta.value = this.fechaHasta;
         inputBusqueda.value = this.busqueda;
 
         selectPeriodo.addEventListener("change", () => {
             this.periodo = selectPeriodo.value || "hoy";
+            this._sincronizarFechasConPeriodo(this.periodo);
             this._cancelarDebounce();
             this._cargarCitas();
         });
 
-        inputFechaDesde?.addEventListener("change", () => {
+        const manejarCambioFechas = () => {
             this.fechaDesde = inputFechaDesde.value;
-            this._cancelarDebounce();
-            this._cargarCitas();
-        });
-
-        inputFechaHasta?.addEventListener("change", () => {
             this.fechaHasta = inputFechaHasta.value;
             this._cancelarDebounce();
             this._cargarCitas();
-        });
+        };
+
+        inputFechaDesde.addEventListener("change", manejarCambioFechas);
+        inputFechaHasta.addEventListener("change", manejarCambioFechas);
 
         inputBusqueda.addEventListener("input", () => {
             this.busqueda = inputBusqueda.value;
@@ -421,17 +393,80 @@ export class DashboardView extends HTMLElement {
         }
     }
 
+    _formatearFechaISO(fecha) {
+        const anio = fecha.getFullYear();
+        const mes = String(fecha.getMonth() + 1).padStart(2, "0");
+        const dia = String(fecha.getDate()).padStart(2, "0");
+        return `${anio}-${mes}-${dia}`;
+    }
+
+    _desplazarDias(fecha, dias) {
+        const copia = new Date(
+            fecha.getFullYear(),
+            fecha.getMonth(),
+            fecha.getDate()
+        );
+        copia.setDate(copia.getDate() + dias);
+        return copia;
+    }
+
+    _calcularRangoPeriodo(periodo, referencia = new Date()) {
+        if (periodo === "pasado") {
+            return {
+                desde: this._formatearFechaISO(
+                    this._desplazarDias(referencia, -DIAS_RANGO_PERIODO)
+                ),
+                hasta: this._formatearFechaISO(
+                    this._desplazarDias(referencia, -1)
+                )
+            };
+        }
+
+        if (periodo === "futuro") {
+            return {
+                desde: this._formatearFechaISO(
+                    this._desplazarDias(referencia, 1)
+                ),
+                hasta: this._formatearFechaISO(
+                    this._desplazarDias(referencia, DIAS_RANGO_PERIODO)
+                )
+            };
+        }
+
+        const hoy = this._formatearFechaISO(referencia);
+        return { desde: hoy, hasta: hoy };
+    }
+
+    _sincronizarFechasConPeriodo(periodo) {
+        const rango = this._calcularRangoPeriodo(periodo);
+        this.fechaDesde = rango.desde;
+        this.fechaHasta = rango.hasta;
+
+        const inputDesde = this.shadowRoot?.querySelector("#fechaDesde");
+        const inputHasta = this.shadowRoot?.querySelector("#fechaHasta");
+
+        if (inputDesde) {
+            inputDesde.value = this.fechaDesde;
+        }
+
+        if (inputHasta) {
+            inputHasta.value = this.fechaHasta;
+        }
+    }
+
     _construirFiltros() {
         const estado = store.getState();
         const filtros = {
             periodo: this.periodo || "hoy"
         };
-        const clinicaId = this._idClinica(estado?.clinicaActiva ?? estado?.activeClinic);
+        const idClinica = this._idClinica(estado?.clinicaActiva ?? estado?.activeClinic);
         const rolId = this._idRol(estado?.rolSeleccionado ?? estado?.selectedRole ?? estado?.rolActivo);
         const busqueda = (this.busqueda ?? "").trim();
+        const fechaDesde = String(this.fechaDesde ?? "").trim();
+        const fechaHasta = String(this.fechaHasta ?? "").trim();
 
-        if (clinicaId !== "") {
-            filtros.idClinica = clinicaId;
+        if (idClinica !== "") {
+            filtros.idClinica = idClinica;
         }
 
         if (rolId !== "") {
@@ -442,12 +477,12 @@ export class DashboardView extends HTMLElement {
             filtros.q = busqueda;
         }
 
-        if (this.fechaDesde) {
-            filtros.fechaDesde = this.fechaDesde;
+        if (fechaDesde !== "") {
+            filtros.fechaDesde = fechaDesde;
         }
 
-        if (this.fechaHasta) {
-            filtros.fechaHasta = this.fechaHasta;
+        if (fechaHasta !== "") {
+            filtros.fechaHasta = fechaHasta;
         }
 
         return filtros;
@@ -483,7 +518,6 @@ export class DashboardView extends HTMLElement {
 
             if (citas.length === 0) {
                 this._mostrarEstadoCitas("No se encontraron citas.");
-                this._actualizarHistorialPasos([]);
                 return;
             }
 
@@ -494,12 +528,6 @@ export class DashboardView extends HTMLElement {
                 const tarjeta = this._crearTarjetaConsulta(cita);
                 contenedor.appendChild(tarjeta);
             });
-
-            const seleccionada = this.consultaSeleccionada
-                ?? citas.find((c) => (c?.pasos && c.pasos.length > 0) || (c?.historial && c.historial.length > 0))
-                ?? citas[0];
-
-            this._actualizarHistorialPasos(seleccionada?.pasos ?? seleccionada?.historial ?? []);
         } catch (error) {
             if (solicitud !== this.solicitudActual) {
                 return;
@@ -539,14 +567,6 @@ export class DashboardView extends HTMLElement {
 
     _seleccionarConsulta(cita) {
         this.consultaSeleccionada = cita;
-        this._actualizarHistorialPasos(cita?.pasos ?? cita?.historial ?? cita?.procedimientos ?? []);
-    }
-
-    _actualizarHistorialPasos(pasos) {
-        const historial = this.shadowRoot?.querySelector("historial-pasos");
-        if (historial) {
-            historial.pasos = pasos ?? [];
-        }
     }
 
     _atenderConsulta(cita) {
