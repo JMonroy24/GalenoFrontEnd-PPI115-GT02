@@ -2,6 +2,10 @@ import DefaultService from "./default_service.js";
 import { DEFAULT_PAGE_SIZE } from "../config.js";
 import DefaultResponse from "../entity/default_response.js";
 import { ENDPOINTS } from "../routes.js";
+import {
+    construirPayloadPaso,
+    serializarValorPaso
+} from "./consulta_procedimiento_service.js";
 
 export class ConsultaService extends DefaultService {
     constructor() {
@@ -122,19 +126,7 @@ export class ConsultaService extends DefaultService {
      * @returns {{ notas: string, diagnostico: Array<unknown>, plan: string }}
      */
     serializarValorPaso(atencion = {}) {
-        const diagnosticos = Array.isArray(atencion.diagnosticos)
-            ? atencion.diagnosticos
-            : atencion.diagnosticos === undefined
-                || atencion.diagnosticos === null
-                || atencion.diagnosticos === ""
-                ? []
-                : [atencion.diagnosticos];
-
-        return {
-            notas: atencion.notas ?? atencion.notasConsulta ?? "",
-            diagnostico: atencion.diagnostico ?? diagnosticos,
-            plan: atencion.plan ?? atencion.planTratamiento ?? ""
-        };
+        return serializarValorPaso(atencion);
     }
 
     /**
@@ -145,27 +137,7 @@ export class ConsultaService extends DefaultService {
      * @returns {object}
      */
     construirPayloadPaso(atencion = {}) {
-        const payload = { ...atencion };
-        const clavesDatos = [
-            "notas",
-            "notasConsulta",
-            "diagnostico",
-            "diagnosticos",
-            "plan",
-            "planTratamiento"
-        ];
-        const tieneDatos = clavesDatos.some(
-            (clave) => atencion[clave] !== undefined
-        );
-
-        if (tieneDatos) {
-            payload.consulta_procedimiento_paso = {
-                ...(atencion.consulta_procedimiento_paso ?? {}),
-                valor: this.serializarValorPaso(atencion)
-            };
-        }
-
-        return payload;
+        return construirPayloadPaso(atencion);
     }
 
     async guardarPaso(idConsulta, atencion) {

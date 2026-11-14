@@ -1,9 +1,11 @@
 import { store } from "../../store.js";
 import { consultaService } from "../../control/consulta_service.js";
+import { consultaProcedimientoService } from "../../control/consulta_procedimiento_service.js";
 import GeneradorMensajes from "../../control/generador_mensajes.js";
 import { navigate, parseRouteParams } from "../../router.js";
 import "../../boundary/componentes/stepper_progreso.js";
 import "../../boundary/componentes/autocomplete_cie10.js";
+import "../../boundary/componentes/lista_examenes.js";
 
 /** Límite de caracteres para Notas de la Consulta. */
 const MAX_NOTAS = 2000;
@@ -209,6 +211,7 @@ export class AtencionConsultaView extends HTMLElement {
             : this._crearPasosFlujoPorDefecto(detectado.indice);
 
         this._sincronizarStepper();
+        this._sincronizarListaExamenes();
         return detectado;
     }
 
@@ -231,6 +234,9 @@ export class AtencionConsultaView extends HTMLElement {
         }
 
         stepper.etapas = [...ETAPAS_FLUJO];
+        stepper.estados = ETAPAS_FLUJO.map((_, indice) => (
+            this._obtenerEstadoPaso(this._buscarPasoPorIndice(this._pasosFlujo, indice))
+        ));
         stepper.pasoActivo = this._pasoActivo;
     }
 
@@ -1116,8 +1122,24 @@ export class AtencionConsultaView extends HTMLElement {
                     ></auto-complete-cie10>
                 </div>
 
+                <!-- ── Órdenes de Exámenes ── -->
+                <div class="campo" id="grupo-examenes">
+                    <lista-examenes-asignables
+                        id="lista-examenes"
+                        id-consulta="${this._escapar(String(this._idConsulta() ?? ""))}"
+                        id-paso="${this._escapar(String(this._idPasoActivo() ?? ""))}"
+                    ></lista-examenes-asignables>
+                </div>
+
                 <hr class="divisor" aria-hidden="true">
 
+                ${this._htmlAcciones()}
+            </form>
+        `;
+    }
+
+    _htmlAcciones() {
+        return `
                 <!-- ── Acciones ── -->
                 <div class="acciones">
                     <button type="button" class="btn btn-cancelar" id="btn-cancelar">
@@ -1143,7 +1165,6 @@ export class AtencionConsultaView extends HTMLElement {
                         <span class="btn-guardar-texto">${TEXTO_SIGUIENTE}</span>
                     </button>`}
                 </div>
-            </form>
         `;
     }
 
@@ -1161,19 +1182,15 @@ export class AtencionConsultaView extends HTMLElement {
     _conectarEventos() {
         const form = this.shadowRoot.querySelector("#form-clinico");
         const btnVolver = this.shadowRoot.querySelector("#btn-volver");
-        const btnCancelar = this.shadowRoot.querySelector("#btn-cancelar");
-        const btnAnterior = this.shadowRoot.querySelector("#btn-anterior");
         const textareaNotas = this.shadowRoot.querySelector("#notas-consulta");
         const textareaPlan = this.shadowRoot.querySelector("#plan-tratamiento");
 
-        // ── Stepper: sincronizar etapas y escuchar clics de paso ──
+        // ── Stepper: sincronizar estados y escuchar clics de paso ──
         const stepper = this.shadowRoot.querySelector("#stepper-flujo");
         if (stepper) {
-            stepper.etapas = [...ETAPAS_FLUJO];
-            stepper.pasoActivo = this._pasoActivo;
+            this._sincronizarStepper();
             stepper.addEventListener("paso-click", (evento) => {
-                this._pasoActivo = evento.detail.indice;
-                stepper.setPaso(this._pasoActivo);
+                this._seleccionarPaso(evento.detail?.indice);
             });
         }
 
@@ -1188,9 +1205,17 @@ export class AtencionConsultaView extends HTMLElement {
             });
         }
 
+        // ── Órdenes de exámenes: vincular siempre al paso activo ──
+        const listaExamenes = this.shadowRoot.querySelector("#lista-examenes");
+        if (listaExamenes) {
+            this._sincronizarListaExamenes();
+            listaExamenes.addEventListener("ordenes-asignadas", (evento) => {
+                this._alAsignarOrdenesExamen(evento.detail);
+            });
+        }
+
         btnVolver?.addEventListener("click", () => this._volverAlDashboard());
-        btnCancelar?.addEventListener("click", () => this._cancelar());
-        btnAnterior?.addEventListener("click", () => this._retrocederPaso());
+        this._conectarEventosAcciones();
 
         if (textareaNotas) {
             textareaNotas.addEventListener("input", () => {
@@ -1214,10 +1239,82 @@ export class AtencionConsultaView extends HTMLElement {
         });
     }
 
+    _conectarEventosAcciones() {
+        const btnCancelar = this.shadowRoot.querySelector("#btn-cancelar");
+        const btnAnterior = this.shadowRoot.querySelector("#btn-anterior");
+
+        btnCancelar?.addEventListener("click", () => this._cancelar());
+        btnAnterior?.addEventListener("click", () => this._retrocederPaso());
+    }
+
     // ─── Lógica de negocio ────────────────────────────────────────────────────
 
     _idConsulta() {
         return this._consulta?.idConsulta ?? this._consulta?.id ?? null;
+    }
+
+    _idPasoActivo() {
+        const pasoLocal = this._buscarPasoPorIndice(this._pasosFlujo, this._pasoActivo);
+        const idLocal = pasoLocal?.idPaso
+            ?? pasoLocal?.idPasoClinico
+            ?? pasoLocal?.id
+            ?? null;
+
+        if (idLocal !== null) {
+            return idLocal;
+        }
+
+        return this._pasoDetectado?.idPaso
+            ?? this._pasoDetectado?.idPasoClinico
+            ?? this._pasoDetectado?.id
+            ?? null;
+    }
+
+    _sincronizarListaExamenes() {
+        const lista = this.shadowRoot?.querySelector("#lista-examenes");
+
+        if (!lista) {
+            return;
+        }
+
+        const idConsulta = this._idConsulta();
+        const idPaso = this._idPasoActivo();
+
+        if (idConsulta === null || idConsulta === undefined || idConsulta === "") {
+            lista.removeAttribute("id-consulta");
+        } else {
+            lista.setAttribute("id-consulta", String(idConsulta));
+        }
+
+        lista.removeAttribute("id-paso-clinico");
+
+        if (idPaso === null || idPaso === undefined || idPaso === "") {
+            lista.removeAttribute("id-paso");
+        } else {
+            lista.setAttribute("id-paso", String(idPaso));
+        }
+    }
+
+    _alAsignarOrdenesExamen(detalle) {
+        if (!detalle) {
+            return;
+        }
+
+        const paso = this._buscarPasoPorIndice(this._pasosFlujo, this._pasoActivo)
+            ?? this._pasoDetectado;
+
+        if (paso) {
+            paso.ordenesExamen = [
+                ...(Array.isArray(paso.ordenesExamen) ? paso.ordenesExamen : []),
+                ...(Array.isArray(detalle.ordenes) ? detalle.ordenes : [])
+            ];
+        }
+
+        this.dispatchEvent(new CustomEvent("ordenes-examen-asignadas", {
+            bubbles: true,
+            composed: true,
+            detail: detalle
+        }));
     }
 
     _datosAtencion(datos = {}) {
@@ -1244,7 +1341,7 @@ export class AtencionConsultaView extends HTMLElement {
         if (datos && Object.keys(datos).length > 0) {
             Object.assign(payload, this._datosAtencion(datos), {
                 consulta_procedimiento_paso: {
-                    valor: consultaService.serializarValorPaso(datos)
+                    valor: consultaProcedimientoService.serializarValorPaso(datos)
                 }
             });
         }
@@ -1270,7 +1367,7 @@ export class AtencionConsultaView extends HTMLElement {
             return null;
         }
 
-        return consultaService.guardarPaso(
+        return consultaProcedimientoService.guardarPaso(
             idConsulta,
             this._crearPayloadPaso(indice, estado, datos, extra)
         );
@@ -1299,11 +1396,96 @@ export class AtencionConsultaView extends HTMLElement {
         return paso;
     }
 
+    _seleccionarPaso(indice) {
+        if (this._enviando) {
+            return null;
+        }
+
+        const indicePaso = this._resolverIndicePaso(indice);
+
+        if (indicePaso < 0 || indicePaso >= ETAPAS_FLUJO.length) {
+            return null;
+        }
+
+        this._pasoActivo = indicePaso;
+        this._pasoDetectado = this._buscarPasoPorIndice(this._pasosFlujo, indicePaso);
+
+        this._limpiarFormularioPaso();
+        this._cargarDatosPasoActivo();
+        this._aplicarValidacionesPaso(indicePaso);
+        this._sincronizarStepper();
+        this._sincronizarListaExamenes();
+        this._actualizarBotonera();
+
+        return this._pasoDetectado;
+    }
+
+    _limpiarFormularioPaso() {
+        const notas = this.shadowRoot?.querySelector("#notas-consulta");
+        const plan = this.shadowRoot?.querySelector("#plan-tratamiento");
+        const cie10 = this.shadowRoot?.querySelector("#cie10-busqueda");
+
+        if (notas) {
+            notas.value = "";
+            this._actualizarContador("contador-notas", 0, MAX_NOTAS);
+            this._ajustarAltura(notas);
+        }
+
+        if (plan) {
+            plan.value = "";
+            this._actualizarContador("contador-plan", 0, MAX_PLAN);
+            this._ajustarAltura(plan);
+        }
+
+        if (cie10) {
+            cie10.seleccionados = [];
+        }
+
+        this._diagnosticos = [];
+    }
+
+    _aplicarValidacionesPaso(indicePaso) {
+        const paso = this._buscarPasoPorIndice(this._pasosFlujo, indicePaso);
+        const estado = this._obtenerEstadoPaso(paso);
+
+        this._limpiarErrorCampo("notas");
+        this._limpiarErrorCampo("plan");
+
+        const formulario = this.shadowRoot?.querySelector("#form-clinico");
+        if (formulario) {
+            formulario.dataset.paso = String(indicePaso);
+            formulario.dataset.estadoPaso = estado || ESTADO_PENDIENTE;
+        }
+    }
+
+    _actualizarBotonera() {
+        const acciones = this.shadowRoot?.querySelector(".acciones");
+
+        if (!acciones) {
+            return;
+        }
+
+        const btnAnterior = acciones.querySelector("#btn-anterior");
+        const btnFinalizar = acciones.querySelector("#btn-finalizar");
+
+        if (btnAnterior) {
+            btnAnterior.disabled = this._esPrimerPaso();
+        }
+
+        if (this._esUltimoPaso() === Boolean(btnFinalizar)) {
+            return;
+        }
+
+        acciones.outerHTML = this._htmlAcciones();
+        this._conectarEventosAcciones();
+    }
+
     _irAPaso(indice) {
         this._pasoActivo = indice;
         this._pasoDetectado = this._buscarPasoPorIndice(this._pasosFlujo, indice);
         this._diagnosticos = [];
         this.render();
+        this._sincronizarListaExamenes();
         this._cargarDatosPasoActivo();
     }
 
@@ -1599,6 +1781,8 @@ export class AtencionConsultaView extends HTMLElement {
             const btnVolver = this.shadowRoot?.querySelector("#btn-volver");
             btnVolver?.addEventListener("click", () => this._volverAlDashboard());
         }
+
+        this._sincronizarListaExamenes();
     }
 
     // ─── Ayudantes de datos ───────────────────────────────────────────────────

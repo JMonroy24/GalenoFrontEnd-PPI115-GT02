@@ -1,4 +1,4 @@
-const CACHE_NAME = "galenosv-app-shell-v14";
+const CACHE_NAME = "galenosv-app-shell-v15";
 
 const APP_SHELL = [
     "/index.html",
@@ -23,6 +23,7 @@ const APP_SHELL = [
     "/js/boundary/componentes/encabezado_app.js",
     "/js/boundary/componentes/historial_pasos.js",
     "/js/boundary/componentes/instalador_app.js",
+    "/js/boundary/componentes/lista_examenes.js",
     "/js/boundary/componentes/menu_lateral.js",
     "/js/boundary/componentes/notificacion_emergente.js",
     "/js/boundary/componentes/pie_app.js",
@@ -32,6 +33,7 @@ const APP_SHELL = [
     "/js/control/auth_service.js",
     "/js/control/cie10_service.js",
     "/js/control/clinica_service.js",
+    "/js/control/consulta_procedimiento_service.js",
     "/js/control/consulta_service.js",
     "/js/control/default_service.js",
     "/js/control/examen_resultado_service.js",

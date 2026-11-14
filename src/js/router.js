@@ -122,10 +122,7 @@ export class Router {
             return store.isAuthenticated();
         }
 
-        return Boolean(
-            store.state?.usuario
-            && (store.state?.clinicaActiva ?? store.state?.clinica)
-        );
+        return Boolean(store.state?.usuario && store.state?.clinica);
     }
 
     isPrivateRoute(route) {
