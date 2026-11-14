@@ -147,17 +147,25 @@ export class AsistenteBusqueda extends HTMLElement {
                 return;
             }
 
+            const clinicaValor = this.shadowRoot.querySelector("#clinica")?.value ?? "";
+            const detail = {
+                tipoDocumento: this.tipoDocumento || buscador.value || "",
+                numeroDocumento: numeroDocumento.value.trim(),
+                clinicaId: clinicaValor,
+                fechaDesde: this.shadowRoot.querySelector("#fecha-desde")?.value ?? "",
+                fechaHasta: this.shadowRoot.querySelector("#fecha-hasta")?.value ?? ""
+            };
+            Object.defineProperty(detail, "idClinica", {
+                value: clinicaValor,
+                writable: true,
+                enumerable: false,
+                configurable: true
+            });
+
             this.dispatchEvent(new CustomEvent("buscar-citas", {
                 bubbles: true,
                 composed: true,
-                detail: {
-                    tipoDocumento: this.tipoDocumento || buscador.value || "",
-                    numeroDocumento: numeroDocumento.value.trim(),
-                    idClinica: this.shadowRoot.querySelector("#clinica").value,
-                    clinicaId: this.shadowRoot.querySelector("#clinica").value,
-                    fechaDesde: this.shadowRoot.querySelector("#fecha-desde").value,
-                    fechaHasta: this.shadowRoot.querySelector("#fecha-hasta").value
-                }
+                detail
             }));
         });
     }

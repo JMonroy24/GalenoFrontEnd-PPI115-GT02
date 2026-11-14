@@ -110,3 +110,4 @@ suite("LoginView (unitaria HU2)", () => {
         expect(navigateStub.called).to.be.false;
     });
 });
+

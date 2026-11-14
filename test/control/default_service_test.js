@@ -342,6 +342,7 @@ suite("DefaultService (unitaria)", () => {
             Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
         } catch {
         }
+        store.setState({ online: false });
 
         let eventoMensaje = null;
         const escuchador = (e) => { eventoMensaje = e.detail; };
@@ -354,6 +355,7 @@ suite("DefaultService (unitaria)", () => {
             error = e;
         } finally {
             window.removeEventListener("mensaje-global", escuchador);
+            store.setState({ online: true });
             try {
                 Object.defineProperty(navigator, "onLine", { value: onLineOriginal, configurable: true });
             } catch {
@@ -373,6 +375,7 @@ suite("DefaultService (unitaria)", () => {
             Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
         } catch {
         }
+        store.setState({ online: false });
 
         let error = null;
         try {
@@ -380,6 +383,7 @@ suite("DefaultService (unitaria)", () => {
         } catch (e) {
             error = e;
         } finally {
+            store.setState({ online: true });
             try {
                 Object.defineProperty(navigator, "onLine", { value: onLineOriginal, configurable: true });
             } catch {

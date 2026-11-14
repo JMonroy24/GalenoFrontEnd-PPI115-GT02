@@ -83,3 +83,4 @@ suite("TarjetaConsulta (unitaria HU3)", () => {
         expect(asignados[0].textContent).to.equal("Acción Personalizada");
     });
 });
+

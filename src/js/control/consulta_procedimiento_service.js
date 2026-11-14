@@ -56,3 +56,4 @@ export class ConsultaProcedimientoService extends DefaultService {
 
 export const consultaProcedimientoService = new ConsultaProcedimientoService();
 export default ConsultaProcedimientoService;
+

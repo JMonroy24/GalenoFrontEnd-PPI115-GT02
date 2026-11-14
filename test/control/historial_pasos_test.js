@@ -99,3 +99,4 @@ suite("HistorialPasos (unitaria)", () => {
         botonCerrar.click();
     });
 });
+

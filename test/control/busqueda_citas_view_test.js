@@ -131,3 +131,4 @@ suite("BusquedaCitasView (unitaria HU1)", () => {
         expect(estado.textContent).to.contain("No se pudieron cargar las citas");
     });
 });
+
