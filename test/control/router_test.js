@@ -21,7 +21,13 @@ suite("Router (unitaria)", () => {
 
     teardown(() => {
         contenedor?.remove();
-        store.setState({ token: null });
+        store.setState({
+            token: null,
+            usuario: null,
+            roles: [],
+            clinicaActiva: null,
+            clinica: null
+        });
         window.location.hash = "";
     });
 
@@ -75,13 +81,13 @@ suite("Router (unitaria)", () => {
         });
 
         test("permite acceso a rutas públicas sin sesión activa", () => {
-            store.setState({ token: null });
+            store.setState({ token: null, usuario: null, roles: [], clinicaActiva: null, clinica: null });
             expect(routerPrueba.canNavigate("buscar-citas")).to.be.true;
             expect(routerPrueba.canNavigate("login")).to.be.true;
         });
 
         test("bloquea ruta privada y redirige a #login si no hay sesión activa", () => {
-            store.setState({ token: null });
+            store.setState({ token: null, usuario: null, roles: [], clinicaActiva: null, clinica: null });
             window.location.hash = "#dashboard";
 
             const permiso = routerPrueba.canNavigate("dashboard");
@@ -92,6 +98,17 @@ suite("Router (unitaria)", () => {
 
         test("permite navegación a ruta privada si existe sesión activa", () => {
             store.setState({ token: "token-valido-123" });
+            expect(routerPrueba.canNavigate("dashboard")).to.be.true;
+            expect(routerPrueba.canNavigate("atencion")).to.be.true;
+        });
+
+        test("permite navegación a ruta privada si existe usuario y rol/clínica aunque el token sea null", () => {
+            store.setState({
+                token: null,
+                usuario: { idPersona: 42, nombres: "Carlos" },
+                roles: [{ idPersonaRol: 1, nombreRol: "MEDICO" }],
+                clinicaActiva: { idClinica: 1, nombre: "Central" }
+            });
             expect(routerPrueba.canNavigate("dashboard")).to.be.true;
             expect(routerPrueba.canNavigate("atencion")).to.be.true;
         });

@@ -222,6 +222,68 @@ suite("AtencionConsultaView (unitaria)", () => {
         expect(btnGuardar.type).to.equal("submit");
     });
 
+    test("botón #btn-anterior está deshabilitado en el paso 0 y habilitado en pasos posteriores", () => {
+        const btnAnterior = host.shadowRoot.querySelector("#btn-anterior");
+        assert.isNotNull(btnAnterior, "Debe existir #btn-anterior");
+
+        // En setup _pasoActivo inicia en 1, así que debe estar habilitado
+        expect(btnAnterior.disabled).to.be.false;
+
+        // Cambiar al paso 0
+        host._irAlPaso(0);
+        expect(btnAnterior.disabled).to.be.true;
+
+        // Retroceder al paso 1
+        host._irAlPaso(1);
+        expect(btnAnterior.disabled).to.be.false;
+    });
+
+    test("botón #btn-anterior retrocede al paso anterior al hacer clic", () => {
+        const btnAnterior = host.shadowRoot.querySelector("#btn-anterior");
+        host._irAlPaso(2);
+        expect(host._pasoActivo).to.equal(2);
+
+        btnAnterior.click();
+        expect(host._pasoActivo).to.equal(1);
+    });
+
+    test("en paso intermedio guarda y avanza al siguiente paso sin salir al dashboard", async () => {
+        host._irAlPaso(1); // paso 1 de 4 (intermedio)
+        host.shadowRoot.querySelector("#notas-consulta").value = "Notas paso intermedio";
+
+        const btnGuardar = host.shadowRoot.querySelector("#btn-guardar");
+        expect(btnGuardar.textContent).to.contain("Guardar y Avanzar");
+
+        host.shadowRoot.querySelector("form#form-clinico").dispatchEvent(
+            new Event("submit", { bubbles: true, cancelable: true })
+        );
+
+        await new Promise((r) => setTimeout(r, 60));
+
+        expect(registrarAtencionStub.called).to.be.true;
+        expect(host._pasoActivo).to.equal(2);
+        expect(navigateStub.calledWith("#dashboard")).to.be.false;
+    });
+
+    test("en el último paso muestra botón Finalizar Consulta y al enviar redirige a #dashboard", async () => {
+        host._irAlPaso(3); // paso 3 de 4 (último paso)
+
+        const btnFinalizar = host.shadowRoot.querySelector("#btn-finalizar");
+        assert.isNotNull(btnFinalizar, "Debe existir botón Finalizar en el último paso");
+        expect(btnFinalizar.textContent).to.contain("Finalizar Consulta");
+
+        host.shadowRoot.querySelector("#notas-consulta").value = "Notas de cierre";
+
+        host.shadowRoot.querySelector("form#form-clinico").dispatchEvent(
+            new Event("submit", { bubbles: true, cancelable: true })
+        );
+
+        await new Promise((r) => setTimeout(r, 60));
+
+        expect(registrarAtencionStub.called).to.be.true;
+        expect(navigateStub.calledWith("#dashboard")).to.be.true;
+    });
+
     test("el botón 'Volver' navega al dashboard al hacer clic", () => {
         const btnVolver = host.shadowRoot.querySelector("#btn-volver");
         btnVolver.click();

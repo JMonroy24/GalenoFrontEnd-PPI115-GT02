@@ -63,14 +63,29 @@ export class AuthService extends DefaultService {
                 });
             }
 
+            const primerRol = rolesEmpleado[0];
+            const clinicaInicial = primerRol?.clinica
+                ?? primerRol?.idClinica
+                ?? primerRol?.clinicaActiva
+                ?? perfil?.clinica
+                ?? perfil?.idClinica
+                ?? null;
+
             const sesion = {
                 perfil,
                 token: this._obtenerToken(payload, perfil, response),
-                roles: rolesEmpleado
+                roles: rolesEmpleado,
+                clinicaActiva: clinicaInicial,
+                clinica: clinicaInicial,
+                rolSeleccionado: primerRol ?? null
             };
 
             this._guardarSesion(sesion);
-            this._sincronizarStore(sesion);
+            this._sincronizarStore(sesion, {
+                clinicaActiva: clinicaInicial,
+                clinica: clinicaInicial,
+                rolSeleccionado: primerRol ?? null
+            });
 
             return sesion;
         } catch (error) {
@@ -99,19 +114,33 @@ export class AuthService extends DefaultService {
             }
 
             const datos = JSON.parse(serializada);
-            const sesion = {
-                perfil: datos?.perfil ?? datos?.usuario ?? null,
-                token: datos?.token ?? null,
-                roles: Array.isArray(datos?.roles) ? datos.roles : []
-            };
+            const perfil = datos?.perfil ?? datos?.usuario ?? null;
+            const token = datos?.token ?? null;
+            const roles = Array.isArray(datos?.roles) ? datos.roles : [];
+            const clinica = datos?.clinicaActiva ?? datos?.clinica ?? null;
+            const rolSeleccionado = datos?.rolSeleccionado ?? roles[0] ?? null;
 
-            if (!sesion.perfil && !sesion.token) {
+            // Validación de sesión tolerante a tokens:
+            // Activa si existe token O si existen datos de usuario con rol o clínica
+            const tieneSesionValida = Boolean(token || (perfil && (roles.length > 0 || clinica)));
+
+            if (!tieneSesionValida) {
                 return null;
             }
 
+            const sesion = {
+                perfil,
+                token,
+                roles,
+                clinicaActiva: clinica,
+                clinica,
+                rolSeleccionado
+            };
+
             const contexto = {
-                clinicaActiva: datos?.clinicaActiva ?? null,
-                rolSeleccionado: datos?.rolSeleccionado ?? sesion.roles[0] ?? null
+                clinicaActiva: clinica,
+                clinica,
+                rolSeleccionado
             };
 
             this.sesion = sesion;
@@ -144,7 +173,8 @@ export class AuthService extends DefaultService {
             usuario: null,
             roles: [],
             rolSeleccionado: null,
-            clinicaActiva: null
+            clinicaActiva: null,
+            clinica: null
         });
     }
 
@@ -156,10 +186,18 @@ export class AuthService extends DefaultService {
         }
 
         try {
+            const clinica = sesion.clinicaActiva ?? sesion.clinica ?? store.state?.clinicaActiva ?? null;
+            const sesionActiva = Boolean(sesion.token || (sesion.perfil && (clinica || (Array.isArray(sesion.roles) && sesion.roles.length > 0))));
+
             almacen.setItem(SESSION_STORAGE_KEY, JSON.stringify({
                 perfil: sesion.perfil,
+                usuario: sesion.perfil,
                 token: sesion.token,
-                roles: sesion.roles
+                roles: sesion.roles,
+                clinicaActiva: clinica,
+                clinica: clinica,
+                rolSeleccionado: sesion.rolSeleccionado ?? sesion.roles?.[0] ?? null,
+                sesionActiva
             }));
         } catch {
         }
@@ -167,16 +205,15 @@ export class AuthService extends DefaultService {
 
     _sincronizarStore(sesion, contexto = null) {
         const roles = Array.isArray(sesion?.roles) ? sesion.roles : [];
+        const clinica = contexto?.clinicaActiva ?? contexto?.clinica ?? sesion?.clinicaActiva ?? sesion?.clinica ?? null;
         const cambios = {
             token: sesion?.token ?? null,
-            usuario: sesion?.perfil ?? null,
+            usuario: sesion?.perfil ?? sesion?.usuario ?? null,
             roles,
-            rolSeleccionado: contexto?.rolSeleccionado ?? roles[0] ?? null
+            rolSeleccionado: contexto?.rolSeleccionado ?? sesion?.rolSeleccionado ?? roles[0] ?? null,
+            clinicaActiva: clinica,
+            clinica: clinica
         };
-
-        if (contexto) {
-            cambios.clinicaActiva = contexto.clinicaActiva ?? null;
-        }
 
         store.setState(cambios);
     }

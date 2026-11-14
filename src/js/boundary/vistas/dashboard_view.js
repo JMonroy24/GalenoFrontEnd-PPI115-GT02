@@ -15,6 +15,8 @@ export class DashboardView extends HTMLElement {
         this.clinicas = [];
         this.roles = [];
         this.periodo = "hoy";
+        this.fechaDesde = "";
+        this.fechaHasta = "";
         this.busqueda = "";
         this.consultaSeleccionada = null;
         this.temporizadorBusqueda = null;
@@ -234,6 +236,26 @@ export class DashboardView extends HTMLElement {
                             <option value="futuro">Futuro</option>
                         </select>
                     </div>
+                    <div class="campo">
+                        <label for="fechaDesde">Desde</label>
+                        <input
+                            id="fechaDesde"
+                            name="fechaDesde"
+                            type="date"
+                            class="form-control"
+                            aria-label="Fecha inicial del rango"
+                        >
+                    </div>
+                    <div class="campo">
+                        <label for="fechaHasta">Hasta</label>
+                        <input
+                            id="fechaHasta"
+                            name="fechaHasta"
+                            type="date"
+                            class="form-control"
+                            aria-label="Fecha final del rango"
+                        >
+                    </div>
                     <div class="campo campo-busqueda">
                         <label for="busqueda-citas">Buscar paciente</label>
                         <input
@@ -268,16 +290,32 @@ export class DashboardView extends HTMLElement {
         const selectClinica = this.shadowRoot.querySelector("#clinica-activa");
         const selectRol = this.shadowRoot.querySelector("#rol-activo");
         const selectPeriodo = this.shadowRoot.querySelector("#periodo-citas");
+        const inputFechaDesde = this.shadowRoot.querySelector("#fechaDesde");
+        const inputFechaHasta = this.shadowRoot.querySelector("#fechaHasta");
         const inputBusqueda = this.shadowRoot.querySelector("#busqueda-citas");
 
         this._cargarOpciones(selectClinica, this.clinicas, (clinica) => this._idClinica(clinica), (clinica) => this._nombreClinica(clinica));
         this._cargarOpciones(selectRol, this.roles, (rol) => this._idRol(rol), (rol) => this._nombreRol(rol));
 
         selectPeriodo.value = this.periodo;
+        if (inputFechaDesde) inputFechaDesde.value = this.fechaDesde || "";
+        if (inputFechaHasta) inputFechaHasta.value = this.fechaHasta || "";
         inputBusqueda.value = this.busqueda;
 
         selectPeriodo.addEventListener("change", () => {
             this.periodo = selectPeriodo.value || "hoy";
+            this._cancelarDebounce();
+            this._cargarCitas();
+        });
+
+        inputFechaDesde?.addEventListener("change", () => {
+            this.fechaDesde = inputFechaDesde.value;
+            this._cancelarDebounce();
+            this._cargarCitas();
+        });
+
+        inputFechaHasta?.addEventListener("change", () => {
+            this.fechaHasta = inputFechaHasta.value;
             this._cancelarDebounce();
             this._cargarCitas();
         });
@@ -402,6 +440,14 @@ export class DashboardView extends HTMLElement {
 
         if (busqueda !== "") {
             filtros.q = busqueda;
+        }
+
+        if (this.fechaDesde) {
+            filtros.fechaDesde = this.fechaDesde;
+        }
+
+        if (this.fechaHasta) {
+            filtros.fechaHasta = this.fechaHasta;
         }
 
         return filtros;

@@ -1,5 +1,6 @@
 import "./buscador_tipo_doc.js";
 import { clinicaService } from "../../control/clinica_service.js";
+import { personaRolService } from "../../control/persona_rol_service.js";
 import GeneradorMensajes from "../../control/generador_mensajes.js";
 
 export class AsistenteBusqueda extends HTMLElement {
@@ -74,6 +75,7 @@ export class AsistenteBusqueda extends HTMLElement {
                         autocomplete="off"
                         placeholder="00000000-0"
                         aria-describedby="numero-documento-ayuda"
+                        disabled
                     >
                     <span id="numero-documento-ayuda" class="ayuda" aria-live="polite"></span>
                 </div>
@@ -108,7 +110,14 @@ export class AsistenteBusqueda extends HTMLElement {
         buscador.addEventListener("tipo-documento-change", (evento) => {
             this.tipoDocumento = evento.detail?.value ?? "";
             this.itemTipoDocumento = evento.detail?.item ?? null;
-            this._validarDocumento(true);
+            const tieneTipo = Boolean(this.tipoDocumento && String(this.tipoDocumento).trim() !== "");
+            numeroDocumento.disabled = !tieneTipo;
+            if (!tieneTipo) {
+                numeroDocumento.value = "";
+                numeroDocumento.classList.remove("valido", "invalido");
+            } else {
+                this._validarDocumento(false);
+            }
         });
 
         numeroDocumento.addEventListener("input", () => {
@@ -120,7 +129,10 @@ export class AsistenteBusqueda extends HTMLElement {
         numeroDocumento.addEventListener("blur", () => {
             this.documentoTocado = true;
             numeroDocumento.value = this._formatearDocumento(numeroDocumento.value);
-            this._validarDocumento(true);
+            const valido = this._validarDocumento(true);
+            if (valido) {
+                this.cargarClinicasPorPaciente(numeroDocumento.value.trim());
+            }
         });
 
         form.addEventListener("submit", (evento) => {
@@ -141,6 +153,7 @@ export class AsistenteBusqueda extends HTMLElement {
                 detail: {
                     tipoDocumento: this.tipoDocumento || buscador.value || "",
                     numeroDocumento: numeroDocumento.value.trim(),
+                    idClinica: this.shadowRoot.querySelector("#clinica").value,
                     clinicaId: this.shadowRoot.querySelector("#clinica").value,
                     fechaDesde: this.shadowRoot.querySelector("#fecha-desde").value,
                     fechaHasta: this.shadowRoot.querySelector("#fecha-hasta").value
@@ -160,19 +173,7 @@ export class AsistenteBusqueda extends HTMLElement {
                         ? respuesta
                         : [];
 
-            const select = this.shadowRoot.querySelector("#clinica");
-            if (!select) {
-                return;
-            }
-
-            select.replaceChildren();
-
-            clinicas.forEach((clinica) => {
-                const opcion = document.createElement("option");
-                opcion.value = String(clinica.idClinica ?? clinica.id ?? clinica.codigo ?? "");
-                opcion.textContent = clinica.nombre ?? clinica.name ?? "";
-                select.appendChild(opcion);
-            });
+            this._poblarSelectClinicas(clinicas);
         } catch (error) {
             GeneradorMensajes.crearMensaje(
                 "Error al cargar clínicas",
@@ -180,6 +181,61 @@ export class AsistenteBusqueda extends HTMLElement {
                 "error"
             );
         }
+    }
+
+    async cargarClinicasPorPaciente(numeroDocOPersona) {
+        try {
+            const idPersona = typeof numeroDocOPersona === "object"
+                ? (numeroDocOPersona.idPersona ?? numeroDocOPersona.id)
+                : numeroDocOPersona;
+
+            const respuesta = await personaRolService.buscarRolesPorPersona(idPersona);
+            const roles = Array.isArray(respuesta?.items)
+                ? respuesta.items
+                : Array.isArray(respuesta?.datos)
+                    ? respuesta.datos
+                    : Array.isArray(respuesta)
+                        ? respuesta
+                        : [];
+
+            const clinicasPaciente = [];
+            const idsVistos = new Set();
+
+            roles.forEach((pr) => {
+                const rolNombre = String(pr?.rol?.nombre ?? pr?.nombreRol ?? "").toUpperCase();
+                const esPaciente = rolNombre.includes("PACIENTE") || pr?.esEmpleado === false;
+
+                if (esPaciente) {
+                    const clinica = pr?.clinica ?? (pr?.idClinica ? { idClinica: pr.idClinica, nombre: pr.nombreClinica ?? `Clínica ${pr.idClinica}` } : null);
+                    const idClinica = clinica?.idClinica ?? clinica?.id;
+                    if (idClinica && !idsVistos.has(String(idClinica))) {
+                        idsVistos.add(String(idClinica));
+                        clinicasPaciente.push(clinica);
+                    }
+                }
+            });
+
+            if (clinicasPaciente.length > 0) {
+                this._poblarSelectClinicas(clinicasPaciente);
+            }
+        } catch {
+        }
+    }
+
+    _poblarSelectClinicas(clinicas) {
+        const select = this.shadowRoot.querySelector("#clinica");
+        if (!select) {
+            return;
+        }
+
+        select.replaceChildren();
+
+        clinicas.forEach((clinica) => {
+            const opcion = document.createElement("option");
+            opcion.value = String(clinica.idClinica ?? clinica.id ?? clinica.codigo ?? "");
+            opcion.textContent = clinica.nombre ?? clinica.name ?? "";
+            select.appendChild(opcion);
+        });
     }
 
     _formatearDocumento(valor) {

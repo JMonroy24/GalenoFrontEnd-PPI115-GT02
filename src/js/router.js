@@ -29,20 +29,7 @@ const ROUTES = Object.freeze({
     login: "login-view",
     "buscar-citas": "busqueda-citas-view",
     dashboard: "dashboard-view",
-    atencion: "atencion-consulta-view",
-    roles: "vista-pendiente",
-    tipos_documentos: "vista-pendiente",
-    tipos_medios_contactos: "vista-pendiente",
-    tipos_examenes: "vista-pendiente",
-    examenes: "vista-pendiente",
-    procedimientos: "vista-pendiente",
-    clinicas: "vista-pendiente",
-    personas: "vista-pendiente",
-    documentos: "vista-pendiente",
-    medios_contactos: "vista-pendiente",
-    personas_roles: "vista-pendiente",
-    ordenes_examenes: "vista-pendiente",
-    resultados: "vista-pendiente"
+    atencion: "atencion-consulta-view"
 });
 
 const routeFromView = (view) => {
@@ -131,7 +118,13 @@ export class Router {
     }
 
     hasActiveSession() {
-        return Boolean(store.state?.token);
+        if (typeof store?.hasActiveSession === "function") {
+            return store.hasActiveSession();
+        }
+        return Boolean(
+            store.state?.token ||
+            (store.state?.usuario && (store.state?.clinica || store.state?.clinicaActiva || (Array.isArray(store.state?.roles) && store.state.roles.length > 0)))
+        );
     }
 
     isPrivateRoute(route) {

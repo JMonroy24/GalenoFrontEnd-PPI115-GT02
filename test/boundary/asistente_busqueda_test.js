@@ -42,6 +42,28 @@ suite("AsistenteBusqueda (unitaria)", () => {
         expect(opciones[1].textContent).to.equal("Clínica Santa Tecla");
     });
 
+    test("mantiene deshabilitado el input #numero-documento hasta que se seleccione #tipo-documento", () => {
+        const inputDoc = host.shadowRoot.querySelector("#numero-documento");
+        const buscadorTipo = host.shadowRoot.querySelector("buscador-tipo-documentos");
+
+        // Inicialmente deshabilitado
+        expect(inputDoc.disabled).to.be.true;
+
+        // Seleccionar tipo de documento
+        buscadorTipo.dispatchEvent(new CustomEvent("tipo-documento-change", {
+            detail: { value: "1", item: { codigo: "DUI" } }
+        }));
+
+        // Ahora debe estar habilitado
+        expect(inputDoc.disabled).to.be.false;
+
+        // Si se limpia el tipo, se vuelve a deshabilitar
+        buscadorTipo.dispatchEvent(new CustomEvent("tipo-documento-change", {
+            detail: { value: "", item: null }
+        }));
+        expect(inputDoc.disabled).to.be.true;
+    });
+
     suite("Validación regex de número de documento", () => {
         test("valida y formatea DUI correctamente con regex /^\d{8}-\d$/", () => {
             const inputDoc = host.shadowRoot.querySelector("#numero-documento");

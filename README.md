@@ -22,6 +22,12 @@ El proyecto mantiene un desacoplamiento estricto bajo el patrón BCE:
   - `default_response.js`: Estructura unificada para respuestas paginadas (`items`, `total`, `first`, `max`).
   - `default_error.js`: Excepción tipada para fallos HTTP con metadatos de status y detalles del servidor.
 
+### 🛡️ Criterio de Cero Librerías de Terceros en Producción
+
+El código fuente de producción contenido íntegramente en el directorio `src/` está implementado al **100% con JavaScript nativo (ES6+), Web Components nativos (Custom Elements y Shadow DOM) y CSS estándar**, sin dependencia de librerías ni frameworks de terceros (cero React, Vue, Angular, Bootstrap, Tailwind o Axios).
+
+Las herramientas ubicadas en el directorio `test/lib/` (**Mocha**, **Chai**, **Sinon**) corresponden **exclusivamente a utilidades de prueba en navegador para la ejecución de la suite de pruebas unitarias TDD e integración BDD** en los runners de prueba (`test/runner.html` y `test/runner_it.html`). **Bajo ninguna circunstancia forman parte ni se empaquetan en el código fuente de producción en `src/`**, cumpliendo a cabalidad con el criterio evaluativo de *Cero librerías de terceros en código de producción*.
+
 ---
 
 ## 📋 Requisitos Previos
@@ -81,6 +87,10 @@ Cubren con aislamiento total (`sinon.stub`) la capa de servicios, el store react
   - `control/orden_examen_service_test.js`: Creación en lote de órdenes de examen.
   - `control/store_test.js`: Reactividad del estado global (`EventTarget`).
   - `control/router_test.js`: Navegación por hash y guardias de sesión.
+  - `control/login_view_test.js`: Pruebas unitarias de HU2 (renderizado de login, validaciones y navegación).
+  - `control/busqueda_citas_view_test.js`: Pruebas unitarias de HU1 (búsqueda reactiva, tarjetas y descarga de ticket).
+  - `control/tarjeta_consulta_test.js`: Pruebas de proyección de slots, datos clínicos e historial embebido.
+  - `control/historial_pasos_test.js`: Pruebas de lista jerárquica de pasos y modal de registros.
   - `boundary/*_test.js`: Web Components (`dashboard_view`, `atencion_consulta_view`, `stepper_progreso`, `autocomplete_cie10`, `asistente_busqueda`, `lista_examenes`, `estado_red`).
 
 ### 2. Pruebas de Integración BDD (`test/runner_it.html`)

@@ -112,4 +112,27 @@ suite("ConsultaService (unitaria)", () => {
         expect(error.status).to.equal(422);
         expect(error.mensaje).to.equal("Datos de consulta inválidos");
     });
+
+    test("buscarPorPacienteYFechas envía idClinica en los query params", async () => {
+        fetchStub = sinon.stub(window, "fetch").resolves({
+            ok: true,
+            status: 200,
+            json: async () => ({ items: [], total: 0, first: 0, max: 10 })
+        });
+
+        await servicio.buscarPorPacienteYFechas({
+            tipoDocumento: "DUI",
+            numeroDocumento: "01234567-8",
+            idClinica: "uuid-clinica-123",
+            fechaDesde: "2024-01-01",
+            fechaHasta: "2024-12-31"
+        });
+
+        const url = fetchStub.firstCall.args[0].toString();
+        expect(url).to.contain("idClinica=uuid-clinica-123");
+        expect(url).to.contain("tipoDocumento=DUI");
+        expect(url).to.contain("numeroDocumento=01234567-8");
+        expect(url).to.contain("fechaDesde=2024-01-01");
+        expect(url).to.contain("fechaHasta=2024-12-31");
+    });
 });

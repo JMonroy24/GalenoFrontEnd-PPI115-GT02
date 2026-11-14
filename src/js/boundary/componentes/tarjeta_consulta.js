@@ -1,3 +1,5 @@
+import "./historial_pasos.js";
+
 export class TarjetaConsulta extends HTMLElement {
     constructor() {
         super();
@@ -134,6 +136,15 @@ export class TarjetaConsulta extends HTMLElement {
                     color: var(--color-text-muted, #475569);
                     font-size: var(--text-sm, 0.875rem);
                 }
+                .seccion-historial {
+                    padding: var(--space-4, 1rem);
+                    border-top: var(--border-width, 1px) solid var(--color-surface-alt, #e2e8f0);
+                }
+                .seccion-historial h4 {
+                    margin: 0 0 var(--space-2, 0.5rem);
+                    color: var(--color-primary, #1e3a8a);
+                    font-size: var(--text-base, 1rem);
+                }
                 .pie {
                     display: flex;
                     flex-wrap: wrap;
@@ -170,6 +181,10 @@ export class TarjetaConsulta extends HTMLElement {
                     <ul id="lista-procedimientos"></ul>
                     <p class="procedimientos-vacio" id="procedimientos-vacio">Sin procedimientos activos.</p>
                 </section>
+                <section class="seccion-historial" id="seccion-historial">
+                    <h4>Historial de pasos</h4>
+                    <historial-pasos id="historial-pasos"></historial-pasos>
+                </section>
                 <footer class="pie">
                     <slot name="acciones"></slot>
                 </footer>
@@ -195,6 +210,22 @@ export class TarjetaConsulta extends HTMLElement {
             item.textContent = this._nombreProcedimiento(procedimiento);
             lista.appendChild(item);
         });
+
+        const historial = this.shadowRoot.querySelector("#historial-pasos");
+        if (historial) {
+            historial.pasos = this._obtenerPasos(datos);
+        }
+    }
+
+    _obtenerPasos(datos) {
+        const pasos = datos.pasos
+            ?? datos.pasosProcedimiento
+            ?? datos.historialPasos
+            ?? datos.historial
+            ?? datos.procedimiento?.pasos
+            ?? datos.procedimientos?.[0]?.pasos
+            ?? [];
+        return Array.isArray(pasos) ? pasos : [];
     }
 
     _obtenerFecha(datos) {

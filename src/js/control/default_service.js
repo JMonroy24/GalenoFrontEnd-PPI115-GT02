@@ -17,6 +17,19 @@ export class DefaultService {
     }
 
     async _request(url, options = {}, fallbackMessage = "Error al acceder al repositorio") {
+        const method = String(options.method ?? "GET").toUpperCase();
+        const esEscritura = method === "POST" || method === "PUT";
+
+        if (esEscritura && globalThis.navigator?.onLine === false) {
+            const mensajeOffline = "Operación no disponible en modo offline. Conéctese a internet para guardar los cambios";
+            GeneradorMensajes.crearMensaje("Modo Offline", mensajeOffline, "error");
+            throw new DefaultError(mensajeOffline, {
+                status: 0,
+                offline: true,
+                message: mensajeOffline
+            });
+        }
+
         const headers = new Headers(options.headers);
         const session = store.state?.token;
         const token = typeof session === "string"

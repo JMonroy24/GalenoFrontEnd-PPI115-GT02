@@ -1,26 +1,11 @@
 const MENU = {
-    "Catálogos": [
-        { id: "roles", texto: "Roles" },
-        { id: "tipos_documentos", texto: "Tipos de Documento" },
-        { id: "tipos_medios_contactos", texto: "Tipos de Medio de Contacto" },
-        { id: "tipos_examenes", texto: "Tipos de Examen" },
-        { id: "examenes", texto: "Exámenes" },
-        { id: "procedimientos", texto: "Procedimientos" },
-        { id: "clinicas", texto: "Clínicas" }
-    ],
-    "Personas": [
-        { id: "personas", texto: "Personas" },
-        { id: "documentos", texto: "Documentos" },
-        { id: "medios_contactos", texto: "Medios de Contacto" },
-        { id: "personas_roles", texto: "Roles de Persona" }
-    ],
     "Atención clínica": [
-        { id: "buscar-citas", texto: "Consultas" },
-        { id: "ordenes_examenes", texto: "Órdenes de Examen" },
-        { id: "resultados", texto: "Resultados de Examen" }
+        { id: "buscar-citas", texto: "Buscar Citas" },
+        { id: "dashboard", texto: "Dashboard de Consultas" },
+        { id: "atencion", texto: "Atención Médica" }
     ],
-    "Cambiar rol": [
-        { id: "login", texto: "Cambiar rol" }
+    "Sesión": [
+        { id: "login", texto: "Iniciar Sesión / Cambiar Rol" }
     ]
 };
 

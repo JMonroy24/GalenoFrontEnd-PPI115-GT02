@@ -1,4 +1,4 @@
-const CACHE_NAME = "galenosv-app-shell-v15";
+const CACHE_NAME = "galenosv-app-shell-v16";
 const API_PATH = "/resources/v1/";
 
 // Todo lo necesario para arrancar la SPA sin red (App Shell).
@@ -11,13 +11,10 @@ const APP_SHELL = [
     "/recursos/imagenes/icono_192.png",
     "/recursos/imagenes/icono_512.png",
     "/js/app.js",
-    "/js/boundary/busqueda_consulta_model.js",
     "/js/boundary/componentes/asistente_busqueda.js",
     "/js/boundary/componentes/autocomplete.js",
     "/js/boundary/componentes/autocomplete_cie10.js",
-    "/js/boundary/componentes/buscador_persona.js",
     "/js/boundary/componentes/buscador_tipo_doc.js",
-    "/js/boundary/componentes/buscador_tipo_documentos.js",
     "/js/boundary/componentes/encabezado_app.js",
     "/js/boundary/componentes/estado_red.js",
     "/js/boundary/componentes/historial_pasos.js",
@@ -29,8 +26,6 @@ const APP_SHELL = [
     "/js/boundary/componentes/stepper_progreso.js",
     "/js/boundary/componentes/tarjeta_consulta.js",
     "/js/boundary/componentes/tarjeta_simple.js",
-    "/js/boundary/login_model.js",
-    "/js/boundary/vista_pendiente.js",
     "/js/boundary/vistas/atencion_consulta_view.js",
     "/js/boundary/vistas/busqueda_citas_view.js",
     "/js/boundary/vistas/dashboard_view.js",
@@ -39,6 +34,7 @@ const APP_SHELL = [
     "/js/control/auth_service.js",
     "/js/control/cie10_service.js",
     "/js/control/clinica_service.js",
+    "/js/control/consulta_procedimiento_service.js",
     "/js/control/consulta_service.js",
     "/js/control/default_service.js",
     "/js/control/examen_resultado_service.js",

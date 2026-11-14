@@ -1,6 +1,7 @@
 const LEGACY_KEYS = Object.freeze({
     session: "token",
     activeClinic: "clinicaActiva",
+    clinica: "clinicaActiva",
     selectedRole: "rolSeleccionado",
     isOnline: "online"
 });
@@ -16,10 +17,10 @@ function _leerSesionStorage() {
         const token = datos?.token ?? null;
         const perfil = datos?.perfil ?? datos?.usuario ?? null;
         const roles = Array.isArray(datos?.roles) ? datos.roles : [];
-        const clinicaActiva = datos?.clinicaActiva ?? null;
+        const clinicaActiva = datos?.clinicaActiva ?? datos?.clinica ?? null;
         const rolSeleccionado = datos?.rolSeleccionado ?? roles[0] ?? null;
         if (!token && !perfil && !clinicaActiva && !rolSeleccionado) return null;
-        return { token, perfil, roles, clinicaActiva, rolSeleccionado };
+        return { token, perfil, roles, clinicaActiva, clinica: clinicaActiva, rolSeleccionado };
     } catch {
         return null;
     }
@@ -38,6 +39,7 @@ export class Store extends EventTarget {
             roles: sesion?.roles ?? [],
             rolSeleccionado: sesion?.rolSeleccionado ?? sesion?.roles?.[0] ?? null,
             clinicaActiva: sesion?.clinicaActiva ?? null,
+            clinica: sesion?.clinicaActiva ?? null,
             online: globalThis.navigator?.onLine ?? true
         };
 
@@ -54,6 +56,11 @@ export class Store extends EventTarget {
 
         if (changes && typeof changes === "object") {
             Object.assign(this.state, changes);
+            if (changes.clinicaActiva !== undefined && changes.clinica === undefined) {
+                this.state.clinica = changes.clinicaActiva;
+            } else if (changes.clinica !== undefined && changes.clinicaActiva === undefined) {
+                this.state.clinicaActiva = changes.clinica;
+            }
         }
 
         this.dispatchEvent(new CustomEvent("state-changed", { detail: this.state }));
@@ -61,6 +68,7 @@ export class Store extends EventTarget {
 
     setContextoTrabajo(clinicaActiva, rolSeleccionado) {
         this.state.clinicaActiva = clinicaActiva;
+        this.state.clinica = clinicaActiva;
         this.state.rolSeleccionado = rolSeleccionado;
         this._persistirSesion();
         this.dispatchEvent(new CustomEvent("state-changed", { detail: this.state }));
@@ -80,12 +88,22 @@ export class Store extends EventTarget {
             sessionStorage.setItem(SESSION_KEY, JSON.stringify({
                 token: this.state.token,
                 perfil: this.state.usuario,
+                usuario: this.state.usuario,
                 roles: this.state.roles,
                 clinicaActiva: this.state.clinicaActiva,
-                rolSeleccionado: this.state.rolSeleccionado
+                clinica: this.state.clinicaActiva,
+                rolSeleccionado: this.state.rolSeleccionado,
+                sesionActiva: this.hasActiveSession()
             }));
         } catch {
         }
+    }
+
+    hasActiveSession() {
+        return Boolean(
+            this.state.token ||
+            (this.state.usuario && (this.state.clinicaActiva || this.state.clinica || (Array.isArray(this.state.roles) && this.state.roles.length > 0)))
+        );
     }
 
     getState() {
@@ -93,6 +111,7 @@ export class Store extends EventTarget {
             ...this.state,
             session: this.state.token,
             activeClinic: this.state.clinicaActiva,
+            clinica: this.state.clinicaActiva,
             selectedRole: this.state.rolSeleccionado,
             isOnline: this.state.online
         };
