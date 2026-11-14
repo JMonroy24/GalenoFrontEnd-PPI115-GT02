@@ -2,6 +2,7 @@ import { AtencionConsultaView } from "../../src/js/boundary/vistas/atencion_cons
 import store from "../../src/js/store.js";
 import * as routerModule from "../../src/js/router.js";
 import { consultaService } from "../../src/js/control/consulta_service.js";
+import { tipoExamenService } from "../../src/js/control/tipo_examen_service.js";
 import { assert, expect } from "../lib/chai/index.js";
 
 mocha.setup("tdd");
@@ -10,6 +11,7 @@ suite("AtencionConsultaView (unitaria)", () => {
     let host;
     let navigateStub;
     let registrarAtencionStub;
+    let tipoExamenStub;
 
     const consultaFicticia = {
         idConsulta: 55,
@@ -30,6 +32,10 @@ suite("AtencionConsultaView (unitaria)", () => {
             .stub(consultaService, "registrarAtencion")
             .resolves({ ok: true });
 
+        tipoExamenStub = sinon
+            .stub(tipoExamenService, "findRange")
+            .resolves({ items: [] });
+
         store.setState({
             token: "fake-jwt",
             consultaActiva: consultaFicticia
@@ -40,8 +46,9 @@ suite("AtencionConsultaView (unitaria)", () => {
     });
 
     teardown(() => {
-        navigateStub.restore();
-        registrarAtencionStub.restore();
+        navigateStub?.restore();
+        registrarAtencionStub?.restore();
+        tipoExamenStub?.restore();
         if (host?.parentNode) {
             host.parentNode.removeChild(host);
         }

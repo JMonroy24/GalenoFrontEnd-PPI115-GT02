@@ -21,6 +21,7 @@ const APP_SHELL = [
     "/js/boundary/componentes/autocomplete_cie10.js",
     "/js/boundary/componentes/buscador_tipo_doc.js",
     "/js/boundary/componentes/encabezado_app.js",
+    "/js/boundary/componentes/estado_red.js",
     "/js/boundary/componentes/historial_pasos.js",
     "/js/boundary/componentes/instalador_app.js",
     "/js/boundary/componentes/lista_examenes.js",

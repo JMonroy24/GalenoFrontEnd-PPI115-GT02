@@ -10,7 +10,7 @@ suite("ConsultaService (unitaria)", () => {
     let fetchStub;
     const servicio = new ConsultaService();
 
-    teardown(() => fetchStub.restore());
+    teardown(() => fetchStub?.restore());
 
     test("findRange lee la respuesta estructurada y envía paginación y filtro", async () => {
         fetchStub = sinon.stub(window, "fetch").resolves({
@@ -133,5 +133,26 @@ suite("ConsultaService (unitaria)", () => {
         expect(error.status).to.equal(401);
         expect(error.message).to.equal("Token expirado");
         expect(error.details.reason).to.equal("expired");
+    });
+
+    test("rechaza con DefaultError 422 cuando el servidor indica entidad no procesable", async () => {
+        fetchStub = sinon.stub(window, "fetch").resolves({
+            ok: false,
+            status: 422,
+            clone: () => ({
+                json: async () => ({ message: "Datos de consulta inválidos" })
+            })
+        });
+
+        let error;
+        try {
+            await servicio.findRange(0, 10);
+        } catch (err) {
+            error = err;
+        }
+
+        assert.instanceOf(error, DefaultError);
+        expect(error.status).to.equal(422);
+        expect(error.mensaje).to.equal("Datos de consulta inválidos");
     });
 });

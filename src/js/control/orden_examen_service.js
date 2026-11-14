@@ -27,6 +27,8 @@ export class OrdenExamenService extends DefaultService {
      * Registra en lote las órdenes de examen de una consulta.
      * Cada elemento puede ser un id de tipo de examen o un objeto de orden.
      * Si se recibe un paso, sus órdenes quedan vinculadas a `idPaso`.
+     * Se envían todas en paralelo y, si alguna falla, se lanza el primer error
+     * después de haber intentado todas (no se aborta a mitad del lote).
      *
      * @param {string|number} idConsulta
      * @param {Array<string|number|object>} ordenes
@@ -34,8 +36,13 @@ export class OrdenExamenService extends DefaultService {
      * @returns {Promise<Array<object>>} Órdenes creadas.
      */
     async crearOrdenes(idConsulta, ordenes = [], contextoPaso = null) {
-        const contexto = normalizarContextoPaso(contextoPaso);
         const lista = Array.isArray(ordenes) ? ordenes : [ordenes];
+
+        if (lista.length === 0) {
+            return [];
+        }
+
+        const contexto = normalizarContextoPaso(contextoPaso);
         const payloads = lista.map((orden) =>
             (orden !== null && typeof orden === "object")
                 ? { ...orden, ...contexto, idConsulta }
