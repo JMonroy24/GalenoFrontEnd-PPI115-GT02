@@ -360,14 +360,18 @@ export class TarjetaConsulta extends HTMLElement {
 
     _obtenerPasos(datos) {
         const fuentes = [
-            datos.pasos,
             datos.pasosEjecutados,
             datos.historialPasos,
             datos.historial,
-            datos.atencion?.pasos,
+            datos.atencion?.pasosEjecutados,
+            datos.atencion?.historialPasos,
             datos.atencion?.historial,
-            datos.cita?.pasos,
-            datos.cita?.historial
+            datos.cita?.pasosEjecutados,
+            datos.cita?.historialPasos,
+            datos.cita?.historial,
+            datos.pasos,
+            datos.atencion?.pasos,
+            datos.cita?.pasos
         ];
 
         for (const fuente of fuentes) {
