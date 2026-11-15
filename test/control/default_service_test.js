@@ -25,6 +25,51 @@ suite("DefaultService (unitaria)", () => {
         store.setState({ online: true });
     });
 
+    test("findRange lee items, total, first y max del cuerpo JSON", async () => {
+        const payload = {
+            items: [{ id: 21, nombre: "Prueba" }],
+            total: 45,
+            first: 20,
+            max: 20
+        };
+        fetchStub.resolves({
+            ok: true,
+            status: 200,
+            json: async () => payload
+        });
+
+        const respuesta = await servicio.findRange(20, 20, "consulta de prueba");
+
+        assert.instanceOf(respuesta, DefaultResponse);
+        expect(respuesta.items).to.deep.equal(payload.items);
+        expect(respuesta.datos).to.equal(respuesta.items);
+        expect(respuesta.total).to.equal(45);
+        expect(respuesta.first).to.equal(20);
+        expect(respuesta.max).to.equal(20);
+        expect(fetchStub.calledOnce).to.be.true;
+        expect(fetchStub.firstCall.args[0]).to.equal(
+            "https://localhost:9443/galenoSV/api/v1/pruebas?first=20&max=20&q=consulta+de+prueba"
+        );
+        expect(fetchStub.firstCall.args[1].method).to.equal("GET");
+    });
+
+    test("findRange conserva una página vacía con total 0", async () => {
+        const payload = { items: [], total: 0, first: 0, max: 20 };
+        fetchStub.resolves({
+            ok: true,
+            status: 200,
+            json: async () => payload
+        });
+
+        const respuesta = await servicio.findRange(0, 20);
+
+        assert.instanceOf(respuesta, DefaultResponse);
+        expect(respuesta.items).to.deep.equal([]);
+        expect(respuesta.total).to.equal(0);
+        expect(respuesta.first).to.equal(0);
+        expect(respuesta.max).to.equal(20);
+    });
+
     test("bloquea POST, PUT, PATCH y DELETE cuando no hay conexión", async () => {
         for (const method of ["POST", "PUT", "PATCH", "DELETE"]) {
             let error = null;
