@@ -172,6 +172,12 @@ suite("LoginView (unitaria)", () => {
         expect(buscador.value).to.equal("1");
         input.value = "01234567-8";
         fetchStub.resetHistory();
+        navigateStub.callsFake((hash) => {
+            expect(hash).to.equal("#dashboard");
+            expect(store.isAuthenticated()).to.be.true;
+            expect(routerModule.router.canNavigate(hash)).to.be.true;
+            expect(JSON.parse(sessionStorage.getItem(SESSION_STORAGE_KEY)).clinicaActiva.idClinica).to.equal(3);
+        });
 
         enviarFormulario();
         await esperar(60);
@@ -187,6 +193,7 @@ suite("LoginView (unitaria)", () => {
         assert.isDefined(llamadaLogin);
         assert.isDefined(llamadaRoles);
         expect(navigateStub.calledWith("#dashboard")).to.be.true;
+        expect(navigateStub.calledOnce).to.be.true;
         expect(host.sesion.perfil.idPersona).to.equal(42);
 
         const urlLogin = new URL(llamadaLogin.args[0]);
@@ -208,5 +215,35 @@ suite("LoginView (unitaria)", () => {
         expect(buscador.value).to.equal("");
         expect(host.cargando).to.be.false;
         expect(host.shadowRoot.querySelector("#btn-iniciar-sesion").disabled).to.be.false;
+    });
+
+    test("no navega ni crea una sesión para una persona con rol de paciente", async () => {
+        fetchStub.withArgs(sinon.match((url) => String(url).includes("/personas-roles?")))
+            .resolves(responder({ items: [{ activo: true, rol: { nombre: "PACIENTE" } }] }));
+        host.shadowRoot.querySelector("#numero-documento").value = "01234567-8";
+
+        enviarFormulario();
+        await esperar(60);
+
+        expect(navigateStub.called).to.be.false;
+        expect(store.isAuthenticated()).to.be.false;
+        expect(sessionStorage.getItem(SESSION_STORAGE_KEY)).to.be.null;
+        expect(host.sesion).to.be.null;
+        expect(host.cargando).to.be.false;
+    });
+
+    test("ignora envíos duplicados mientras se autentica", async () => {
+        host.shadowRoot.querySelector("#numero-documento").value = "01234567-8";
+        fetchStub.resetHistory();
+
+        enviarFormulario();
+        enviarFormulario();
+        await esperar(60);
+
+        const llamadasPersonas = fetchStub.getCalls().filter((llamada) => (
+            String(llamada.args[0]).includes("/personas?")
+        ));
+        expect(llamadasPersonas).to.have.length(1);
+        expect(navigateStub.calledOnceWith("#dashboard")).to.be.true;
     });
 });

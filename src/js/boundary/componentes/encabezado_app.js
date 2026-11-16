@@ -1,4 +1,5 @@
 import "./instalador_app.js";
+import { authService } from "../../control/auth_service.js";
 
 export default class EncabezadoApp extends HTMLElement {
     constructor() {
@@ -136,7 +137,10 @@ export default class EncabezadoApp extends HTMLElement {
         const btnCambiarRol = this.shadowRoot.querySelector("#btnCambiarRol");
         const btnCerrarSesion = this.shadowRoot.querySelector("#btnCerrarSesion");
         btnCambiarRol.addEventListener("click", navegarALogin);
-        btnCerrarSesion.addEventListener("click", navegarALogin);
+        btnCerrarSesion.addEventListener("click", () => {
+            authService.logout();
+            navegarALogin();
+        });
     }
 }
 

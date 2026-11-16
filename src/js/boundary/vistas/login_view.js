@@ -145,9 +145,9 @@ export class LoginView extends HTMLElement {
             numeroDocumento.setAttribute("aria-invalid", "false");
         });
 
-        form.addEventListener("submit", (evento) => {
+        form.addEventListener("submit", async (evento) => {
             evento.preventDefault();
-            this._iniciarSesion();
+            await this._iniciarSesion();
         });
     }
 
@@ -158,7 +158,7 @@ export class LoginView extends HTMLElement {
 
         const buscador = this.shadowRoot.querySelector("buscador-tipo-documentos");
         const numeroDocumento = this.shadowRoot.querySelector("#numero-documento");
-        const tipoDocumento = buscador.value;
+        const tipoDocumento = String(buscador?.value ?? "").trim();
         const numero = numeroDocumento.value.trim();
         const tipoValido = tipoDocumento !== "";
         const numeroValido = numero !== "";
@@ -173,21 +173,24 @@ export class LoginView extends HTMLElement {
         }
 
         this._establecerCargando(true);
+        this.sesion = null;
 
         try {
             this.sesion = await authService.login(tipoDocumento, numero);
-            navigate("#dashboard");
-            this._mostrarBienvenida();
-            this._resetearFormulario();
         } catch (error) {
             GeneradorMensajes.crearMensaje(
                 "Error al iniciar sesión",
                 error?.mensaje ?? error?.message ?? "No se pudo iniciar sesión.",
                 "error"
             );
+            return;
         } finally {
             this._establecerCargando(false);
         }
+
+        navigate("#dashboard");
+        this._mostrarBienvenida();
+        this._resetearFormulario();
     }
 
     _mostrarBienvenida() {

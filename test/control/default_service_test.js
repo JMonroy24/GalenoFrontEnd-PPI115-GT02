@@ -121,6 +121,40 @@ suite("DefaultService (unitaria)", () => {
         expect(mensajeStub.called).to.be.false;
     });
 
+    test("informa errores de red, HTTPS o CORS sin confundirlos con respuestas HTTP", async () => {
+        fetchStub.rejects(new TypeError("Failed to fetch"));
+
+        let error;
+        try {
+            await servicio.findRange();
+        } catch (err) {
+            error = err;
+        }
+
+        assert.instanceOf(error, DefaultError);
+        expect(error.status).to.be.null;
+        expect(error.error.code).to.equal("NETWORK_ERROR");
+        expect(error.message).to.contain("https://localhost:9443");
+        expect(error.message).to.contain("certificado HTTPS");
+        expect(error.message).to.contain("CORS");
+        expect(error.details.causa).to.equal("Failed to fetch");
+        expect(fetchStub.calledOnce).to.be.true;
+    });
+
+    test("conserva las cancelaciones de solicitudes", async () => {
+        const cancelacion = new DOMException("Solicitud cancelada", "AbortError");
+        fetchStub.rejects(cancelacion);
+
+        let error;
+        try {
+            await servicio.findRange();
+        } catch (err) {
+            error = err;
+        }
+
+        expect(error).to.equal(cancelacion);
+    });
+
     test("permite escrituras cuando la conexión está disponible", async () => {
         store.setState({ online: true });
         fetchStub.resolves({

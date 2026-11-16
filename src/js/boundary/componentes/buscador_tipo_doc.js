@@ -24,6 +24,9 @@ export class BuscadorTipoDocumentos extends HTMLElement {
             this.items = items.filter((tipoDocumento) => tipoDocumento?.activo !== false);
             this._cargarOpciones();
         } catch (error) {
+            const select = this.shadowRoot.querySelector("select");
+            select.setAttribute("aria-busy", "false");
+            select.options[0].textContent = "No se pudieron cargar los tipos de documento";
             GeneradorMensajes.crearMensaje(
                 "Error al cargar tipos de documento",
                 error?.mensaje ?? error?.message ?? "",
@@ -46,7 +49,9 @@ export class BuscadorTipoDocumentos extends HTMLElement {
                 }
             </style>
             <label for="tipo-documento">Tipo de documento</label>
-            <select id="tipo-documento" class="form-control" aria-label="Tipo de documento"></select>
+            <select id="tipo-documento" class="form-control" aria-label="Tipo de documento" aria-busy="true" disabled>
+                <option value="">Cargando tipos de documento…</option>
+            </select>
         `;
 
         const select = this.shadowRoot.querySelector("select");
@@ -73,6 +78,16 @@ export class BuscadorTipoDocumentos extends HTMLElement {
         }
 
         select.replaceChildren();
+        select.setAttribute("aria-busy", "false");
+        select.disabled = this.items.length === 0;
+
+        if (this.items.length === 0) {
+            const opcion = document.createElement("option");
+            opcion.value = "";
+            opcion.textContent = "No hay tipos de documento disponibles";
+            select.appendChild(opcion);
+            return;
+        }
 
         this.items.forEach((tipoDocumento) => {
             const opcion = document.createElement("option");

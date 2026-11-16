@@ -15,7 +15,8 @@ suite("AuthService (unitaria)", () => {
         idPersona: 42,
         nombres: "Carlos",
         apellidos: "López",
-        numeroDocumento: "01234567-8"
+        numeroDocumento: "01234567-8",
+        clinicas: [{ idClinica: 3, nombre: "Clínica Norte" }]
     };
 
     const rolesEmpleadoValidos = [
@@ -72,6 +73,9 @@ suite("AuthService (unitaria)", () => {
             expect(sesion.perfil).to.deep.equal(perfilPersonaFicticia);
             expect(sesion.token).to.equal("token-jwt-secreto");
             expect(sesion.roles).to.deep.equal(rolesEmpleadoValidos);
+            expect(servicio.sesion).to.equal(sesion);
+            expect(store.isAuthenticated()).to.be.true;
+            expect(new URL(fetchStub.firstCall.args[0]).pathname).to.match(/\/personas$/);
 
             // Verifica persistencia en sessionStorage
             const rawStorage = sessionStorage.getItem(SESSION_STORAGE_KEY);
@@ -141,6 +145,82 @@ suite("AuthService (unitaria)", () => {
             assert.instanceOf(errorLanzado, DefaultError);
             expect(errorLanzado.status).to.equal(403);
             expect(errorLanzado.message).to.contain("no tiene roles de empleado activos");
+        });
+
+        test("no autentica a otra persona si el servidor devuelve una lista sin filtrar", async () => {
+            fetchStub = sinon.stub(window, "fetch").resolves({
+                ok: true,
+                status: 200,
+                json: async () => ({ items: [{ ...perfilPersonaFicticia, numeroDocumento: "99999999-9" }] })
+            });
+            buscarRolesStub = sinon.stub(personaRolService, "buscarRolesPorPersona");
+
+            let error;
+            try { await servicio.login(1, "01234567-8"); } catch (err) { error = err; }
+
+            expect(error?.status).to.equal(404);
+            expect(buscarRolesStub.called).to.be.false;
+            expect(store.isAuthenticated()).to.be.false;
+        });
+
+        test("rechaza roles desconocidos, de otra persona o con la definición inactiva", async () => {
+            fetchStub = sinon.stub(window, "fetch").resolves({
+                ok: true,
+                status: 200,
+                json: async () => ({ items: [perfilPersonaFicticia] })
+            });
+            buscarRolesStub = sinon.stub(personaRolService, "buscarRolesPorPersona").resolves({ items: [
+                { activo: true, rol: { nombre: "INVITADO" } },
+                { ...rolesEmpleadoValidos[0], idPersona: 99 },
+                { activo: true, rol: { nombre: "MEDICO", esEmpleado: true, activo: false } },
+                { activo: "false", rol: { nombre: "EMPLEADO" } }
+            ] });
+
+            let error;
+            try { await servicio.login(1, "01234567-8"); } catch (err) { error = err; }
+
+            expect(error?.status).to.equal(403);
+            expect(sessionStorage.getItem(SESSION_STORAGE_KEY)).to.be.null;
+            expect(store.isAuthenticated()).to.be.false;
+        });
+
+        test("elige la clínica del rol activo y permite sesiones sin token", async () => {
+            fetchStub = sinon.stub(window, "fetch").callsFake(async (url) => {
+                const recurso = new URL(url);
+                if (recurso.pathname.endsWith("/personas-roles")) {
+                    expect(recurso.searchParams.get("q")).to.equal("42");
+                    return { ok: true, json: async () => ({ items: [{
+                        idPersona: 42, activo: true, rol: { nombre: "Médico general" }, idClinica: 8
+                    }] }) };
+                }
+                expect(recurso.pathname).to.match(/\/personas$/);
+                return { ok: true, json: async () => ({ items: [perfilPersonaFicticia] }) };
+            });
+
+            const sesion = await servicio.login(1, "01234567-8");
+
+            expect(fetchStub.callCount).to.equal(2);
+            expect(sesion.token).to.be.null;
+            expect(sesion.clinicaActiva.idClinica).to.equal(8);
+            expect(store.isAuthenticated()).to.be.true;
+            expect(JSON.parse(sessionStorage.getItem(SESSION_STORAGE_KEY)).clinicaActiva.idClinica).to.equal(8);
+        });
+
+        test("rechaza una sesión sin clínica para evitar rebotes del dashboard al login", async () => {
+            fetchStub = sinon.stub(window, "fetch").resolves({
+                ok: true,
+                json: async () => ({ items: [{ ...perfilPersonaFicticia, clinicas: [] }] })
+            });
+            buscarRolesStub = sinon.stub(personaRolService, "buscarRolesPorPersona")
+                .resolves({ items: rolesEmpleadoValidos });
+
+            let error;
+            try { await servicio.login(1, "01234567-8"); } catch (err) { error = err; }
+
+            expect(error?.status).to.equal(403);
+            expect(error?.message).to.contain("clínica activa");
+            expect(store.isAuthenticated()).to.be.false;
+            expect(sessionStorage.getItem(SESSION_STORAGE_KEY)).to.be.null;
         });
     });
 
