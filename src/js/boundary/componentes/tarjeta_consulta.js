@@ -22,8 +22,8 @@ export class TarjetaConsulta extends HTMLElement {
 
     render() {
         const datos = {
-            ...(this._consulta ?? {}),
-            ...(this._consulta?.cita ?? {})
+            ...(this._consulta?.cita ?? {}),
+            ...(this._consulta ?? {})
         };
         const procedimientos = this._obtenerProcedimientos(datos);
         const estado = this._obtenerEstado(datos);
@@ -201,6 +201,14 @@ export class TarjetaConsulta extends HTMLElement {
                 </header>
                 <dl class="datos">
                     <div class="dato">
+                        <dt>Paciente</dt>
+                        <dd id="paciente"></dd>
+                    </div>
+                    <div class="dato">
+                        <dt>Documento</dt>
+                        <dd id="documento-paciente"></dd>
+                    </div>
+                    <div class="dato">
                         <dt>Hora</dt>
                         <dd id="hora"></dd>
                     </div>
@@ -238,6 +246,15 @@ export class TarjetaConsulta extends HTMLElement {
         `;
 
         this.shadowRoot.querySelector("#fecha").textContent = this._obtenerFecha(datos);
+        const paciente = datos.paciente ?? datos.persona ?? datos.idPersona ?? {};
+        this.shadowRoot.querySelector("#paciente").textContent = typeof paciente === "string"
+            ? paciente
+            : paciente.nombreCompleto || [
+                paciente.nombres ?? paciente.nombre,
+                Array.isArray(paciente.apellidos) ? paciente.apellidos.join(" ") : paciente.apellidos
+            ].filter(Boolean).join(" ") || "Sin paciente";
+        this.shadowRoot.querySelector("#documento-paciente").textContent =
+            paciente.numeroDocumento ?? paciente.documento ?? datos.numeroDocumento ?? "Sin documento";
         this.shadowRoot.querySelector("#hora").textContent = this._obtenerHora(datos);
         this.shadowRoot.querySelector("#clinica").textContent = this._obtenerClinica(datos);
         this.shadowRoot.querySelector("#estado-texto").textContent = estado;
@@ -263,11 +280,21 @@ export class TarjetaConsulta extends HTMLElement {
         const historialVacio = this.shadowRoot.querySelector("#historial-vacio");
 
         historial.pasos = pasos;
-        historialDesplegable.hidden = pasos.length === 0;
-        historialVacio.hidden = pasos.length > 0;
-        historialContador.textContent = pasos.length > 0
-            ? `(${pasos.length})`
+        const cantidad = historial.cantidadRegistros;
+        historialDesplegable.hidden = cantidad === 0;
+        historialVacio.hidden = cantidad > 0;
+        historialContador.textContent = cantidad > 0
+            ? `(${cantidad})`
             : "";
+        for (const tipo of ["registro-abierto", "registro-cerrado"]) {
+            historial.addEventListener(tipo, (evento) => {
+                this.dispatchEvent(new CustomEvent(`registro-consulta-${tipo === "registro-abierto" ? "abierto" : "cerrado"}`, {
+                    bubbles: true,
+                    composed: true,
+                    detail: { consulta: this._consulta, paso: evento.detail.paso }
+                }));
+            });
+        }
     }
 
     _obtenerFecha(datos) {
@@ -360,6 +387,11 @@ export class TarjetaConsulta extends HTMLElement {
 
     _obtenerPasos(datos) {
         const fuentes = [
+            datos.pasosClinicos,
+            datos.pasos_clinicos,
+            datos.consulta_procedimiento_paso,
+            datos.consultaProcedimientoPasos,
+            datos.consultaProcedimientoPasoList,
             datos.pasosEjecutados,
             datos.historialPasos,
             datos.historial,
@@ -382,7 +414,20 @@ export class TarjetaConsulta extends HTMLElement {
             }
         }
 
-        return [];
+        // Si los pasos vienen dentro de cada procedimiento, conserva ese nivel
+        // del árbol, incluyendo procedimientos que ya no están activos.
+        const procedimientos = this._normalizarPasos(datos.procedimientos ?? datos.consultaProcedimientos);
+        return procedimientos.flatMap((procedimiento) => {
+            const pasos = this._normalizarPasos(
+                procedimiento.pasosClinicos ?? procedimiento.consulta_procedimiento_paso
+                ?? procedimiento.consultaProcedimientoPasoList ?? procedimiento.pasos
+            );
+            return pasos.length > 0 ? [{
+                nombre: this._nombreProcedimiento(procedimiento),
+                esGrupoHistorial: true,
+                pasos
+            }] : [];
+        });
     }
 
     _normalizarPasos(valor) {
@@ -400,7 +445,7 @@ export class TarjetaConsulta extends HTMLElement {
             ?? valor.resultado
             ?? valor.datos;
 
-        return Array.isArray(lista) ? lista : [];
+        return lista && lista !== valor ? this._normalizarPasos(lista) : [];
     }
 
     _nombreProcedimiento(procedimiento) {
@@ -441,4 +486,6 @@ export class TarjetaConsulta extends HTMLElement {
 
 export default TarjetaConsulta;
 
-customElements.define("tarjeta-consulta", TarjetaConsulta);
+if (!customElements.get("tarjeta-consulta")) {
+    customElements.define("tarjeta-consulta", TarjetaConsulta);
+}

@@ -148,6 +148,41 @@ suite("TarjetaConsulta (unitaria)", () => {
         });
     });
 
+    test("agrupa los pasos ejecutados por procedimiento y cuenta también los descendientes", () => {
+        host.consulta = crearConsulta({ procedimientos: [
+            { nombre: "Consulta General", activo: false, pasos: [
+                { nombre: "Exploración", estado: "COMPLETADO", pasos: [
+                    { nombre: "Medición", estado: "COMPLETADO", valor: { notas: "Normal" } }
+                ] },
+                { nombre: "Pendiente", estado: "PENDIENTE" }
+            ] },
+            { nombre: "Laboratorio", pasos: [
+                { nombre: "Hemograma", estado: "COMPLETADO", valor: { notas: "Normal" } }
+            ] }
+        ] });
+        const historial = host.shadowRoot.querySelector("historial-pasos");
+        expect(historial.shadowRoot.querySelectorAll("#lista-pasos > li")).to.have.length(2);
+        expect(historial.shadowRoot.querySelectorAll(".boton")).to.have.length(3);
+        expect(host.shadowRoot.querySelector("#historial-contador").textContent).to.equal("(3)");
+    });
+
+    test("una consulta con pasos solamente pendientes muestra el historial vacío", () => {
+        host.consulta = crearConsulta({ pasosClinicos: [{ nombre: "Triaje", estado: "PENDIENTE" }] });
+        expect(host.shadowRoot.querySelector("#historial-desplegable").hidden).to.be.true;
+        expect(host.shadowRoot.querySelector("#historial-vacio").hidden).to.be.false;
+    });
+
+    test("prioriza los pasos actuales de HU4 sobre el historial anterior de la cita", () => {
+        host.consulta = crearConsulta({
+            pasosClinicos: [{ nombre: "Nuevo", estado: "COMPLETADO", valor: { notas: "Actualizado" } }],
+            cita: { pasosClinicos: [{ nombre: "Anterior", estado: "COMPLETADO" }] }
+        });
+        const historial = host.shadowRoot.querySelector("historial-pasos");
+        expect(historial.shadowRoot.querySelector(".paso-nombre").textContent).to.equal("Nuevo");
+        historial.shadowRoot.querySelector(".boton").click();
+        expect(historial.shadowRoot.querySelector("#detalle-registro").textContent).to.include("Actualizado");
+    });
+
     // ── Bloque 3: Proyección de acciones mediante <slot> ──────────────────────
 
     suite("3. Proyección de botones en <slot name='acciones'>", () => {
@@ -202,7 +237,7 @@ suite("TarjetaConsulta (unitaria)", () => {
 
             expect(historial.pasos).to.deep.equal(pasosFicticios);
             expect(desplegable.hidden).to.be.false;
-            expect(contador.textContent).to.equal("(1)");
+            expect(contador.textContent).to.equal("(2)");
         });
 
         test("el subcomponente renderiza el profesional y fecha/hora del paso", () => {

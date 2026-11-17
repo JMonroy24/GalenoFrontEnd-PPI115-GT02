@@ -3,6 +3,9 @@ export class HistorialPasos extends HTMLElement {
         super();
         this.attachShadow({ mode: "open" });
         this._pasos = [];
+        this._pasoRegistro = null;
+        this._botonRegistro = null;
+        this._cantidadRegistros = 0;
     }
 
     get pasos() {
@@ -18,7 +21,17 @@ export class HistorialPasos extends HTMLElement {
         this.render();
     }
 
+    disconnectedCallback() {
+        this._cerrarRegistro();
+    }
+
+    get cantidadRegistros() {
+        return this._cantidadRegistros;
+    }
+
     render() {
+        this._cerrarRegistro();
+        this._cantidadRegistros = 0;
         this.shadowRoot.innerHTML = `
             <link rel="stylesheet" href="recursos/estilos/principal.css">
             <style>
@@ -188,8 +201,10 @@ export class HistorialPasos extends HTMLElement {
                             id="cerrar-registro"
                             class="boton-cerrar"
                             aria-label="Cerrar registro"
+                            autofocus
                         >Cerrar</button>
                     </header>
+                    <p id="datos-registro" class="paso-datos"></p>
                     <div id="detalle-registro" class="detalle-registro"></div>
                 </div>
             </dialog>
@@ -197,7 +212,7 @@ export class HistorialPasos extends HTMLElement {
 
         const lista = this.shadowRoot.querySelector("#lista-pasos");
         const vacio = this.shadowRoot.querySelector("#historial-vacio");
-        const pasos = this._normalizarPasos(this._pasos);
+        const pasos = this._filtrarEjecutados(this._normalizarPasos(this._pasos));
 
         lista.replaceChildren();
         vacio.hidden = pasos.length > 0;
@@ -206,8 +221,15 @@ export class HistorialPasos extends HTMLElement {
         const dialogo = this.shadowRoot.querySelector("#dialogo-registro");
         const cerrar = this.shadowRoot.querySelector("#cerrar-registro");
 
-        cerrar.addEventListener("click", () => this._cerrarRegistro());
+        cerrar.addEventListener("click", (evento) => {
+            evento.stopPropagation();
+            this._cerrarRegistro();
+        });
+        dialogo.addEventListener("close", () => {
+            if (!dialogo.open) this._notificarCierre();
+        });
         dialogo.addEventListener("click", (evento) => {
+            evento.stopPropagation();
             if (evento.target === dialogo) {
                 this._cerrarRegistro();
             }
@@ -228,6 +250,7 @@ export class HistorialPasos extends HTMLElement {
             const nombre = document.createElement("h4");
             nombre.className = "paso-nombre";
             nombre.textContent = this._nombrePaso(paso);
+            const esGrupo = paso.esGrupoHistorial === true;
 
             const datos = document.createElement("p");
             datos.className = "paso-datos";
@@ -241,15 +264,25 @@ export class HistorialPasos extends HTMLElement {
             fechaHora.textContent = `Fecha y hora: ${this._fechaHoraPaso(paso)}`;
 
             datos.append(profesional, fechaHora);
-            info.append(nombre, datos);
+            info.append(nombre);
+            if (!esGrupo) info.append(datos);
 
             const boton = document.createElement("button");
             boton.type = "button";
             boton.className = "boton";
             boton.textContent = "Ver Registro";
-            boton.addEventListener("click", () => this._abrirRegistro(paso));
+            boton.setAttribute("aria-haspopup", "dialog");
+            boton.setAttribute("aria-label", `Ver Registro de ${this._nombrePaso(paso)}`);
+            boton.addEventListener("click", (evento) => {
+                evento.stopPropagation();
+                this._abrirRegistro(paso, boton);
+            });
 
-            contenido.append(info, boton);
+            contenido.append(info);
+            if (!esGrupo) {
+                contenido.append(boton);
+                this._cantidadRegistros++;
+            }
             item.appendChild(contenido);
 
             const subpasos = this._obtenerSubpasos(paso);
@@ -264,33 +297,77 @@ export class HistorialPasos extends HTMLElement {
         });
     }
 
-    _abrirRegistro(paso) {
+    _abrirRegistro(paso, boton = null) {
         const dialogo = this.shadowRoot.querySelector("#dialogo-registro");
         const titulo = this.shadowRoot.querySelector("#titulo-registro");
         const detalle = this.shadowRoot.querySelector("#detalle-registro");
 
         titulo.textContent = this._nombrePaso(paso);
         detalle.textContent = this._detallePaso(paso);
+        this.shadowRoot.querySelector("#datos-registro").textContent =
+            `Profesional: ${this._nombreProfesional(paso)} · Fecha y hora: ${this._fechaHoraPaso(paso)}`;
+        this._pasoRegistro = paso;
+        this._botonRegistro = boton;
 
         if (typeof dialogo.showModal !== "function") {
             dialogo.setAttribute("open", "");
-            return;
-        }
-
-        if (!dialogo.open) {
+        } else if (!dialogo.open) {
             dialogo.showModal();
         }
+        this.dispatchEvent(new CustomEvent("registro-abierto", {
+            bubbles: true,
+            composed: true,
+            detail: { paso }
+        }));
     }
 
     _cerrarRegistro() {
         const dialogo = this.shadowRoot.querySelector("#dialogo-registro");
+        if (!dialogo?.open) return;
 
         if (typeof dialogo.close === "function") {
             dialogo.close();
-            return;
+        } else {
+            dialogo.removeAttribute("open");
         }
+        this._notificarCierre();
+    }
 
-        dialogo.removeAttribute("open");
+    _notificarCierre() {
+        if (!this._pasoRegistro) return;
+        const paso = this._pasoRegistro;
+        this._pasoRegistro = null;
+        this._botonRegistro?.focus();
+        this._botonRegistro = null;
+        this.dispatchEvent(new CustomEvent("registro-cerrado", {
+            bubbles: true,
+            composed: true,
+            detail: { paso }
+        }));
+    }
+
+    _filtrarEjecutados(pasos, ancestros = new Set()) {
+        return pasos.flatMap((paso) => {
+            if (!paso || ancestros.has(paso)) return [];
+            const ruta = new Set(ancestros).add(paso);
+            const subpasos = this._obtenerSubpasos(paso);
+            const hijos = this._filtrarEjecutados(subpasos, ruta);
+            const estadoOriginal = paso.estadoPaso ?? paso.estado ?? "";
+            const estado = String(estadoOriginal?.nombre ?? estadoOriginal?.descripcion
+                ?? estadoOriginal?.codigo ?? estadoOriginal?.estado ?? estadoOriginal)
+                .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+                .toUpperCase().trim().replace(/[\s-]+/g, "_");
+            const completado = ["COMPLETADO", "COMPLETADA", "FINALIZADO", "FINALIZADA", "EJECUTADO", "REALIZADO"].includes(estado);
+            // Los registros antiguos sin estado conservan su contenido y metadatos.
+            const tieneRegistro = paso.valor != null || paso.consulta_procedimiento_paso?.valor != null
+                || paso.fechaHoraEjecucion || paso.fechaHoraRegistro || paso.contenidoCompleto
+                || paso.contenido || paso.detalle || paso.registro || paso.notas;
+            const esGrupo = paso.esGrupoHistorial === true || (subpasos.length > 0 && !estado && !tieneRegistro);
+            const ejecutado = !esGrupo && (completado || !estado);
+            if (!ejecutado && hijos.length === 0) return [];
+            if (typeof paso === "string") return [paso];
+            return [{ ...paso, pasos: hijos, esGrupoHistorial: !ejecutado }];
+        });
     }
 
     _normalizarPasos(valor) {
@@ -346,6 +423,8 @@ export class HistorialPasos extends HTMLElement {
 
         return paso?.nombre
             ?? paso?.nombrePaso
+            ?? paso?.idProcedimientoPaso?.nombre
+            ?? paso?.procedimientoPaso?.nombre
             ?? paso?.titulo
             ?? paso?.descripcion
             ?? paso?.procedimiento?.nombre
@@ -359,6 +438,8 @@ export class HistorialPasos extends HTMLElement {
             ?? paso?.responsable
             ?? paso?.medico
             ?? paso?.empleado
+            ?? paso?.idPersonaRol
+            ?? paso?.ejecutor
             ?? paso?.usuario;
 
         return this._nombrePersona(profesional) || "Sin profesional";
@@ -377,7 +458,7 @@ export class HistorialPasos extends HTMLElement {
             return String(persona);
         }
 
-        const personaInterna = persona.persona ?? persona.perfil;
+        const personaInterna = persona.persona ?? persona.perfil ?? persona.idPersona;
 
         if (personaInterna !== undefined && personaInterna !== null && personaInterna !== "") {
             return this._nombrePersona(personaInterna);
@@ -460,14 +541,17 @@ export class HistorialPasos extends HTMLElement {
             return paso;
         }
 
-        const detalle = paso.contenidoCompleto
+        const detalle = paso.consulta_procedimiento_paso?.valor
+            ?? paso.valor
+            ?? paso.contenidoCompleto
             ?? paso.contenido
             ?? paso.detalle
             ?? paso.registro
             ?? paso.observaciones
             ?? paso.notas
             ?? paso.descripcion
-            ?? paso.texto;
+            ?? paso.texto
+            ?? paso.datos;
 
         return this._textoDetalle(detalle) || "Sin registro disponible.";
     }
@@ -478,7 +562,12 @@ export class HistorialPasos extends HTMLElement {
         }
 
         if (typeof detalle === "string") {
-            return detalle;
+            try {
+                const datos = JSON.parse(detalle);
+                return typeof datos === "object" && datos !== null ? this._textoDetalle(datos) : detalle;
+            } catch (_) {
+                return detalle;
+            }
         }
 
         if (typeof detalle !== "object") {
@@ -490,6 +579,22 @@ export class HistorialPasos extends HTMLElement {
                 .map((item) => this._textoDetalle(item))
                 .filter(Boolean)
                 .join("\n");
+        }
+
+        if (["notas", "notasConsulta", "diagnostico", "diagnosticos", "plan", "planTratamiento"]
+            .some((clave) => Object.hasOwn(detalle, clave))) {
+            const diagnosticos = detalle.diagnostico ?? detalle.diagnosticos ?? [];
+            const lista = Array.isArray(diagnosticos) ? diagnosticos : [diagnosticos];
+            const textoDiagnosticos = lista.map((item) => {
+                if (item && typeof item === "object") {
+                    return [item.codigo ?? item.code, item.nombre ?? item.descripcion ?? item.description]
+                        .filter(Boolean).join(" — ") || this._textoDetalle(item);
+                }
+                return String(item ?? "");
+            }).filter(Boolean).join("\n");
+            return `Notas:\n${detalle.notas ?? detalle.notasConsulta ?? "Sin notas"}\n\n`
+                + `Diagnóstico CIE-10:\n${textoDiagnosticos || "Sin diagnósticos"}\n\n`
+                + `Plan de tratamiento:\n${detalle.plan ?? detalle.planTratamiento ?? "Sin plan"}`;
         }
 
         const interno = detalle.contenido
@@ -516,4 +621,6 @@ export class HistorialPasos extends HTMLElement {
 
 export default HistorialPasos;
 
-customElements.define("historial-pasos", HistorialPasos);
+if (!customElements.get("historial-pasos")) {
+    customElements.define("historial-pasos", HistorialPasos);
+}

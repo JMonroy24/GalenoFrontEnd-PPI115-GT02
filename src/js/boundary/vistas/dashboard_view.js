@@ -55,6 +55,7 @@ export class DashboardView extends HTMLElement {
     disconnectedCallback() {
         store.removeEventListener("state-changed", this.actualizarDesdeStore);
         this._cancelarDebounce();
+        this.solicitudActual++;
     }
 
     render() {
@@ -209,8 +210,9 @@ export class DashboardView extends HTMLElement {
                             aria-label="Periodo de las citas"
                         >
                             <option value="hoy">Hoy</option>
-                            <option value="pasado">Pasado</option>
-                            <option value="futuro">Futuro</option>
+                            <option value="pasado">Pasado (30 días)</option>
+                            <option value="futuro">Futuro (30 días)</option>
+                            <option value="personalizado">Rango personalizado</option>
                         </select>
                     </div>
                     <div class="campo">
@@ -221,6 +223,7 @@ export class DashboardView extends HTMLElement {
                             type="date"
                             class="form-control"
                             aria-label="Fecha desde"
+                            aria-describedby="error-fechas"
                         >
                     </div>
                     <div class="campo">
@@ -231,6 +234,7 @@ export class DashboardView extends HTMLElement {
                             type="date"
                             class="form-control"
                             aria-label="Fecha hasta"
+                            aria-describedby="error-fechas"
                         >
                     </div>
                     <div class="campo campo-busqueda">
@@ -245,6 +249,7 @@ export class DashboardView extends HTMLElement {
                         >
                     </div>
                 </div>
+                <p id="error-fechas" role="alert" hidden></p>
                 <div class="panel-principal">
                     <section class="seccion-citas" aria-label="Listado de Citas">
                         <div
@@ -277,7 +282,7 @@ export class DashboardView extends HTMLElement {
 
         selectPeriodo.addEventListener("change", () => {
             this.periodo = selectPeriodo.value || "hoy";
-            this._sincronizarFechasConPeriodo(this.periodo);
+            if (this.periodo !== "personalizado") this._sincronizarFechasConPeriodo(this.periodo);
             this._cancelarDebounce();
             this._cargarCitas();
         });
@@ -285,6 +290,8 @@ export class DashboardView extends HTMLElement {
         const manejarCambioFechas = () => {
             this.fechaDesde = inputFechaDesde.value;
             this.fechaHasta = inputFechaHasta.value;
+            this.periodo = "personalizado";
+            selectPeriodo.value = this.periodo;
             this._cancelarDebounce();
             this._cargarCitas();
         };
@@ -380,6 +387,8 @@ export class DashboardView extends HTMLElement {
 
     _programarBusqueda() {
         this._cancelarDebounce();
+        // Descarta respuestas del filtro anterior incluso durante el debounce.
+        this.solicitudActual++;
         this.temporizadorBusqueda = setTimeout(() => {
             this.temporizadorBusqueda = null;
             this._cargarCitas();
@@ -456,9 +465,8 @@ export class DashboardView extends HTMLElement {
 
     _construirFiltros() {
         const estado = store.getState();
-        const filtros = {
-            periodo: this.periodo || "hoy"
-        };
+        const filtros = {};
+        if (["hoy", "pasado", "futuro"].includes(this.periodo)) filtros.periodo = this.periodo;
         const idClinica = this._idClinica(estado?.clinicaActiva ?? estado?.activeClinic);
         const rolId = this._idRol(estado?.rolSeleccionado ?? estado?.selectedRole ?? estado?.rolActivo);
         const busqueda = (this.busqueda ?? "").trim();
@@ -488,6 +496,21 @@ export class DashboardView extends HTMLElement {
         return filtros;
     }
 
+    _validarFechas() {
+        const desde = this.shadowRoot.querySelector("#fechaDesde");
+        const hasta = this.shadowRoot.querySelector("#fechaHasta");
+        const error = this.shadowRoot.querySelector("#error-fechas");
+        const rangoInvertido = this.fechaDesde && this.fechaHasta && this.fechaDesde > this.fechaHasta;
+        const mensaje = !desde.validity.valid || !hasta.validity.valid
+            ? "Ingrese fechas válidas."
+            : rangoInvertido ? "La fecha Desde debe ser anterior o igual a la fecha Hasta." : "";
+        error.textContent = mensaje;
+        error.hidden = !mensaje;
+        desde.setAttribute("aria-invalid", String(Boolean(mensaje)));
+        hasta.setAttribute("aria-invalid", String(Boolean(mensaje)));
+        return !mensaje;
+    }
+
     async _cargarCitas() {
         const estadoCitas = this.shadowRoot?.querySelector("#estado-citas");
         const contenedor = this.shadowRoot?.querySelector("#citas");
@@ -499,12 +522,22 @@ export class DashboardView extends HTMLElement {
         const solicitud = ++this.solicitudActual;
         contenedor.replaceChildren();
         contenedor.hidden = true;
+        if (!this._validarFechas()) {
+            estadoCitas.hidden = true;
+            return;
+        }
+        const filtros = this._construirFiltros();
+        this.dispatchEvent(new CustomEvent("filtros-actualizados", {
+            bubbles: true,
+            composed: true,
+            detail: { filtros: { ...filtros } }
+        }));
         this._mostrarEstadoCitas("Cargando citas...");
 
         try {
-            const respuesta = await consultaService.buscarCitas(this._construirFiltros());
+            const respuesta = await consultaService.buscarCitas(filtros);
 
-            if (solicitud !== this.solicitudActual) {
+            if (solicitud !== this.solicitudActual || !this.isConnected) {
                 return;
             }
 
@@ -529,7 +562,7 @@ export class DashboardView extends HTMLElement {
                 contenedor.appendChild(tarjeta);
             });
         } catch (error) {
-            if (solicitud !== this.solicitudActual) {
+            if (solicitud !== this.solicitudActual || !this.isConnected) {
                 return;
             }
 
@@ -544,6 +577,7 @@ export class DashboardView extends HTMLElement {
 
     _crearTarjetaConsulta(cita) {
         const tarjeta = document.createElement("tarjeta-consulta");
+        tarjeta.setAttribute("role", "listitem");
         tarjeta.consulta = cita;
 
         const botonAtender = document.createElement("button");
