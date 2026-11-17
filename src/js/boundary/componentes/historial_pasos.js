@@ -5,6 +5,7 @@ export class HistorialPasos extends HTMLElement {
         this._pasos = [];
         this._pasoRegistro = null;
         this._botonRegistro = null;
+        this._pasosOriginales = new WeakMap();
     }
 
     get pasos() {
@@ -230,7 +231,6 @@ export class HistorialPasos extends HTMLElement {
                 this._cerrarRegistro();
             }
         });
-        dialogo.addEventListener("close", () => this._notificarCierre());
     }
 
     _renderizarPasos(contenedor, pasos) {
@@ -268,9 +268,16 @@ export class HistorialPasos extends HTMLElement {
             boton.type = "button";
             boton.className = "boton";
             boton.textContent = "Ver Registro";
-            boton.addEventListener("click", () => this._abrirRegistro(paso, boton));
+            boton.addEventListener("click", (evento) => {
+                evento.stopPropagation();
+                this._abrirRegistro(paso, boton);
+            });
 
-            contenido.append(info, boton);
+            contenido.append(info);
+            if (!esGrupo) {
+                contenido.append(boton);
+                this._cantidadRegistros++;
+            }
             item.appendChild(contenido);
 
             const subpasos = this._obtenerSubpasos(paso);
@@ -286,6 +293,7 @@ export class HistorialPasos extends HTMLElement {
     }
 
     _abrirRegistro(paso, boton = null) {
+        paso = this._pasosOriginales.get(paso) ?? paso;
         const dialogo = this.shadowRoot.querySelector("#dialogo-registro");
         const titulo = this.shadowRoot.querySelector("#titulo-registro");
         const detalle = this.shadowRoot.querySelector("#detalle-registro");
@@ -357,6 +365,7 @@ export class HistorialPasos extends HTMLElement {
                 .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
                 .toUpperCase().trim().replace(/[\s-]+/g, "_");
             const completado = ["COMPLETADO", "COMPLETADA", "FINALIZADO", "FINALIZADA", "EJECUTADO", "REALIZADO"].includes(estado);
+            // Los registros antiguos sin estado conservan su contenido y metadatos.
             const tieneRegistro = paso.valor != null || paso.consulta_procedimiento_paso?.valor != null
                 || paso.fechaHoraEjecucion || paso.fechaHoraRegistro || paso.contenidoCompleto
                 || paso.contenido || paso.detalle || paso.registro || paso.notas;
@@ -364,7 +373,9 @@ export class HistorialPasos extends HTMLElement {
             const ejecutado = !esGrupo && (completado || !estado);
             if (!ejecutado && hijos.length === 0) return [];
             if (typeof paso === "string") return [paso];
-            return [{ ...paso, pasos: hijos, esGrupoHistorial: !ejecutado }];
+            const registro = { ...paso, pasos: hijos, esGrupoHistorial: !ejecutado };
+            this._pasosOriginales.set(registro, paso);
+            return [registro];
         });
     }
 

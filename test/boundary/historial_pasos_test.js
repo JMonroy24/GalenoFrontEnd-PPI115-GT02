@@ -289,7 +289,7 @@ suite("HistorialPasos (unitaria)", () => {
         }];
         host.shadowRoot.querySelector(".boton").click();
         const texto = host.shadowRoot.querySelector("#detalle-registro").textContent;
-        expect(texto).to.include("Notas:\nEstable");
+        expect(texto).to.include("Notas clínicas:\nEstable");
         expect(texto).to.include("J00 — Rinofaringitis");
         expect(texto).to.include("Plan de tratamiento:\nReposo");
         expect(host.shadowRoot.querySelector("#datos-registro").textContent).to.include("Ana Pérez");

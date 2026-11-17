@@ -110,7 +110,6 @@ export class Store extends EventTarget {
     hasActiveSession() {
         return Boolean(
             this.state.usuario && (this.state.clinica || this.state.clinicaActiva)
-            && Array.isArray(this.state.roles) && this.state.roles.some(esRolEmpleado)
         );
     }
 

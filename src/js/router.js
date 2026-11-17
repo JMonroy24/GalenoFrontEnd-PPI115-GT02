@@ -87,22 +87,7 @@ export class Router {
     }
 
     resolve() {
-        const hash = window.location.hash;
-        const route = this.normalizeRoute(hash);
-
-        if (!this.canNavigate(route)) {
-            const loginRoute = this.normalizeRoute("#login");
-            this.render(loginRoute);
-            return loginRoute;
-        }
-
-        if (!hash) {
-            this.navigate(route);
-            return route;
-        }
-
-        this.render(route);
-        return route;
+        return this.navigate(window.location.hash);
     }
 
     /**
@@ -118,15 +103,6 @@ export class Router {
     }
 
     hasActiveSession() {
-        try {
-            if (typeof sessionStorage === "undefined"
-                || sessionStorage.getItem("usuarioActivo") === null) {
-                return false;
-            }
-        } catch {
-            return false;
-        }
-
         return store.hasActiveSession();
     }
 
@@ -225,6 +201,11 @@ export class Router {
      */
     navigate(hash) {
         const { route, params } = parseRouteParams(hash);
+        // Resolver la guardia antes de cambiar el hash o montar una vista.
+        if ((!route || route === "login") && this.hasActiveSession()) {
+            return this.navigate("#dashboard");
+        }
+
         const resolvedRoute = route || this.defaultRoute;
 
         if (!this.canNavigate(resolvedRoute)) {

@@ -31,7 +31,7 @@ export const EstadoPaso = Object.freeze({
 });
 
 /** Textos de acción de la botonera. */
-const TEXTO_SIGUIENTE = "Guardar y Avanzar al Siguiente Paso >";
+const TEXTO_SIGUIENTE = "Guardar y Avanzar >";
 const TEXTO_FINALIZAR = "Finalizar Consulta";
 
 /**
@@ -60,6 +60,8 @@ export class AtencionConsultaView extends HTMLElement {
 
         /** @type {number} Paso activo en el stepper (0-based). */
         this._pasoActivo = 0;
+        this._indicePasoTrabajo = 0;
+        this._soloLectura = false;
         this._etapasFlujo = [...ETAPAS_FLUJO];
         this._borradores = new Map();
 
@@ -162,17 +164,20 @@ export class AtencionConsultaView extends HTMLElement {
      * Devuelve un objeto limpio con los valores actuales de los campos del formulario,
      * incluyendo los diagnósticos CIE-10 seleccionados.
      *
-     * @returns {{ notasConsulta: string, planTratamiento: string, diagnosticos: Array<object|string> }}
+     * @returns {{ notasConsulta: string, planTratamiento: string, diagnostico: string|Array<object|string>, diagnosticos: Array<object|string> }}
      */
     obtenerDatosFormulario() {
-        const notas = this.shadowRoot?.querySelector("#notas-consulta");
-        const plan = this.shadowRoot?.querySelector("#plan-tratamiento");
+        const notas = this.shadowRoot?.querySelector("#notas");
+        const plan = this.shadowRoot?.querySelector("#plan");
         const cie10 = this.shadowRoot?.querySelector("#cie10-busqueda");
+        const diagnostico = (this.shadowRoot?.querySelector("#diagnostico")?.value ?? "").trim();
+        const diagnosticos = cie10?.obtenerSeleccionados() ?? [...this._diagnosticos];
 
         return {
             notasConsulta: (notas?.value ?? "").trim(),
             planTratamiento: (plan?.value ?? "").trim(),
-            diagnosticos: cie10?.obtenerSeleccionados() ?? [...this._diagnosticos]
+            diagnostico: diagnostico || diagnosticos,
+            diagnosticos
         };
     }
 
@@ -182,8 +187,13 @@ export class AtencionConsultaView extends HTMLElement {
      * @param {{ notasConsulta?: string, planTratamiento?: string }} datos
      */
     cargarDatosFormulario(datos = {}) {
-        const notas = this.shadowRoot?.querySelector("#notas-consulta");
-        const plan = this.shadowRoot?.querySelector("#plan-tratamiento");
+        const notas = this.shadowRoot?.querySelector("#notas");
+        const plan = this.shadowRoot?.querySelector("#plan");
+        const diagnostico = this.shadowRoot?.querySelector("#diagnostico");
+
+        if (diagnostico && typeof datos.diagnostico === "string") {
+            diagnostico.value = datos.diagnostico;
+        }
 
         if (notas && datos.notasConsulta !== undefined) {
             notas.value = datos.notasConsulta;
@@ -202,8 +212,7 @@ export class AtencionConsultaView extends HTMLElement {
 
     /**
      * Detecta el paso activo real de la secuencia clínica y lo sincroniza con
-     * el stepper. Prioriza el paso en estado EN_CURSO y, si no existe, el
-     * primer paso pendiente.
+     * el stepper. Usa el primer paso PENDIENTE o EN_CURSO de la secuencia.
      */
     _sincronizarPasoActivo() {
         const pasos = this._obtenerListaPasos(this._consulta);
@@ -213,6 +222,8 @@ export class AtencionConsultaView extends HTMLElement {
         const detectado = this._detectarPasoActivo(this._consulta);
 
         this._pasoActivo = detectado.indice;
+        this._indicePasoTrabajo = detectado.indice;
+        this._soloLectura = false;
         this._pasoDetectado = detectado.paso;
         this._pasosFlujo = pasos.length > 0
             ? pasos
@@ -258,27 +269,13 @@ export class AtencionConsultaView extends HTMLElement {
 
     _detectarPasoActivo(consulta) {
         const pasos = this._obtenerListaPasos(consulta);
-        let enCurso = null;
-        let primerPendiente = null;
-
-        pasos.forEach((paso, indice) => {
+        const indiceActivo = pasos.findIndex((paso) => {
             const estado = this._obtenerEstadoPaso(paso);
-
-            if (this._esEstadoEnCurso(estado) && (!enCurso || indice < enCurso.indice)) {
-                enCurso = { indice, paso };
-            }
-
-            if ((!estado || this._esEstadoPendiente(estado)) && (!primerPendiente || indice < primerPendiente.indice)) {
-                primerPendiente = { indice, paso };
-            }
+            return this._esEstadoEnCurso(estado) || this._esEstadoPendiente(estado);
         });
 
-        if (enCurso) {
-            return enCurso;
-        }
-
-        if (primerPendiente) {
-            return primerPendiente;
+        if (indiceActivo >= 0) {
+            return { indice: indiceActivo, paso: pasos[indiceActivo] };
         }
 
         const explicito =
@@ -309,12 +306,12 @@ export class AtencionConsultaView extends HTMLElement {
         }
 
         const candidatos = [
+            consulta.pasos,
             consulta.pasosClinicos,
             consulta.consulta_procedimiento_paso,
             consulta.consultaProcedimientoPasos,
             consulta.consultaProcedimientoPasoList,
             consulta.pasos_clinicos,
-            consulta.pasos,
             consulta.etapas,
             consulta.flujo,
             consulta.historialPasos,
@@ -616,9 +613,13 @@ export class AtencionConsultaView extends HTMLElement {
             fuente.plan_manejo
         ]);
 
+        if (typeof fuente.diagnostico === "string" && destino.diagnostico === undefined) {
+            destino.diagnostico = fuente.diagnostico;
+        }
+
         if (destino.diagnosticos === undefined) {
             const diagnosticos = fuente.diagnosticos
-                ?? fuente.diagnostico
+                ?? (typeof fuente.diagnostico === "string" ? undefined : fuente.diagnostico)
                 ?? fuente.cie10
                 ?? fuente.codigosCie10
                 ?? fuente.codigosCIE10
@@ -811,6 +812,11 @@ export class AtencionConsultaView extends HTMLElement {
                 .textarea::placeholder {
                     color: var(--color-text-muted, #475569);
                     opacity: 1;
+                }
+
+                input.textarea {
+                    min-height: 0;
+                    resize: none;
                 }
 
                 .textarea:focus {
@@ -1048,10 +1054,11 @@ export class AtencionConsultaView extends HTMLElement {
                 novalidate
                 aria-label="Formulario de registro médico"
             >
+                <p id="aviso-lectura" role="status" hidden>Está consultando un paso completado en modo lectura.</p>
                 <!-- ── Campo: Notas de la Consulta ── -->
                 <div class="campo" id="grupo-notas">
                     <div class="campo-cabecera">
-                        <label class="etiqueta" for="notas-consulta">
+                        <label class="etiqueta" for="notas">
                             Notas de la Consulta
                             <span class="etiqueta-descripcion">
                                 Anamnesis, hallazgos relevantes y observaciones del médico.
@@ -1067,7 +1074,7 @@ export class AtencionConsultaView extends HTMLElement {
                     </div>
                     <textarea
                         class="textarea"
-                        id="notas-consulta"
+                        id="notas"
                         name="notasConsulta"
                         rows="6"
                         maxlength="${MAX_NOTAS}"
@@ -1091,7 +1098,7 @@ export class AtencionConsultaView extends HTMLElement {
                 <!-- ── Campo: Plan de Tratamiento ── -->
                 <div class="campo" id="grupo-plan">
                     <div class="campo-cabecera">
-                        <label class="etiqueta" for="plan-tratamiento">
+                        <label class="etiqueta" for="plan">
                             Plan de Tratamiento
                             <span class="etiqueta-descripcion">
                                 Diagnóstico, medicación prescrita, indicaciones y seguimiento.
@@ -1107,7 +1114,7 @@ export class AtencionConsultaView extends HTMLElement {
                     </div>
                     <textarea
                         class="textarea"
-                        id="plan-tratamiento"
+                        id="plan"
                         name="planTratamiento"
                         rows="6"
                         maxlength="${MAX_PLAN}"
@@ -1128,8 +1135,13 @@ export class AtencionConsultaView extends HTMLElement {
 
                 <!-- ── Campo: Diagnósticos CIE-10 ── -->
                 <div class="campo" id="grupo-cie10">
+                    <label class="etiqueta" for="diagnostico">
+                        Diagnóstico
+                    </label>
+                    <input id="diagnostico" name="diagnostico" type="text" class="textarea"
+                        autocomplete="off" placeholder="Registre el diagnóstico clínico">
                     <label class="etiqueta">
-                        Diagnósticos CIE-10
+                        Códigos CIE-10
                         <span class="campo-cie10-descripcion">
                             Busque y seleccione uno o varios códigos de diagnóstico.
                         </span>
@@ -1163,6 +1175,7 @@ export class AtencionConsultaView extends HTMLElement {
                     <button type="button" class="btn btn-cancelar" id="btn-cancelar">
                         Cancelar
                     </button>
+                    ${this._soloLectura ? '<button type="button" class="btn" id="btn-retomar">Volver al paso activo</button>' : ''}
                     <button
                         type="button"
                         class="btn btn-anterior"
@@ -1200,15 +1213,20 @@ export class AtencionConsultaView extends HTMLElement {
     _conectarEventos() {
         const form = this.shadowRoot.querySelector("#form-clinico");
         const btnVolver = this.shadowRoot.querySelector("#btn-volver");
-        const textareaNotas = this.shadowRoot.querySelector("#notas-consulta");
-        const textareaPlan = this.shadowRoot.querySelector("#plan-tratamiento");
+        const textareaNotas = this.shadowRoot.querySelector("#notas");
+        const textareaPlan = this.shadowRoot.querySelector("#plan");
 
         // ── Stepper: sincronizar estados y escuchar clics de paso ──
         const stepper = this.shadowRoot.querySelector("#stepper-flujo");
         if (stepper) {
             this._sincronizarStepper();
             stepper.addEventListener("paso-click", (evento) => {
-                this._seleccionarPaso(evento.detail?.indice);
+                const indice = evento.detail?.indice;
+                const estado = this._obtenerEstadoPaso(this._pasosFlujo[indice]);
+                if (indice === this._indicePasoTrabajo
+                    || (indice < this._indicePasoTrabajo && estado === ESTADO_COMPLETADO)) {
+                    this._seleccionarPaso(indice);
+                }
             });
         }
 
@@ -1263,6 +1281,9 @@ export class AtencionConsultaView extends HTMLElement {
 
         btnCancelar?.addEventListener("click", () => this._cancelar());
         btnAnterior?.addEventListener("click", () => this._retrocederPaso());
+        this.shadowRoot.querySelector("#btn-retomar")?.addEventListener("click", () => {
+            this._seleccionarPaso(this._indicePasoTrabajo);
+        });
     }
 
     // ─── Lógica de negocio ────────────────────────────────────────────────────
@@ -1342,6 +1363,7 @@ export class AtencionConsultaView extends HTMLElement {
         return {
             notasConsulta: datos.notasConsulta || null,
             planTratamiento: datos.planTratamiento || null,
+            diagnostico: datos.diagnostico ?? diagnosticos,
             diagnosticos: diagnosticos.length > 0 ? diagnosticos : null
         };
     }
@@ -1354,6 +1376,7 @@ export class AtencionConsultaView extends HTMLElement {
 
         if (datos && Object.keys(datos).length > 0) {
             Object.assign(payload, this._datosAtencion(datos), {
+                valor: consultaProcedimientoService.serializarValorPaso(datos),
                 consulta_procedimiento_paso: {
                     ...(pasoLocal?.consulta_procedimiento_paso ?? {}),
                     valor: consultaProcedimientoService.serializarValorPaso(datos)
@@ -1434,9 +1457,14 @@ export class AtencionConsultaView extends HTMLElement {
             return null;
         }
 
-        this._borradores.set(this._pasoActivo, this.obtenerDatosFormulario());
+        if (!this._soloLectura) {
+            this._borradores.set(this._pasoActivo, this.obtenerDatosFormulario());
+        }
         this._pasoActivo = indicePaso;
         this._pasoDetectado = this._buscarPasoPorIndice(this._pasosFlujo, indicePaso);
+        this._soloLectura = indicePaso < this._indicePasoTrabajo
+            && this._obtenerEstadoPaso(this._pasoDetectado) === ESTADO_COMPLETADO;
+        if (this._soloLectura) this._borradores.delete(indicePaso);
 
         this._limpiarFormularioPaso();
         this._cargarDatosPasoActivo();
@@ -1444,14 +1472,17 @@ export class AtencionConsultaView extends HTMLElement {
         this._sincronizarStepper();
         this._sincronizarListaExamenes();
         this._actualizarBotonera();
+        this._establecerEnviando(this._enviando);
 
         return this._pasoDetectado;
     }
 
     _limpiarFormularioPaso() {
-        const notas = this.shadowRoot?.querySelector("#notas-consulta");
-        const plan = this.shadowRoot?.querySelector("#plan-tratamiento");
+        const notas = this.shadowRoot?.querySelector("#notas");
+        const plan = this.shadowRoot?.querySelector("#plan");
         const cie10 = this.shadowRoot?.querySelector("#cie10-busqueda");
+        const diagnostico = this.shadowRoot?.querySelector("#diagnostico");
+        if (diagnostico) diagnostico.value = "";
 
         if (notas) {
             notas.value = "";
@@ -1493,23 +1524,14 @@ export class AtencionConsultaView extends HTMLElement {
             return;
         }
 
-        const btnAnterior = acciones.querySelector("#btn-anterior");
-        const btnFinalizar = acciones.querySelector("#btn-finalizar");
-
-        if (btnAnterior) {
-            btnAnterior.disabled = this._esPrimerPaso();
-        }
-
-        if (this._esUltimoPaso() === Boolean(btnFinalizar)) {
-            return;
-        }
-
         acciones.outerHTML = this._htmlAcciones();
         this._conectarEventosAcciones();
     }
 
     _irAPaso(indice) {
         this._pasoActivo = indice;
+        this._indicePasoTrabajo = indice;
+        this._soloLectura = false;
         this._pasoDetectado = this._buscarPasoPorIndice(this._pasosFlujo, indice);
         this._diagnosticos = [];
         this.render();
@@ -1522,6 +1544,7 @@ export class AtencionConsultaView extends HTMLElement {
         if (!this._consulta) return;
         this._consulta = {
             ...this._consulta,
+            pasos: this._pasosFlujo,
             pasosClinicos: this._pasosFlujo,
             pasoActivo: this._pasoActivo
         };
@@ -1536,14 +1559,15 @@ export class AtencionConsultaView extends HTMLElement {
         const datos = this.obtenerDatosFormulario();
         const hayDatos =
             datos.notasConsulta.length > 0 ||
-            datos.planTratamiento.length > 0 || datos.diagnosticos.length > 0;
+            datos.planTratamiento.length > 0 || datos.diagnosticos.length > 0
+            || (typeof datos.diagnostico === "string" && datos.diagnostico.length > 0);
 
         if (!hayDatos) {
             this._marcarError(
                 "notas",
                 "Complete al menos uno de los campos antes de guardar."
             );
-            this.shadowRoot.querySelector("#notas-consulta")?.focus();
+            this.shadowRoot.querySelector("#notas")?.focus();
             return null;
         }
 
@@ -1556,7 +1580,7 @@ export class AtencionConsultaView extends HTMLElement {
     }
 
     _alEnviarFormulario() {
-        if (this._cargandoConsulta) return;
+        if (this._cargandoConsulta || this._soloLectura) return;
         if (this._esUltimoPaso()) {
             return this._finalizarConsulta();
         }
@@ -1565,7 +1589,7 @@ export class AtencionConsultaView extends HTMLElement {
     }
 
     async _retrocederPaso() {
-        if (this._enviando || this._cargandoConsulta || this._esPrimerPaso()) {
+        if (this._enviando || this._cargandoConsulta || this._soloLectura || this._esPrimerPaso()) {
             return;
         }
 
@@ -1594,7 +1618,7 @@ export class AtencionConsultaView extends HTMLElement {
     }
 
     async _avanzarPaso() {
-        if (this._enviando || this._cargandoConsulta || this._esUltimoPaso()) {
+        if (this._enviando || this._cargandoConsulta || this._soloLectura || this._esUltimoPaso()) {
             return;
         }
 
@@ -1654,7 +1678,7 @@ export class AtencionConsultaView extends HTMLElement {
     }
 
     async _finalizarConsulta() {
-        if (this._enviando || this._cargandoConsulta || !this._esUltimoPaso()) {
+        if (this._enviando || this._cargandoConsulta || this._soloLectura || !this._esUltimoPaso()) {
             return;
         }
 
@@ -1704,7 +1728,7 @@ export class AtencionConsultaView extends HTMLElement {
                 }
             }));
 
-            this._volverAlDashboard();
+            window.location.hash = "#dashboard";
         } catch (error) {
             GeneradorMensajes.crearMensaje(
                 "Error al finalizar",
@@ -1766,7 +1790,7 @@ export class AtencionConsultaView extends HTMLElement {
      */
     _marcarError(campo, mensaje) {
         const idSpan = campo === "notas" ? "error-notas" : "error-plan";
-        const idTextarea = campo === "notas" ? "notas-consulta" : "plan-tratamiento";
+        const idTextarea = campo === "notas" ? "notas" : "plan";
         const span = this.shadowRoot?.querySelector(`#${idSpan}`);
         const textarea = this.shadowRoot?.querySelector(`#${idTextarea}`);
 
@@ -1784,7 +1808,7 @@ export class AtencionConsultaView extends HTMLElement {
      */
     _limpiarErrorCampo(campo) {
         const idSpan = campo === "notas" ? "error-notas" : "error-plan";
-        const idTextarea = campo === "notas" ? "notas-consulta" : "plan-tratamiento";
+        const idTextarea = campo === "notas" ? "notas" : "plan";
         const span = this.shadowRoot?.querySelector(`#${idSpan}`);
         const textarea = this.shadowRoot?.querySelector(`#${idTextarea}`);
 
@@ -1802,15 +1826,19 @@ export class AtencionConsultaView extends HTMLElement {
         const btn = this.shadowRoot?.querySelector("#btn-siguiente, #btn-finalizar");
         const btnAnterior = this.shadowRoot?.querySelector("#btn-anterior");
         const btnCancelar = this.shadowRoot?.querySelector("#btn-cancelar");
-        const textareaNotas = this.shadowRoot?.querySelector("#notas-consulta");
-        const textareaPlan = this.shadowRoot?.querySelector("#plan-tratamiento");
+        const textareaNotas = this.shadowRoot?.querySelector("#notas");
+        const textareaPlan = this.shadowRoot?.querySelector("#plan");
+        const diagnostico = this.shadowRoot?.querySelector("#diagnostico");
+        const avisoLectura = this.shadowRoot?.querySelector("#aviso-lectura");
+        if (avisoLectura) avisoLectura.hidden = !this._soloLectura;
 
         for (const selector of ["#stepper-flujo", "#cie10-busqueda", "#lista-examenes"]) {
-            this.shadowRoot?.querySelector(selector)?.toggleAttribute("inert", enviando);
+            const bloqueado = enviando || (selector !== "#stepper-flujo" && this._soloLectura);
+            this.shadowRoot?.querySelector(selector)?.toggleAttribute("inert", bloqueado);
         }
 
         if (btn) {
-            btn.disabled = enviando;
+            btn.disabled = enviando || this._soloLectura;
             btn.setAttribute("aria-busy", String(enviando));
             btn.classList.toggle("enviando", enviando);
             const textoBtn = btn.querySelector(".btn-guardar-texto");
@@ -1824,11 +1852,17 @@ export class AtencionConsultaView extends HTMLElement {
         }
 
         if (btnAnterior) {
-            btnAnterior.disabled = enviando || this._esPrimerPaso();
+            btnAnterior.disabled = enviando || this._soloLectura || this._esPrimerPaso();
         }
         if (btnCancelar) btnCancelar.disabled = enviando;
         if (textareaNotas) textareaNotas.disabled = enviando;
         if (textareaPlan) textareaPlan.disabled = enviando;
+        for (const campo of [textareaNotas, textareaPlan, diagnostico]) {
+            if (campo) {
+                campo.readOnly = this._soloLectura;
+                campo.disabled = enviando;
+            }
+        }
     }
 
     /**

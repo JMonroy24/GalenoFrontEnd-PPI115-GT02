@@ -190,7 +190,7 @@ export class ConsultaService extends DefaultService {
     async registrarAtencion(idConsulta, atencion) {
         const response = await this._request(
             `${this._urlBase}/${encodeURIComponent(idConsulta)}/atencion`,
-            this._jsonOptions("POST", atencion),
+            this._jsonOptions("PATCH", atencion),
             "Error al registrar la atención médica"
         );
 
@@ -206,7 +206,7 @@ export class ConsultaService extends DefaultService {
      * consume el backend dentro de `consulta_procedimiento_paso.valor`.
      *
      * @param {object} atencion
-     * @returns {{ notas: string, diagnostico: Array<unknown>, plan: string }}
+     * @returns {string} JSON con notas, diagnostico y plan.
      */
     serializarValorPaso(atencion = {}) {
         return serializarValorPaso(atencion);

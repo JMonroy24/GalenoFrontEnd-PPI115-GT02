@@ -13,9 +13,15 @@ suite("AtencionConsultaView (unitaria)", () => {
     let registrarAtencionStub;
     let tipoExamenStub;
     let estadoOriginal;
+    let rutaAnterior;
 
-    const seleccionarPaso = (indice) => host.shadowRoot.querySelector("stepper-progreso")
-        .shadowRoot.querySelector(`[data-indice="${indice}"] button`).click();
+    const seleccionarPaso = (indice) => store.setState({ consultaActiva: {
+        ...structuredClone(consultaFicticia),
+        pasoActivo: indice,
+        pasos: ["Triaje", "Consulta Médica", "Tratamiento", "Cierre"].map((nombre, i) => ({
+            nombre, estado: i < indice ? "COMPLETADO" : i === indice ? "EN_CURSO" : "PENDIENTE"
+        }))
+    } });
 
     const consultaFicticia = {
         idConsulta: 55,
@@ -31,6 +37,7 @@ suite("AtencionConsultaView (unitaria)", () => {
     };
 
     setup(() => {
+        rutaAnterior = window.location.hash;
         estadoOriginal = { ...store.getState() };
         navigateStub = sinon.stub(routerModule.router, "navigate");
 
@@ -43,6 +50,7 @@ suite("AtencionConsultaView (unitaria)", () => {
             .resolves({ items: [] });
 
         store.setState({
+            online: true,
             token: "fake-jwt",
             consultaActiva: structuredClone(consultaFicticia)
         });
@@ -53,6 +61,7 @@ suite("AtencionConsultaView (unitaria)", () => {
 
     teardown(() => {
         host?.remove();
+        window.history.replaceState(null, "", window.location.pathname + window.location.search + rutaAnterior);
         navigateStub?.restore();
         registrarAtencionStub?.restore();
         tipoExamenStub?.restore();
@@ -95,25 +104,25 @@ suite("AtencionConsultaView (unitaria)", () => {
 
     // ── Campo: Notas de la Consulta ──────────────────────────────────────────
 
-    test("renderiza textarea#notas-consulta con name='notasConsulta'", () => {
-        const ta = host.shadowRoot.querySelector("textarea#notas-consulta");
-        assert.isNotNull(ta, "Debe existir textarea#notas-consulta");
+    test("renderiza textarea#notas con name='notasConsulta'", () => {
+        const ta = host.shadowRoot.querySelector("textarea#notas");
+        assert.isNotNull(ta, "Debe existir textarea#notas");
         expect(ta.name).to.equal("notasConsulta");
     });
 
     test("textarea de Notas tiene un <label> enlazado mediante for/id", () => {
-        const label = host.shadowRoot.querySelector("label[for='notas-consulta']");
-        assert.isNotNull(label, "Debe existir label[for='notas-consulta']");
+        const label = host.shadowRoot.querySelector("label[for='notas']");
+        assert.isNotNull(label, "Debe existir label[for='notas']");
         expect(label.textContent.trim()).to.match(/Notas de la Consulta/i);
     });
 
     test("textarea de Notas tiene un placeholder descriptivo no vacío", () => {
-        const ta = host.shadowRoot.querySelector("textarea#notas-consulta");
+        const ta = host.shadowRoot.querySelector("textarea#notas");
         expect(ta.placeholder).to.have.length.greaterThan(10);
     });
 
     test("textarea de Notas tiene aria-describedby apuntando al contador y al span de error", () => {
-        const ta = host.shadowRoot.querySelector("textarea#notas-consulta");
+        const ta = host.shadowRoot.querySelector("textarea#notas");
         expect(ta.getAttribute("aria-describedby")).to.include("contador-notas");
         expect(ta.getAttribute("aria-describedby")).to.include("error-notas");
     });
@@ -125,7 +134,7 @@ suite("AtencionConsultaView (unitaria)", () => {
     });
 
     test("el contador de Notas se actualiza al escribir en el textarea", () => {
-        const ta = host.shadowRoot.querySelector("textarea#notas-consulta");
+        const ta = host.shadowRoot.querySelector("textarea#notas");
         ta.value = "Texto de prueba";
         ta.dispatchEvent(new Event("input", { bubbles: true }));
 
@@ -135,20 +144,20 @@ suite("AtencionConsultaView (unitaria)", () => {
 
     // ── Campo: Plan de Tratamiento ───────────────────────────────────────────
 
-    test("renderiza textarea#plan-tratamiento con name='planTratamiento'", () => {
-        const ta = host.shadowRoot.querySelector("textarea#plan-tratamiento");
-        assert.isNotNull(ta, "Debe existir textarea#plan-tratamiento");
+    test("renderiza textarea#plan con name='planTratamiento'", () => {
+        const ta = host.shadowRoot.querySelector("textarea#plan");
+        assert.isNotNull(ta, "Debe existir textarea#plan");
         expect(ta.name).to.equal("planTratamiento");
     });
 
     test("textarea de Plan tiene un <label> enlazado mediante for/id", () => {
-        const label = host.shadowRoot.querySelector("label[for='plan-tratamiento']");
-        assert.isNotNull(label, "Debe existir label[for='plan-tratamiento']");
+        const label = host.shadowRoot.querySelector("label[for='plan']");
+        assert.isNotNull(label, "Debe existir label[for='plan']");
         expect(label.textContent.trim()).to.match(/Plan de Tratamiento/i);
     });
 
     test("textarea de Plan tiene un placeholder descriptivo no vacío", () => {
-        const ta = host.shadowRoot.querySelector("textarea#plan-tratamiento");
+        const ta = host.shadowRoot.querySelector("textarea#plan");
         expect(ta.placeholder).to.have.length.greaterThan(10);
     });
 
@@ -159,7 +168,7 @@ suite("AtencionConsultaView (unitaria)", () => {
     });
 
     test("el contador de Plan se actualiza al escribir en el textarea", () => {
-        const ta = host.shadowRoot.querySelector("textarea#plan-tratamiento");
+        const ta = host.shadowRoot.querySelector("textarea#plan");
         ta.value = "ABC";
         ta.dispatchEvent(new Event("input", { bubbles: true }));
 
@@ -171,14 +180,14 @@ suite("AtencionConsultaView (unitaria)", () => {
 
     test("obtenerDatosFormulario() devuelve objeto con notasConsulta y planTratamiento vacíos por defecto", () => {
         const datos = host.obtenerDatosFormulario();
-        expect(datos).to.have.keys(["notasConsulta", "planTratamiento", "diagnosticos"]);
+        expect(datos).to.have.keys(["notasConsulta", "planTratamiento", "diagnostico", "diagnosticos"]);
         expect(datos.notasConsulta).to.equal("");
         expect(datos.planTratamiento).to.equal("");
     });
 
     test("obtenerDatosFormulario() devuelve los valores actuales de los campos recortados", () => {
-        const taNotas = host.shadowRoot.querySelector("#notas-consulta");
-        const taPlan = host.shadowRoot.querySelector("#plan-tratamiento");
+        const taNotas = host.shadowRoot.querySelector("#notas");
+        const taPlan = host.shadowRoot.querySelector("#plan");
 
         taNotas.value = "  Paciente con cefalea  ";
         taPlan.value = "  Paracetamol 500mg  ";
@@ -226,7 +235,7 @@ suite("AtencionConsultaView (unitaria)", () => {
         expect(btnCancelar.type).to.equal("button");
         expect(btnAnterior.type).to.equal("button");
         expect(btnSiguiente.type).to.equal("submit");
-        expect(btnSiguiente.textContent).to.include("Guardar y Avanzar al Siguiente Paso");
+        expect(btnSiguiente.textContent).to.include("Guardar y Avanzar");
         expect(host.shadowRoot.querySelector("#btn-finalizar")).to.be.null;
     });
 
@@ -264,7 +273,7 @@ suite("AtencionConsultaView (unitaria)", () => {
 
     test("en paso intermedio guarda y avanza al siguiente paso sin salir al dashboard", async () => {
         seleccionarPaso(1); // paso 1 de 4 (intermedio)
-        host.shadowRoot.querySelector("#notas-consulta").value = "Notas paso intermedio";
+        host.shadowRoot.querySelector("#notas").value = "Notas paso intermedio";
 
         const btnGuardar = host.shadowRoot.querySelector("#btn-siguiente");
         expect(btnGuardar.textContent).to.contain("Guardar y Avanzar");
@@ -292,7 +301,7 @@ suite("AtencionConsultaView (unitaria)", () => {
         assert.isNotNull(btnFinalizar, "Debe existir botón Finalizar en el último paso");
         expect(btnFinalizar.textContent).to.contain("Finalizar Consulta");
 
-        host.shadowRoot.querySelector("#notas-consulta").value = "Notas de cierre";
+        host.shadowRoot.querySelector("#notas").value = "Notas de cierre";
 
         host.shadowRoot.querySelector("form#form-clinico").dispatchEvent(
             new Event("submit", { bubbles: true, cancelable: true })
@@ -301,7 +310,7 @@ suite("AtencionConsultaView (unitaria)", () => {
         await new Promise((r) => setTimeout(r, 60));
 
         expect(registrarAtencionStub.called).to.be.true;
-        expect(navigateStub.calledWith("#dashboard")).to.be.true;
+        expect(window.location.hash).to.equal("#dashboard");
     });
 
     test("el botón 'Volver' navega al dashboard al hacer clic", () => {
@@ -338,8 +347,8 @@ suite("AtencionConsultaView (unitaria)", () => {
         let eventoGuardado = null;
         host.addEventListener("consulta-guardada", (e) => { eventoGuardado = e.detail; });
 
-        host.shadowRoot.querySelector("#notas-consulta").value = "Fiebre 38°C, tos seca";
-        host.shadowRoot.querySelector("#plan-tratamiento").value = "Reposo y paracetamol";
+        host.shadowRoot.querySelector("#notas").value = "Fiebre 38°C, tos seca";
+        host.shadowRoot.querySelector("#plan").value = "Reposo y paracetamol";
 
         host.shadowRoot.querySelector("form#form-clinico").dispatchEvent(
             new Event("submit", { bubbles: true, cancelable: true })
@@ -400,8 +409,8 @@ suite("AtencionConsultaView (unitaria)", () => {
     test("Guardar y Avanzar completa el paso actual, activa el siguiente y permanece en la vista", async () => {
         const cie10 = host.shadowRoot.querySelector("#cie10-busqueda");
         cie10.seleccionados = ["J00"];
-        host.shadowRoot.querySelector("#notas-consulta").value = "Paciente estable";
-        host.shadowRoot.querySelector("#plan-tratamiento").value = "Reposo";
+        host.shadowRoot.querySelector("#notas").value = "Paciente estable";
+        host.shadowRoot.querySelector("#plan").value = "Reposo";
         host.shadowRoot.querySelector("#btn-siguiente").click();
 
         await new Promise((r) => setTimeout(r, 50));
@@ -412,7 +421,7 @@ suite("AtencionConsultaView (unitaria)", () => {
         expect(payload.estadoPaso).to.equal("COMPLETADO");
         expect(registrarAtencionStub.secondCall.args[1].estadoPaso).to.equal("EN_CURSO");
         expect(registrarAtencionStub.secondCall.args[1].indicePaso).to.equal(2);
-        expect(payload.consulta_procedimiento_paso.valor).to.deep.equal({
+        expect(JSON.parse(payload.consulta_procedimiento_paso.valor)).to.deep.equal({
             notas: "Paciente estable",
             diagnostico: ["J00"],
             plan: "Reposo"
@@ -438,7 +447,7 @@ suite("AtencionConsultaView (unitaria)", () => {
         const btnFinalizar = host.shadowRoot.querySelector("#btn-finalizar");
         assert.isNotNull(btnFinalizar, "Debe existir #btn-finalizar en el último paso");
 
-        host.shadowRoot.querySelector("#notas-consulta").value = "Alta indicada";
+        host.shadowRoot.querySelector("#notas").value = "Alta indicada";
         btnFinalizar.click();
 
         await new Promise((r) => setTimeout(r, 50));
@@ -447,13 +456,13 @@ suite("AtencionConsultaView (unitaria)", () => {
         expect(registrarAtencionStub.calledOnce).to.be.true;
         expect(payload.paso.indice).to.equal(3);
         expect(payload.estadoPaso).to.equal("COMPLETADO");
-        expect(payload.consulta_procedimiento_paso.valor).to.deep.equal({
+        expect(JSON.parse(payload.consulta_procedimiento_paso.valor)).to.deep.equal({
             notas: "Alta indicada",
             diagnostico: [],
             plan: ""
         });
         expect(payload.fechaFin).to.be.a("string");
-        expect(navigateStub.calledWith("#dashboard")).to.be.true;
+        expect(window.location.hash).to.equal("#dashboard");
     });
 
     test("inicia en el primer paso cuando el backend no indica uno activo", () => {
@@ -492,12 +501,11 @@ suite("AtencionConsultaView (unitaria)", () => {
             ]
         } });
         expect(host.obtenerDatosFormulario()).to.deep.equal({
-            notasConsulta: "Control", diagnosticos: [diagnostico], planTratamiento: "Reposo"
+            notasConsulta: "Control", diagnostico: [diagnostico], diagnosticos: [diagnostico], planTratamiento: "Reposo"
         });
-        host.shadowRoot.querySelector("stepper-progreso").shadowRoot
-            .querySelector('[data-indice="1"] button').click();
+        host._seleccionarPaso(1);
         expect(host.obtenerDatosFormulario()).to.deep.equal({
-            notasConsulta: "", diagnosticos: [], planTratamiento: ""
+            notasConsulta: "", diagnostico: [], diagnosticos: [], planTratamiento: ""
         });
         expect(host.shadowRoot.querySelector("#form-clinico").dataset.estadoPaso).to.equal("PENDIENTE");
         expect(registrarAtencionStub.called).to.be.false;
@@ -545,7 +553,7 @@ suite("AtencionConsultaView (unitaria)", () => {
     test("retroceder persiste también las notas del paso que se abandona", async () => {
         host.cargarDatosFormulario({ notasConsulta: "Evolución", planTratamiento: "Reposo" });
         await host._retrocederPaso();
-        expect(registrarAtencionStub.firstCall.args[1].consulta_procedimiento_paso.valor)
+        expect(JSON.parse(registrarAtencionStub.firstCall.args[1].consulta_procedimiento_paso.valor))
             .to.deep.equal({ notas: "Evolución", diagnostico: [], plan: "Reposo" });
         host._seleccionarPaso(1);
         expect(host.obtenerDatosFormulario().notasConsulta).to.equal("Evolución");
@@ -555,7 +563,7 @@ suite("AtencionConsultaView (unitaria)", () => {
         host.shadowRoot.querySelector("#cie10-busqueda").seleccionados = ["J00"];
         await host._avanzarPaso();
         expect(registrarAtencionStub.callCount).to.equal(2);
-        expect(registrarAtencionStub.firstCall.args[1].consulta_procedimiento_paso.valor.diagnostico)
+        expect(JSON.parse(registrarAtencionStub.firstCall.args[1].consulta_procedimiento_paso.valor).diagnostico)
             .to.deep.equal(["J00"]);
     });
 
@@ -601,6 +609,93 @@ suite("AtencionConsultaView (unitaria)", () => {
     });
 
     // ── Sincronización con el paso activo del backend ─────────────────────────
+
+    test("elige el primer PENDIENTE aunque exista un EN_CURSO posterior", () => {
+        store.setState({ consultaActiva: { idConsulta: 55, pasos: [
+            { idPaso: 1, nombre: "Evaluación", estado: "PENDIENTE" },
+            { idPaso: 2, nombre: "Cierre", estado: "EN_CURSO" }
+        ] } });
+        expect(host._pasoActivo).to.equal(0);
+        expect(host.shadowRoot.querySelector("stepper-progreso").pasoActivo).to.equal(0);
+    });
+
+    test("consulta.pasos tiene prioridad sobre listas alternativas desactualizadas", () => {
+        store.setState({ consultaActiva: { idConsulta: 55,
+            pasos: [{ nombre: "Paso vigente", estado: "PENDIENTE" }],
+            pasosClinicos: [{ nombre: "Paso antiguo", estado: "EN_CURSO" }]
+        } });
+        expect(host.shadowRoot.querySelector("stepper-progreso").etapas).to.deep.equal(["Paso vigente"]);
+    });
+
+    test("renderiza los tres campos y guarda el diagnóstico escrito dentro del JSON valor", async () => {
+        expect(host.shadowRoot.querySelector("textarea#notas")).not.to.be.null;
+        expect(host.shadowRoot.querySelector("textarea#plan")).not.to.be.null;
+        const diagnostico = host.shadowRoot.querySelector("input#diagnostico");
+        expect(diagnostico).not.to.be.null;
+        host.cargarDatosFormulario({ notasConsulta: "Control", diagnostico: "Cefalea", planTratamiento: "Seguimiento" });
+        await host._avanzarPaso();
+        const payload = registrarAtencionStub.firstCall.args[1];
+        expect(payload.valor).to.be.a("string");
+        expect(JSON.parse(payload.valor)).to.deep.equal({ notas: "Control", diagnostico: "Cefalea", plan: "Seguimiento" });
+        expect(payload.consulta_procedimiento_paso.valor).to.equal(payload.valor);
+    });
+
+    test("los pasos completados se consultan en lectura y se puede retomar el borrador activo", async () => {
+        store.setState({ consultaActiva: { idConsulta: 55, pasos: [
+            { idPaso: 1, nombre: "Triaje", estado: "COMPLETADO",
+                valor: JSON.stringify({ notas: "Signos registrados", diagnostico: "Control previo", plan: "Evaluar" }) },
+            { idPaso: 2, nombre: "Atención", estado: "EN_CURSO" },
+            { idPaso: 3, nombre: "Cierre", estado: "PENDIENTE" }
+        ] } });
+        host.cargarDatosFormulario({ notasConsulta: "Borrador actual", diagnostico: "En evaluación" });
+        host.shadowRoot.querySelector("stepper-progreso").shadowRoot
+            .querySelector('[data-indice="0"] button').click();
+        expect(host.obtenerDatosFormulario().notasConsulta).to.equal("Signos registrados");
+        expect(host.obtenerDatosFormulario().diagnostico).to.equal("Control previo");
+        for (const selector of ["#notas", "#diagnostico", "#plan"]) {
+            expect(host.shadowRoot.querySelector(selector).readOnly).to.be.true;
+        }
+        expect(host.shadowRoot.querySelector("#cie10-busqueda").hasAttribute("inert")).to.be.true;
+        expect(host.shadowRoot.querySelector("#lista-examenes").hasAttribute("inert")).to.be.true;
+        expect(host.shadowRoot.querySelector("#btn-siguiente").disabled).to.be.true;
+        await host._avanzarPaso();
+        await host._retrocederPaso();
+        expect(registrarAtencionStub.called).to.be.false;
+        expect(host._consulta.pasos[0].estado).to.equal("COMPLETADO");
+        host.shadowRoot.querySelector("#btn-retomar").click();
+        expect(host._pasoActivo).to.equal(1);
+        expect(host.shadowRoot.querySelector("#notas").readOnly).to.be.false;
+        expect(host.obtenerDatosFormulario().notasConsulta).to.equal("Borrador actual");
+        expect(host.obtenerDatosFormulario().diagnostico).to.equal("En evaluación");
+    });
+
+    test("el stepper impide saltar a pasos pendientes posteriores", () => {
+        host.shadowRoot.querySelector("stepper-progreso").shadowRoot
+            .querySelector('[data-indice="3"] button').click();
+        expect(host._pasoActivo).to.equal(1);
+        expect(host.shadowRoot.querySelector("#btn-finalizar")).to.be.null;
+        expect(registrarAtencionStub.called).to.be.false;
+    });
+
+    test("avanzar envía PATCH con valor JSON y activa el siguiente sin reenviar sus datos", async () => {
+        registrarAtencionStub.restore();
+        const fetchStub = sinon.stub(window, "fetch").resolves({ ok: true, status: 200, json: async () => ({ ok: true }) });
+        try {
+            host.cargarDatosFormulario({ notasConsulta: "Evolución", diagnostico: "Control", planTratamiento: "Reposo" });
+            await host._avanzarPaso();
+            expect(fetchStub.callCount).to.equal(2);
+            const solicitudes = fetchStub.getCalls().map((llamada) => ({ ...llamada.args[1], body: JSON.parse(llamada.args[1].body) }));
+            expect(solicitudes.every((solicitud) => solicitud.method === "PATCH")).to.be.true;
+            expect(solicitudes[0].body.estadoPaso).to.equal("COMPLETADO");
+            expect(JSON.parse(solicitudes[0].body.valor)).to.deep.equal({ notas: "Evolución", diagnostico: "Control", plan: "Reposo" });
+            expect(solicitudes[1].body.estadoPaso).to.equal("EN_CURSO");
+            expect(solicitudes[1].body).not.to.have.property("valor");
+            expect(host._pasoActivo).to.equal(2);
+            expect(navigateStub.called).to.be.false;
+        } finally {
+            fetchStub.restore();
+        }
+    });
 
     test("detecta el paso EN_CURSO y sincroniza el stepper", () => {
         store.setState({
@@ -657,8 +752,8 @@ suite("AtencionConsultaView (unitaria)", () => {
             }
         });
 
-        const notas = host.shadowRoot.querySelector("#notas-consulta");
-        const plan = host.shadowRoot.querySelector("#plan-tratamiento");
+        const notas = host.shadowRoot.querySelector("#notas");
+        const plan = host.shadowRoot.querySelector("#plan");
 
         expect(host.shadowRoot.querySelector("stepper-progreso").pasoActivo).to.equal(2);
         expect(notas.value).to.equal("Evolución favorable");

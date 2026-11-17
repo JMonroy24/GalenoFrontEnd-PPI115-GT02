@@ -9,6 +9,7 @@ suite("AuthService (unitaria)", () => {
     let servicio;
     let fetchStub;
     let logStub;
+    let rutaAnterior;
 
     const responderRoles = (payload) => fetchStub
         .withArgs(sinon.match((url) => new URL(url).pathname.endsWith("/personas-roles")))
@@ -35,6 +36,7 @@ suite("AuthService (unitaria)", () => {
     ];
 
     setup(() => {
+        rutaAnterior = window.location.hash;
         try {
             sessionStorage.removeItem(SESSION_STORAGE_KEY);
         } catch {
@@ -57,6 +59,7 @@ suite("AuthService (unitaria)", () => {
             rolSeleccionado: null,
             clinicaActiva: null
         });
+        window.history.replaceState(null, "", window.location.pathname + window.location.search + rutaAnterior);
     });
 
     suite("login", () => {
@@ -405,6 +408,7 @@ suite("AuthService (unitaria)", () => {
         });
 
         test("elige la clínica del rol activo y permite sesiones sin token", async () => {
+            window.history.replaceState(null, "", "#login");
             fetchStub = sinon.stub(window, "fetch").callsFake(async (url) => {
                 const recurso = new URL(url);
                 if (recurso.pathname.endsWith("/personas-roles")) {
@@ -427,6 +431,10 @@ suite("AuthService (unitaria)", () => {
             expect(sesion.clinicaActiva.idClinica).to.equal(8);
             expect(store.isAuthenticated()).to.be.true;
             expect(JSON.parse(sessionStorage.getItem(SESSION_STORAGE_KEY)).clinicaActiva.idClinica).to.equal(8);
+            expect(window.location.hash).to.equal("#dashboard");
+            const restaurado = new AuthService();
+            expect(restaurado.sesion.token).to.be.null;
+            expect(store.hasActiveSession()).to.be.true;
         });
 
         test("rechaza una sesión sin clínica para evitar rebotes del dashboard al login", async () => {

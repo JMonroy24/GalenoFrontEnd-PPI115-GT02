@@ -211,7 +211,7 @@ suite("ConsultaService (unitaria)", () => {
             paso: { indice: 1, estado: "COMPLETADO" }
         });
 
-        expect(payload.consulta_procedimiento_paso.valor).to.deep.equal({
+        expect(JSON.parse(payload.consulta_procedimiento_paso.valor)).to.deep.equal({
             notas: "Dolor abdominal",
             diagnostico: ["R10"],
             plan: "Observación"
@@ -235,10 +235,13 @@ suite("ConsultaService (unitaria)", () => {
 
         const cuerpo = JSON.parse(fetchStub.firstCall.args[1].body);
 
+        expect(fetchStub.firstCall.args[1].method).to.equal("PATCH");
+        expect(cuerpo.valor).to.be.a("string");
+        expect(cuerpo.valor).to.equal(cuerpo.consulta_procedimiento_paso.valor);
         expect(fetchStub.firstCall.args[0].toString()).to.contain(
             "consultas/55/atencion"
         );
-        expect(cuerpo.consulta_procedimiento_paso.valor).to.deep.equal({
+        expect(JSON.parse(cuerpo.consulta_procedimiento_paso.valor)).to.deep.equal({
             notas: "Control",
             diagnostico: ["J00"],
             plan: "Reposo"
