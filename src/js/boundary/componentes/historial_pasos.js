@@ -224,9 +224,6 @@ export class HistorialPasos extends HTMLElement {
             evento.stopPropagation();
             this._cerrarRegistro();
         });
-        dialogo.addEventListener("close", () => {
-            if (!dialogo.open) this._notificarCierre();
-        });
         dialogo.addEventListener("click", (evento) => {
             evento.stopPropagation();
             if (evento.target === dialogo) {
@@ -300,8 +297,6 @@ export class HistorialPasos extends HTMLElement {
         detalle.textContent = this._detallePaso(paso);
         this.shadowRoot.querySelector("#datos-registro").textContent =
             `Profesional: ${this._nombreProfesional(paso)} · Fecha y hora: ${this._fechaHoraPaso(paso)}`;
-        this._pasoRegistro = paso;
-        this._botonRegistro = boton;
 
         if (typeof dialogo.showModal !== "function") {
             dialogo.setAttribute("open", "");
@@ -318,7 +313,6 @@ export class HistorialPasos extends HTMLElement {
 
     _cerrarRegistro() {
         const dialogo = this.shadowRoot.querySelector("#dialogo-registro");
-        if (!dialogo?.open) return;
 
         if (!dialogo?.open) {
             return;
@@ -337,21 +331,6 @@ export class HistorialPasos extends HTMLElement {
         if (!this._pasoRegistro) {
             return;
         }
-        this._notificarCierre();
-    }
-
-    _notificarCierre() {
-        if (!this._pasoRegistro) return;
-        const paso = this._pasoRegistro;
-        this._pasoRegistro = null;
-        this._botonRegistro?.focus();
-        this._botonRegistro = null;
-        this.dispatchEvent(new CustomEvent("registro-cerrado", {
-            bubbles: true,
-            composed: true,
-            detail: { paso }
-        }));
-    }
 
         const paso = this._pasoRegistro;
 
@@ -364,6 +343,29 @@ export class HistorialPasos extends HTMLElement {
             composed: true,
             detail: { paso }
         }));
+    }
+
+    _filtrarEjecutados(pasos, ancestros = new Set()) {
+        return pasos.flatMap((paso) => {
+            if (!paso || ancestros.has(paso)) return [];
+            const ruta = new Set(ancestros).add(paso);
+            const subpasos = this._obtenerSubpasos(paso);
+            const hijos = this._filtrarEjecutados(subpasos, ruta);
+            const estadoOriginal = paso.estadoPaso ?? paso.estado ?? "";
+            const estado = String(estadoOriginal?.nombre ?? estadoOriginal?.descripcion
+                ?? estadoOriginal?.codigo ?? estadoOriginal?.estado ?? estadoOriginal)
+                .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+                .toUpperCase().trim().replace(/[\s-]+/g, "_");
+            const completado = ["COMPLETADO", "COMPLETADA", "FINALIZADO", "FINALIZADA", "EJECUTADO", "REALIZADO"].includes(estado);
+            const tieneRegistro = paso.valor != null || paso.consulta_procedimiento_paso?.valor != null
+                || paso.fechaHoraEjecucion || paso.fechaHoraRegistro || paso.contenidoCompleto
+                || paso.contenido || paso.detalle || paso.registro || paso.notas;
+            const esGrupo = paso.esGrupoHistorial === true || (subpasos.length > 0 && !estado && !tieneRegistro);
+            const ejecutado = !esGrupo && (completado || !estado);
+            if (!ejecutado && hijos.length === 0) return [];
+            if (typeof paso === "string") return [paso];
+            return [{ ...paso, pasos: hijos, esGrupoHistorial: !ejecutado }];
+        });
     }
 
     _normalizarPasos(valor) {
@@ -582,20 +584,6 @@ export class HistorialPasos extends HTMLElement {
 
         if (this._esRegistroClinico(detalle)) {
             return this._formatearRegistroClinico(detalle);
-        if (["notas", "notasConsulta", "diagnostico", "diagnosticos", "plan", "planTratamiento"]
-            .some((clave) => Object.hasOwn(detalle, clave))) {
-            const diagnosticos = detalle.diagnostico ?? detalle.diagnosticos ?? [];
-            const lista = Array.isArray(diagnosticos) ? diagnosticos : [diagnosticos];
-            const textoDiagnosticos = lista.map((item) => {
-                if (item && typeof item === "object") {
-                    return [item.codigo ?? item.code, item.nombre ?? item.descripcion ?? item.description]
-                        .filter(Boolean).join(" — ") || this._textoDetalle(item);
-                }
-                return String(item ?? "");
-            }).filter(Boolean).join("\n");
-            return `Notas:\n${detalle.notas ?? detalle.notasConsulta ?? "Sin notas"}\n\n`
-                + `Diagnóstico CIE-10:\n${textoDiagnosticos || "Sin diagnósticos"}\n\n`
-                + `Plan de tratamiento:\n${detalle.plan ?? detalle.planTratamiento ?? "Sin plan"}`;
         }
 
         const interno = detalle.contenido

@@ -240,7 +240,6 @@ export class ConsultaService extends DefaultService {
         }
 
         const url = `${ENDPOINTS.API_BASE}${ENDPOINTS.CONSULTAS}/${encodeURIComponent(idConsulta)}/ticket`;
-        const url = `${this._urlBase}/${encodeURIComponent(idConsulta)}/ticket`;
         const response = await this._request(
             url,
             { method: "GET", headers: { Accept: "application/pdf" } },
