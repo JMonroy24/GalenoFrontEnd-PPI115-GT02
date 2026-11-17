@@ -7,6 +7,20 @@ import {
     serializarValorPaso
 } from "./consulta_procedimiento_service.js";
 
+export function obtenerPacienteConsulta(consulta = {}) {
+    const candidatos = [
+        consulta.paciente?.persona, consulta.paciente?.idPersona, consulta.paciente,
+        consulta.persona, consulta.idPersona,
+        consulta.idPaciente?.persona, consulta.idPaciente?.idPersona, consulta.idPaciente,
+        consulta.nombrePaciente
+    ];
+    // Una asociación vacía o un ID no debe ocultar otra que sí tenga el nombre.
+    return candidatos.find((paciente) => paciente && typeof paciente === "object"
+        && (paciente.nombreCompleto || paciente.nombres || paciente.nombre))
+        ?? candidatos.find((paciente) => typeof paciente === "string" && paciente.trim())
+        ?? candidatos.find((paciente) => paciente != null);
+}
+
 export class ConsultaService extends DefaultService {
     constructor() {
         super(ENDPOINTS.CONSULTAS);
@@ -45,7 +59,7 @@ export class ConsultaService extends DefaultService {
 
     _mapearConsulta(consulta) {
         const datos = { ...consulta.cita, ...consulta };
-        const paciente = datos.paciente ?? datos.persona ?? datos.idPersona;
+        const paciente = obtenerPacienteConsulta(datos);
         const procedimientos = datos.procedimientos
             ?? datos.consultaProcedimientos
             ?? datos.consultaProcedimientoList
@@ -59,7 +73,7 @@ export class ConsultaService extends DefaultService {
             idConsulta: consulta.idConsulta ?? consulta.id,
             fecha: datos.fecha ?? datos.fechaConsulta ?? datos.fechaCita ?? datos.fechaHora,
             clinica: datos.clinica ?? datos.idClinica,
-            paciente: paciente?.persona ?? paciente,
+            paciente,
             procedimientos: Array.isArray(procedimientos)
                 ? procedimientos
                 : Array.isArray(procedimientos?.items) ? procedimientos.items : []

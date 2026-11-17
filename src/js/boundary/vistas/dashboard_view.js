@@ -272,6 +272,8 @@ export class DashboardView extends HTMLElement {
         const inputFechaHasta = this.shadowRoot.querySelector("#fechaHasta");
         const inputBusqueda = this.shadowRoot.querySelector("#busqueda-citas");
 
+        const rolesDelUsuario = estado?.roles ?? estado?.usuario?.roles ?? [];
+        console.log('Roles del usuario:', rolesDelUsuario);
         this._cargarOpciones(selectClinica, this.clinicas, (clinica) => this._idClinica(clinica), (clinica) => this._nombreClinica(clinica));
         this._cargarOpciones(selectRol, this.roles, (rol) => this._idRol(rol), (rol) => this._nombreRol(rol));
 
@@ -364,6 +366,8 @@ export class DashboardView extends HTMLElement {
         const clinicaActual = this._idClinica(estado?.clinicaActiva ?? estado?.activeClinic);
         const rolActual = this._idRol(estado?.rolSeleccionado ?? estado?.selectedRole ?? estado?.rolActivo);
 
+        const rolesDelUsuario = estado?.roles ?? estado?.usuario?.roles ?? [];
+        console.log('Roles del usuario:', rolesDelUsuario);
         if (selectClinica) {
             this._cargarOpciones(selectClinica, this.clinicas, (c) => this._idClinica(c), (c) => this._nombreClinica(c));
             if (clinicaActual !== "") {
@@ -541,15 +545,16 @@ export class DashboardView extends HTMLElement {
                 return;
             }
 
-            const citas = Array.isArray(respuesta?.items)
+            const listaConsultas = Array.isArray(respuesta?.items)
                 ? respuesta.items
                 : Array.isArray(respuesta?.datos)
                     ? respuesta.datos
                     : Array.isArray(respuesta)
                         ? respuesta
                         : [];
+            console.log('Consultas cargadas:', listaConsultas);
 
-            if (citas.length === 0) {
+            if (listaConsultas.length === 0) {
                 this._mostrarEstadoCitas("No se encontraron citas.");
                 return;
             }
@@ -557,7 +562,7 @@ export class DashboardView extends HTMLElement {
             estadoCitas.hidden = true;
             contenedor.hidden = false;
 
-            citas.forEach((cita) => {
+            listaConsultas.forEach((cita) => {
                 const tarjeta = this._crearTarjetaConsulta(cita);
                 contenedor.appendChild(tarjeta);
             });
@@ -712,7 +717,8 @@ export class DashboardView extends HTMLElement {
 
             const id = String(this._idClinica(clinica));
             if (id !== "" && (!unicas.has(id)
-                || this._nombreClinica(unicas.get(id)) === "Clínica sin nombre")) {
+                || this._nombreClinica(unicas.get(id)) === "Clínica desconocida"
+                || String(this._nombreClinica(unicas.get(id))) === id)) {
                 unicas.set(id, clinica);
             }
         });
@@ -740,7 +746,8 @@ export class DashboardView extends HTMLElement {
 
             const id = String(this._idRol(rol));
             if (id !== "" && (!unicos.has(id)
-                || this._nombreRol(unicos.get(id)) === "Rol sin nombre")) {
+                || this._nombreRol(unicos.get(id)) === "Rol desconocido"
+                || String(this._nombreRol(unicos.get(id))) === id)) {
                 unicos.set(id, rol);
             }
         });
@@ -762,9 +769,13 @@ export class DashboardView extends HTMLElement {
     }
 
     _nombreClinica(clinica) {
-        return [clinica?.nombre, clinica?.name, clinica?.nombreClinica, clinica?.descripcion]
-            .find((nombre) => typeof nombre === "string" && nombre.trim() !== "")
-            ?? "Clínica sin nombre";
+        const item = { clinica: clinica?.clinica ?? clinica };
+        const nombreClinica = item.clinica?.nombre || item.clinica?.descripcion
+            || item.clinica?.nombreClinica || item.clinica?.name
+            || item.clinica?.id || item.clinica?.idClinica
+            || (typeof item.clinica === "string" || typeof item.clinica === "number" ? item.clinica : null)
+            || 'Clínica desconocida';
+        return nombreClinica;
     }
 
     _idRol(rol) {
@@ -784,11 +795,13 @@ export class DashboardView extends HTMLElement {
     }
 
     _nombreRol(rol) {
-        const entidad = rol?.rol ?? rol?.idRol;
-        return [entidad?.nombre, entidad?.name, entidad?.descripcion,
-            rol?.nombreRol, rol?.nombre, rol?.name, rol?.descripcion]
-            .find((nombre) => typeof nombre === "string" && nombre.trim() !== "")
-            ?? "Rol sin nombre";
+        const item = { rol: rol?.rol ?? (typeof rol?.idRol === "object" ? rol.idRol : rol) };
+        const nombreRol = item.rol?.nombre || item.rol?.descripcion || item.rol?.nombreRol
+            || item.rol?.name || rol?.nombreRol || rol?.nombre || rol?.descripcion || rol?.name
+            || item.rol?.id || item.rol?.idRol || rol?.idRol
+            || (typeof item.rol === "string" || typeof item.rol === "number" ? item.rol : null)
+            || 'Rol desconocido';
+        return nombreRol;
     }
 }
 

@@ -1,4 +1,5 @@
 import "./historial_pasos.js";
+import { obtenerPacienteConsulta } from "../../control/consulta_service.js";
 
 export class TarjetaConsulta extends HTMLElement {
     constructor() {
@@ -246,15 +247,19 @@ export class TarjetaConsulta extends HTMLElement {
         `;
 
         this.shadowRoot.querySelector("#fecha").textContent = this._obtenerFecha(datos);
-        const paciente = datos.paciente ?? datos.persona ?? datos.idPersona ?? {};
+        const paciente = obtenerPacienteConsulta(datos) ?? {};
         this.shadowRoot.querySelector("#paciente").textContent = typeof paciente === "string"
             ? paciente
             : paciente.nombreCompleto || [
-                paciente.nombres ?? paciente.nombre,
+                paciente.nombres || paciente.nombre,
                 Array.isArray(paciente.apellidos) ? paciente.apellidos.join(" ") : paciente.apellidos
             ].filter(Boolean).join(" ") || "Sin paciente";
         this.shadowRoot.querySelector("#documento-paciente").textContent =
-            paciente.numeroDocumento ?? paciente.documento ?? datos.numeroDocumento ?? "Sin documento";
+            paciente.numeroDocumento || paciente.documento
+            || datos.paciente?.numeroDocumento || datos.paciente?.documento
+            || datos.persona?.numeroDocumento || datos.persona?.documento
+            || datos.idPersona?.numeroDocumento || datos.idPersona?.documento
+            || datos.numeroDocumento || "Sin documento";
         this.shadowRoot.querySelector("#hora").textContent = this._obtenerHora(datos);
         this.shadowRoot.querySelector("#clinica").textContent = this._obtenerClinica(datos);
         this.shadowRoot.querySelector("#estado-texto").textContent = estado;
@@ -338,11 +343,16 @@ export class TarjetaConsulta extends HTMLElement {
         }
 
         return datos.nombreClinica
-            ?? clinica?.nombre
-            ?? clinica?.name
-            ?? datos.idClinica?.nombre
-            ?? datos.idClinica?.name
-            ?? "Sin clínica";
+            || clinica?.nombre
+            || clinica?.descripcion
+            || clinica?.nombreClinica
+            || clinica?.name
+            || datos.idClinica?.nombre
+            || datos.idClinica?.descripcion
+            || datos.idClinica?.nombreClinica
+            || datos.idClinica?.name
+            || clinica?.id
+            || "Sin clínica";
     }
 
     _obtenerEstado(datos) {
