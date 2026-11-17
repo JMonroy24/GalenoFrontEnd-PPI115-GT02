@@ -12,7 +12,7 @@ suite("DefaultService (unitaria)", () => {
     let fetchStub;
     let mensajeStub;
     const servicio = new DefaultService("/pruebas");
-    const detalleOffline = "Operación no disponible sin conexión. Conéctese a internet para guardar, modificar o eliminar datos.";
+    const detalleOffline = "Operación no disponible en modo offline. Conéctese a internet para guardar los cambios";
 
     setup(() => {
         store.setState({ online: false });
@@ -235,7 +235,12 @@ suite("DefaultService (unitaria)", () => {
                 expect(escuchar.calledOnce).to.be.true;
                 expect(escuchar.firstCall.args[0]).to.be.instanceOf(CustomEvent);
                 expect(escuchar.firstCall.args[0].detail).to.deep.equal({
-                    titulo: "Sin conexión", detalle: detalleOffline, tipo: "warning"
+                    titulo: "Sin conexión",
+                    mensaje: "Sin conexión",
+                    detalle: detalleOffline,
+                    tipo: "warning",
+                    nivel: "warning",
+                    duracion: 5000
                 });
                 const aviso = notificacion.shadowRoot.querySelector(".banner.warning");
                 expect(aviso).to.exist;

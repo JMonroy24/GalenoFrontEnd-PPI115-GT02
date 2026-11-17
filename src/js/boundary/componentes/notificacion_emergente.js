@@ -138,8 +138,22 @@ export class NotificacionEmergente extends HTMLElement {
         };
 
         boton.addEventListener("click", cerrar);
-        id = setTimeout(cerrar, 5000);
-        this.temporizadores.add(id);
+
+        const duracion = this._normalizarDuracion(mensaje.duracion ?? mensaje.duration);
+        if (duracion > 0) {
+            id = setTimeout(cerrar, duracion);
+            this.temporizadores.add(id);
+        }
+    }
+
+    _normalizarDuracion(duracion) {
+        if (duracion === null || duracion === undefined || duracion === "") {
+            return 5000;
+        }
+
+        const numero = Number(duracion);
+
+        return Number.isFinite(numero) && numero >= 0 ? numero : 5000;
     }
 
     _textoDetalle(detalle) {
