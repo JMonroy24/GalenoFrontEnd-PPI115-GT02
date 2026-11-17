@@ -1,31 +1,30 @@
 import "./instalador_app.js";
 import { authService } from "../../control/auth_service.js";
+import { store } from "../../store.js";
 
 export default class EncabezadoApp extends HTMLElement {
     constructor() {
         super();
         this.attachShadow({ mode: "open" });
-        this.alContexto = () => this.render();
+        this.alContexto = () => this._actualizarSesion();
     }
 
     connectedCallback() {
         this.render();
         window.addEventListener("contexto-seleccionado", this.alContexto);
+        window.addEventListener("sesion-iniciada", this.alContexto);
+        window.addEventListener("sesion-cerrada", this.alContexto);
+        store.addEventListener("state-changed", this.alContexto);
     }
 
     disconnectedCallback() {
         window.removeEventListener("contexto-seleccionado", this.alContexto);
+        window.removeEventListener("sesion-iniciada", this.alContexto);
+        window.removeEventListener("sesion-cerrada", this.alContexto);
+        store.removeEventListener("state-changed", this.alContexto);
     }
 
     render() {
-        let contexto = null;
-        try {
-            const guardado = sessionStorage.getItem("contexto");
-            contexto = guardado ? JSON.parse(guardado) : null;
-        } catch (err) {
-            contexto = null;
-        }
-
         this.shadowRoot.innerHTML = `
             <link rel="stylesheet" href="recursos/estilos/principal.css">
             <style>
@@ -108,14 +107,7 @@ export default class EncabezadoApp extends HTMLElement {
             </header>
         `;
 
-        const textoContexto = this.shadowRoot.querySelector("#textoContexto");
-        if (contexto) {
-            const nombreClinica = contexto.nombreClinica ?? "";
-            const nombreRol = contexto.nombreRol ?? "";
-            textoContexto.textContent = `${nombreClinica} / ${nombreRol}`;
-        } else {
-            textoContexto.textContent = "Sin sesión";
-        }
+        this._actualizarSesion();
 
         const btnMenu = this.shadowRoot.querySelector("#btnMenu");
         btnMenu.addEventListener("click", () => {
@@ -127,6 +119,7 @@ export default class EncabezadoApp extends HTMLElement {
 
         const navegarALogin = () => {
             sessionStorage.removeItem("contexto");
+            this._actualizarSesion();
             this.dispatchEvent(new CustomEvent("navegar", {
                 detail: "login",
                 bubbles: true,
@@ -141,6 +134,39 @@ export default class EncabezadoApp extends HTMLElement {
             authService.logout();
             navegarALogin();
         });
+    }
+
+    _actualizarSesion() {
+        let usuario = null;
+        let contexto = null;
+        try {
+            usuario = JSON.parse(sessionStorage.getItem("usuarioActivo") ?? "null");
+            contexto = JSON.parse(sessionStorage.getItem("contexto") ?? "null");
+        } catch {
+            // El encabezado también debe funcionar sin almacenamiento disponible.
+        }
+
+        const textoContexto = this.shadowRoot.querySelector("#textoContexto");
+        if (!textoContexto) return;
+        if (!usuario) {
+            textoContexto.textContent = "Sin sesión";
+            return;
+        }
+
+        const perfil = usuario.perfil ?? usuario.usuario ?? usuario.persona ?? usuario;
+        const texto = (valor) => Array.isArray(valor) ? valor.filter(Boolean).join(" ") : String(valor ?? "").trim();
+        const nombre = texto(perfil.nombreCompleto)
+            || [texto(perfil.nombres ?? perfil.nombre), texto(perfil.apellidos ?? perfil.apellido)]
+                .filter(Boolean).join(" ") || "Usuario";
+        const estado = store.getState();
+        const clinica = estado.clinicaActiva;
+        const rol = estado.rolSeleccionado?.rol
+            ?? (typeof estado.rolSeleccionado?.idRol === "object"
+                ? estado.rolSeleccionado.idRol : estado.rolSeleccionado);
+        const nombreClinica = clinica?.nombre || clinica?.nombreClinica || contexto?.nombreClinica;
+        const nombreRol = rol?.nombre || rol?.descripcion || rol?.nombreRol
+            || estado.rolSeleccionado?.nombreRol || contexto?.nombreRol;
+        textoContexto.textContent = [nombre, nombreClinica, nombreRol].filter(Boolean).join(" / ");
     }
 }
 

@@ -182,6 +182,10 @@ suite("BusquedaCitasView (unitaria)", () => {
         ));
 
         assert.isDefined(llamadaPersonas);
+        const url = new URL(llamadaPersonas.args[0]);
+        expect(url.searchParams.get("valor")).to.equal("01234567-8");
+        expect(url.searchParams.get("tipoDocumentoId")).to.equal("1");
+        expect(url.searchParams.has("q")).to.be.false;
         expect(clinica.disabled).to.be.false;
         expect(clinica.querySelectorAll("option")).to.have.length(1);
         expect(clinica.value).to.equal("3");

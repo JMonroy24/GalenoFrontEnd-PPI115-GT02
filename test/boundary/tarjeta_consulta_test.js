@@ -1,4 +1,5 @@
 import { TarjetaConsulta } from "../../src/js/boundary/componentes/tarjeta_consulta.js";
+import ConsultaService from "../../src/js/control/consulta_service.js";
 import { assert, expect } from "../lib/chai/index.js";
 
 mocha.setup("tdd");
@@ -71,6 +72,70 @@ suite("TarjetaConsulta (unitaria)", () => {
         expect(host.shadowRoot.querySelector("#documento-paciente").textContent).to.equal("01234567-8");
         expect(fetchStub.called).to.be.false;
     });
+
+    const variantesBackend = [
+        {
+            nombre: "inicio, persona y descripción de clínica con campos vacíos",
+            consulta: { fecha: "", inicio: "2026-11-17T09:35:00", hora: "", paciente: {},
+                persona: { nombres: ["Ana", "María"], apellidos: ["López"], documento: { valor: "01234567-8" } },
+                clinica: { nombre: "", descripcion: "Clínica Central" } },
+            esperado: ["2026-11-17", "09:35", "Ana María López", "01234567-8", "Clínica Central"]
+        },
+        {
+            nombre: "fechaCreacion y datos de paciente planos",
+            consulta: { fechaCreacion: "2026-11-16 10:45:00", nombresPaciente: ["Luis", "Alberto"],
+                apellidosPaciente: "Pérez", documentoPaciente: "ABC-123", nombreClinica: "Clínica Norte" },
+            esperado: ["2026-11-16", "10:45", "Luis Alberto Pérez", "ABC-123", "Clínica Norte"]
+        },
+        {
+            nombre: "nombrePaciente completo y horaInicio",
+            consulta: { fecha: "2026-11-15", horaInicio: "14:20", nombrePaciente: "Sofía Ruiz",
+                numeroDocumentoPaciente: "PAS-123", idClinica: { nombreClinica: "Clínica Sur" } },
+            esperado: ["2026-11-15", "14:20", "Sofía Ruiz", "PAS-123", "Clínica Sur"]
+        },
+        {
+            nombre: "cita anidada con asociaciones vacías en la raíz",
+            consulta: { fecha: "", paciente: null, clinica: {}, cita: {
+                inicio: "2026-11-14T11:05:00-06:00", paciente: { persona: {
+                    nombres: "Carlos", apellidos: "Paz", numeroDocumento: "DOC-14"
+                } }, clinica: { nombre: "Clínica Este" }
+            } },
+            esperado: ["2026-11-14", "11:05", "Carlos Paz", "DOC-14", "Clínica Este"]
+        },
+        {
+            nombre: "consulta e idPaciente.idPersona anidados",
+            consulta: { consulta: { fechaCreacion: "2026-11-13T08:15:00", idPaciente: { idPersona: {
+                nombreCompleto: "Marta Sol", documento: { numero: "DOC-13" }
+            } }, idClinica: { descripcion: "Clínica Oeste" } } },
+            esperado: ["2026-11-13", "08:15", "Marta Sol", "DOC-13", "Clínica Oeste"]
+        },
+        {
+            nombre: "nombre y documento en asociaciones separadas",
+            consulta: { fechaInicio: "2026-11-12T07:40:00", paciente: { documento: "DOC-12" },
+                persona: { nombres: "Pedro", apellido: "Luna" }, clinica: "", idClinica: { nombre: "Clínica Centro" } },
+            esperado: ["2026-11-12", "07:40", "Pedro Luna", "DOC-12", "Clínica Centro"]
+        },
+        {
+            nombre: "fecha ISO canónica sin hora separada",
+            consulta: { fecha: "2026-11-11T12:30:00", paciente: { nombre: "Lucía", dui: "DOC-11" },
+                clinica: { nombreClinica: "Clínica Principal" } },
+            esperado: ["2026-11-11", "12:30", "Lucía", "DOC-11", "Clínica Principal"]
+        }
+    ];
+
+    for (const { nombre, consulta, esperado } of variantesBackend) {
+        for (const mapear of [false, true]) {
+            test(`renderiza ${nombre}, ${mapear ? "tras pasar por el servicio" : "directamente"}`, () => {
+                const original = structuredClone(consulta);
+                host.consulta = mapear ? new ConsultaService()._mapearConsulta(consulta) : consulta;
+                const valores = ["#fecha", "#hora", "#paciente", "#documento-paciente", "#clinica"]
+                    .map((selector) => host.shadowRoot.querySelector(selector).textContent);
+                expect(valores).to.deep.equal(esperado);
+                expect(consulta).to.deep.equal(original);
+                expect(fetchStub.called).to.be.false;
+            });
+        }
+    }
 
     test("una consulta vacía muestra datos alternativos y limpia el historial anterior", () => {
         host.consulta = crearConsulta({ pasos: pasosFicticios });

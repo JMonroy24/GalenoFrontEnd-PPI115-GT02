@@ -58,6 +58,17 @@ suite("ConsultaService (unitaria)", () => {
         expect(respuesta.items).to.deep.equal([consulta]);
     });
 
+    test("envía el clinicaId del dashboard y su rol al backend al buscar citas", async () => {
+        fetchStub = sinon.stub(window, "fetch").resolves({
+            ok: true, json: async () => ({ items: [{ idConsulta: 101 }], total: 1 })
+        });
+        const respuesta = await servicio.buscarCitas({ clinicaId: "clinica-uuid", idRol: "rol-uuid" });
+        const url = new URL(fetchStub.firstCall.args[0]);
+        expect(url.searchParams.get("clinicaId")).to.equal("clinica-uuid");
+        expect(url.searchParams.get("idRol")).to.equal("rol-uuid");
+        expect(respuesta.items[0].idConsulta).to.equal(101);
+    });
+
     test("buscarCitas usa exclusivamente items sin confundir el envoltorio con una consulta", async () => {
         const consulta = { idConsulta: 101 };
         const payloads = [[consulta], { datos: [consulta] }, { items: [], datos: [consulta] }, { items: null }, null];
