@@ -3,7 +3,7 @@
  * backend dentro de `consulta_procedimiento_paso.valor`.
  *
  * @param {object} atencion - Datos del formulario clínico.
- * @returns {{ notas: string, diagnostico: Array<unknown>, plan: string }}
+ * @returns {string} JSON con notas, diagnostico y plan.
  */
 export function serializarValorPaso(atencion = {}) {
     const diagnosticos = Array.isArray(atencion.diagnosticos)
@@ -14,11 +14,11 @@ export function serializarValorPaso(atencion = {}) {
             ? []
             : [atencion.diagnosticos];
 
-    return {
+    return JSON.stringify({
         notas: atencion.notas ?? atencion.notasConsulta ?? "",
         diagnostico: atencion.diagnostico ?? diagnosticos,
         plan: atencion.plan ?? atencion.planTratamiento ?? ""
-    };
+    });
 }
 
 /**
@@ -43,9 +43,10 @@ export function construirPayloadPaso(atencion = {}) {
     );
 
     if (tieneDatos) {
+        payload.valor = serializarValorPaso(atencion);
         payload.consulta_procedimiento_paso = {
             ...(atencion.consulta_procedimiento_paso ?? {}),
-            valor: serializarValorPaso(atencion)
+            valor: payload.valor
         };
     }
 
