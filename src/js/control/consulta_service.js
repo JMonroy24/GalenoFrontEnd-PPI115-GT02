@@ -152,10 +152,14 @@ export class ConsultaService extends DefaultService {
     }
 
     async descargarTicketPdf(idConsulta) {
+        if (idConsulta == null || String(idConsulta).trim() === "") {
+            throw new Error("La consulta no tiene un identificador válido para descargar el ticket.");
+        }
+
         const url = `${ENDPOINTS.API_BASE}${ENDPOINTS.CONSULTAS}/${encodeURIComponent(idConsulta)}/ticket`;
         const response = await this._request(
             url,
-            { method: "GET" },
+            { method: "GET", headers: { Accept: "application/pdf" } },
             "Error al descargar el ticket de la consulta"
         );
         const blob = await response.blob();
@@ -171,7 +175,7 @@ export class ConsultaService extends DefaultService {
             enlace.click();
         } finally {
             enlace.remove?.();
-            URL.revokeObjectURL(objectUrl);
+            setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
         }
 
         return blob;
