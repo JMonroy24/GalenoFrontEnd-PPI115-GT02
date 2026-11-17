@@ -61,15 +61,9 @@ suite("AuthService (unitaria)", () => {
 
     suite("login", () => {
         for (const campoId of ["id", "idPersona"]) {
-            test(`elige la coincidencia exacta entre seis items y consulta roles usando ${campoId}`, async () => {
-                const documento = "01234567-8";
+            test(`usa el primer item filtrado sin documento y consulta roles usando ${campoId}`, async () => {
                 const personaId = "fe837c00-0000-4000-8000-000000000005";
-                const personas = Array.from({ length: 6 }, (_, indice) => ({
-                    [campoId]: `persona-${indice}`,
-                    numeroDocumento: `9999999${indice}-9`
-                }));
-                personas[0].valor = documento;
-                personas[4] = { [campoId]: personaId, numeroDocumento: documento, valor: "otro-valor" };
+                const persona = { [campoId]: personaId, nombres: "Ana" };
                 const asignacion = {
                     persona: { [campoId]: personaId }, rol: { id: "rol-1", nombre: "Médico" },
                     clinica: { id: "clinica-1", nombre: "Central" }
@@ -78,29 +72,30 @@ suite("AuthService (unitaria)", () => {
                     ok: true, status: 200,
                     json: async () => new URL(url).pathname.endsWith("/personas-roles")
                         ? { items: [asignacion] }
-                        : { items: personas, perfil: personas[0] }
+                        : { items: [persona, { id: "otra-persona", numeroDocumento: "01234567-8" }] }
                 }));
 
-                const sesion = await servicio.login(1, documento);
+                const sesion = await servicio.login(1, "01234567-8");
 
-                expect(sesion.perfil).to.equal(personas[4]);
+                expect(sesion.perfil).to.equal(persona);
                 expect(fetchStub.callCount).to.equal(2);
                 const urlRoles = new URL(fetchStub.secondCall.args[0]);
                 expect(urlRoles.pathname).to.match(/\/personas-roles$/);
                 expect(urlRoles.searchParams.get("personaId")).to.equal(personaId);
-                expect(store.state.usuario).to.equal(personas[4]);
+                expect(store.state.usuario).to.equal(persona);
+                expect(JSON.parse(sessionStorage.getItem(SESSION_STORAGE_KEY)).perfil)
+                    .to.deep.equal(persona);
             });
         }
 
-        for (const documentoRecibido of ["doc-a", "DÓC-A", "DOC-A "]) {
-            test(`rechaza el documento ${JSON.stringify(documentoRecibido)} al buscar exactamente DOC-A`, async () => {
+        for (const payload of [{}, { items: [] }, { items: null }, { items: {} }]) {
+            test(`rechaza una respuesta sin items válidos: ${JSON.stringify(payload)}`, async () => {
                 fetchStub = sinon.stub(window, "fetch").resolves({
-                    ok: true, status: 200,
-                    json: async () => ({ items: [{ id: "persona-1", numeroDocumento: documentoRecibido }] })
+                    ok: true, status: 200, json: async () => payload
                 });
 
                 let error;
-                try { await servicio.login(1, "DOC-A"); } catch (err) { error = err; }
+                try { await servicio.login(1, "01234567-8"); } catch (err) { error = err; }
 
                 expect(error).to.be.instanceOf(DefaultError);
                 expect(error.status).to.equal(404);
@@ -111,86 +106,70 @@ suite("AuthService (unitaria)", () => {
             });
         }
 
-        test("usa el tipo y valor recibidos y selecciona la persona correspondiente en cada login", async () => {
-            const personas = [
-                { id: "persona-a", tipoDocumento: { id: "tipo-a" }, valor: "DOC-A", nombres: "Ana" },
-                { id: "persona-b", tipoDocumento: { id: "tipo-b" }, valor: "DOC B&2", nombres: "Luis" }
+        test("envía el tipo y valor de cada login y acepta el perfil filtrado sin documento", async () => {
+            const escenarios = [
+                { tipo: "tipo-a", numero: "DOC-A", persona: { id: "persona-a", nombres: "Ana" } },
+                { tipo: "tipo-b", numero: "DOC B&2", persona: { id: "persona-b", nombres: "Luis" } }
             ];
+            const perfiles = new Map(escenarios.map(({ numero, persona }) => [numero, persona]));
             fetchStub = sinon.stub(window, "fetch").callsFake(async (url) => {
                 const recurso = new URL(url);
                 const items = recurso.pathname.endsWith("/personas-roles")
                     ? [{ persona: { id: recurso.searchParams.get("personaId") },
                         rol: { id: "rol-1", nombre: "Médico" },
                         clinica: { id: "clinica-1", nombre: "Central" } }]
-                    : personas;
+                    : [perfiles.get(recurso.searchParams.get("valor"))];
                 return { ok: true, status: 200, json: async () => ({ items }) };
             });
 
-            for (const persona of personas) {
-                const sesion = await servicio.login(` ${persona.tipoDocumento.id} `, ` ${persona.valor} `);
+            for (const { tipo, numero, persona } of escenarios) {
+                const sesion = await servicio.login(` ${tipo} `, ` ${numero} `);
                 const url = new URL(fetchStub.getCall(fetchStub.callCount - 2).args[0]);
                 expect(Object.fromEntries(url.searchParams)).to.deep.equal({
-                    tipoDocumentoId: persona.tipoDocumento.id, valor: persona.valor
+                    tipoDocumentoId: tipo, valor: numero
                 });
                 expect(sesion.perfil).to.equal(persona);
                 expect(store.state.usuario.id).to.equal(persona.id);
             }
         });
 
-        test("rechaza una persona sin documento verificable en una respuesta sin filtrar", async () => {
-            fetchStub = sinon.stub(window, "fetch").resolves({
-                ok: true, status: 200,
-                json: async () => ({ items: [{ id: "otra-persona", nombres: "Otra persona" }] })
+        for (const rolesPlanos of [false, true]) {
+            test(`encadena el perfil filtrado con roles ${rolesPlanos ? "[]" : "{ items }"}`, async () => {
+                const persona = { id: 42, nombres: "Ana" };
+                const rol = {
+                    id: 15, persona: { id: 42 }, rol: { id: 7, nombre: "Personal" },
+                    clinica: { id: 3, nombre: "Clínica Norte" }
+                };
+                const respuestaPersona = { items: [persona] };
+                const respuestaRoles = rolesPlanos ? [rol] : { items: [rol] };
+                fetchStub = sinon.stub(window, "fetch").callsFake(async (url) => ({
+                    ok: true, status: 200,
+                    json: async () => new URL(url).pathname.endsWith("/personas-roles")
+                        ? respuestaRoles : respuestaPersona
+                }));
+
+                const sesion = await servicio.login(1, "01234567-8");
+
+                expect(fetchStub.callCount).to.equal(2);
+                const urlPersona = new URL(fetchStub.firstCall.args[0]);
+                const urlRoles = new URL(fetchStub.secondCall.args[0]);
+                expect(urlPersona.pathname).to.match(/\/personas$/);
+                expect(urlRoles.pathname).to.match(/\/personas-roles$/);
+                expect(urlRoles.searchParams.get("personaId")).to.equal("42");
+                expect(urlRoles.searchParams.get("first")).to.equal("0");
+                expect(urlRoles.searchParams.get("max")).to.equal("10");
+                expect(sesion.perfil).to.equal(persona);
+                expect(sesion.roles).to.deep.equal([rol]);
+                expect(store.isAuthenticated()).to.be.true;
+                expect(logStub.getCalls().map((llamada) => llamada.args)).to.deep.equal([
+                    ["Petición Persona URL:", urlPersona.href],
+                    ["Respuesta Backend Persona:", respuestaPersona],
+                    ["Personas encontradas:", respuestaPersona.items],
+                    ["Persona seleccionada:", persona],
+                    ["Petición Roles URL:", urlRoles.href],
+                    ["Respuesta Backend Roles:", respuestaRoles]
+                ]);
             });
-
-            let error;
-            try { await servicio.login("tipo-a", "DOC-A"); } catch (err) { error = err; }
-
-            expect(error?.status).to.equal(404);
-            expect(fetchStub.calledOnce).to.be.true;
-            expect(store.isAuthenticated()).to.be.false;
-        });
-
-        for (const personaPlana of [false, true]) {
-            for (const rolesPlanos of [false, true]) {
-                test(`encadena id genérico con persona ${personaPlana ? "[]" : "{ items }"} y roles ${rolesPlanos ? "[]" : "{ items }"}`, async () => {
-                    const persona = {
-                        id: 42, nombres: "Ana", numeroDocumento: "01234567-8",
-                        tipoDocumento: { id: 1 }
-                    };
-                    const rol = {
-                        id: 15, persona: { id: 42 }, rol: { id: 7, nombre: "Personal" },
-                        clinica: { id: 3, nombre: "Clínica Norte" }
-                    };
-                    const respuestaPersona = personaPlana ? [persona] : { items: [persona] };
-                    const respuestaRoles = rolesPlanos ? [rol] : { items: [rol] };
-                    fetchStub = sinon.stub(window, "fetch").callsFake(async (url) => ({
-                        ok: true, status: 200,
-                        json: async () => new URL(url).pathname.endsWith("/personas-roles")
-                            ? respuestaRoles : respuestaPersona
-                    }));
-
-                    const sesion = await servicio.login(1, "01234567-8");
-
-                    expect(fetchStub.callCount).to.equal(2);
-                    const urlPersona = new URL(fetchStub.firstCall.args[0]);
-                    const urlRoles = new URL(fetchStub.secondCall.args[0]);
-                    expect(urlPersona.pathname).to.match(/\/personas$/);
-                    expect(urlRoles.pathname).to.match(/\/personas-roles$/);
-                    expect(urlRoles.searchParams.get("personaId")).to.equal("42");
-                    expect(urlRoles.searchParams.get("first")).to.equal("0");
-                    expect(urlRoles.searchParams.get("max")).to.equal("10");
-                    expect(sesion.perfil).to.equal(persona);
-                    expect(sesion.roles).to.deep.equal([rol]);
-                    expect(store.isAuthenticated()).to.be.true;
-                    expect(logStub.getCalls().map((llamada) => llamada.args)).to.deep.equal([
-                        ["Petición Persona URL:", urlPersona.href],
-                        ["Respuesta Backend Persona:", respuestaPersona],
-                        ["Petición Roles URL:", urlRoles.href],
-                        ["Respuesta Backend Roles:", respuestaRoles]
-                    ]);
-                });
-            }
         }
 
         for (const id of [42, "", null]) {
@@ -245,7 +224,7 @@ suite("AuthService (unitaria)", () => {
                 ok: true,
                 status: 200,
                 headers: new Headers({ "Authorization": "Bearer token-jwt-secreto" }),
-                text: async () => JSON.stringify([perfilPersonaFicticia])
+                text: async () => JSON.stringify({ items: [perfilPersonaFicticia] })
             });
 
             responderRoles({ items: rolesEmpleadoValidos });
@@ -279,7 +258,7 @@ suite("AuthService (unitaria)", () => {
             fetchStub = sinon.stub(window, "fetch").resolves({
                 ok: true,
                 status: 200,
-                text: async () => JSON.stringify([])
+                text: async () => JSON.stringify({ items: [] })
             });
 
             let errorLanzado = null;
@@ -298,7 +277,7 @@ suite("AuthService (unitaria)", () => {
             fetchStub = sinon.stub(window, "fetch").resolves({
                 ok: true,
                 status: 200,
-                text: async () => JSON.stringify([perfilPersonaFicticia])
+                text: async () => JSON.stringify({ items: [perfilPersonaFicticia] })
             });
 
             responderRoles({ items: [] });
@@ -315,11 +294,11 @@ suite("AuthService (unitaria)", () => {
             expect(errorLanzado.message).to.contain("no tiene roles asignados");
         });
 
-        test("no autentica a otra persona si el servidor devuelve una lista sin filtrar", async () => {
+        test("no usa un perfil alternativo si el backend devuelve items vacío", async () => {
             fetchStub = sinon.stub(window, "fetch").resolves({
                 ok: true,
                 status: 200,
-                json: async () => ({ items: [{ ...perfilPersonaFicticia, numeroDocumento: "99999999-9" }] })
+                json: async () => ({ items: [], perfil: perfilPersonaFicticia })
             });
 
             let error;

@@ -55,7 +55,11 @@ export class AuthService extends DefaultService {
             );
             const payload = await this._parseBody(response);
             console.log("Respuesta Backend Persona:", payload);
-            const perfil = this._extraerPerfil(payload, idTipoDocumento, documento);
+            console.log("Personas encontradas:", payload?.items);
+            const perfil = Array.isArray(payload?.items) && payload.items.length > 0
+                ? payload.items[0]
+                : null;
+            console.log("Persona seleccionada:", perfil);
 
             if (!perfil) {
                 const mensaje = "Usuario no encontrado";
@@ -319,36 +323,6 @@ export class AuthService extends DefaultService {
             && clinica !== ""
             && !(typeof clinica === "object" && Object.keys(clinica).length === 0)
             && this._estaActivo(clinica);
-    }
-
-    _extraerPerfil(payload, tipoDocumento, numeroDocumento) {
-        const perfil = payload?.perfil
-            ?? payload?.persona
-            ?? payload?.usuario;
-        const personas = Array.isArray(payload?.items)
-            ? payload.items
-            : Array.isArray(payload)
-                ? payload
-                : payload?.datos ?? (perfil ? [perfil] : [payload]);
-
-        if (!Array.isArray(personas)) {
-            return null;
-        }
-
-        return personas.find((persona) => {
-            if (!persona || typeof persona !== "object" || !this._estaActivo(persona)) {
-                return false;
-            }
-
-            const documento = persona.numeroDocumento ?? persona.valor ?? persona.documento ?? persona.dui;
-            const tipo = persona.idTipoDocumento ?? persona.tipoDocumentoId ?? persona.tipoDocumento;
-            const idTipo = typeof tipo === "object" ? tipo?.idTipoDocumento ?? tipo?.id : tipo;
-
-            return this._obtenerIdPersona(persona) != null
-                && documento != null
-                && String(documento) === numeroDocumento
-                && (idTipo == null || String(idTipo) === String(tipoDocumento));
-        }) ?? null;
     }
 
     _obtenerIdPersona(perfil) {
