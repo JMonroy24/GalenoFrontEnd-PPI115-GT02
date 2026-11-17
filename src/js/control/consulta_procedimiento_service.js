@@ -74,6 +74,10 @@ export class ConsultaProcedimientoService {
     guardarConsultaProcedimientoPaso(idConsulta, atencion = {}) {
         return this.guardarPaso(idConsulta, atencion);
     }
+
+    async registrarPaso(idConsulta, idPaso, datos = {}) {
+        return this.guardarPaso(idConsulta, { idPaso, ...datos });
+    }
 }
 
 export const consultaProcedimientoService = new ConsultaProcedimientoService();
