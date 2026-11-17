@@ -321,7 +321,7 @@ export class AuthService extends DefaultService {
         return Promise.all(asignaciones.map(async (registro) => {
             const [clinica, rol] = await Promise.all([
                 resolver(registro, "clinica", "idClinica", ENDPOINTS.CLINICAS),
-                resolver(registro, "rol", "idRol", "/roles")
+                resolver(registro, "rol", "idRol", ENDPOINTS.ROLES)
             ]);
             const cambios = {};
             if (clinica !== undefined) cambios.clinica = clinica;

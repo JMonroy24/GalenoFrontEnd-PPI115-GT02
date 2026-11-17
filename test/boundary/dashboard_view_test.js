@@ -197,7 +197,7 @@ suite("DashboardView (unitaria)", () => {
         await host._cargarCitas();
         let url = new URL(fetchStub.firstCall.args[0]);
         expect(url.pathname).to.match(/\/consultas$/);
-        expect(url.searchParams.get("clinicaId")).to.equal("1");
+        expect(url.searchParams.get("idClinica")).to.equal("1");
         expect(url.searchParams.get("fechaDesde")).to.equal(host.fechaDesde);
         expect(url.searchParams.get("fechaHasta")).to.equal(host.fechaHasta);
         expect(url.searchParams.has("periodo")).to.be.false;
@@ -207,7 +207,7 @@ suite("DashboardView (unitaria)", () => {
         selectClinica.dispatchEvent(new Event("change"));
         await new Promise((resolve) => setTimeout(resolve, 20));
         url = new URL(fetchStub.lastCall.args[0]);
-        expect(url.searchParams.get("clinicaId")).to.equal("2");
+        expect(url.searchParams.get("idClinica")).to.equal("2");
         expect(host.shadowRoot.querySelectorAll("tarjeta-consulta")).to.have.length(2);
     });
 

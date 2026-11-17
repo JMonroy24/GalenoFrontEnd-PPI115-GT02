@@ -220,6 +220,39 @@ suite("BusquedaCitasView (unitaria)", () => {
         expect(url.searchParams.get("idClinica")).to.equal("3");
     });
 
+    test("escucha el evento buscar-citas y consulta con los filtros recibidos", async () => {
+        const detalle = {
+            tipoDocumento: "1",
+            numeroDocumento: "01234567-8",
+            idClinica: 3,
+            fechaDesde: "2026-11-01",
+            fechaHasta: "2026-11-30"
+        };
+        let recibido = null;
+        host.addEventListener("buscar-citas", (evento) => { recibido = evento.detail; });
+
+        host.dispatchEvent(new CustomEvent("buscar-citas", {
+            bubbles: true,
+            composed: true,
+            detail: detalle
+        }));
+        await esperar();
+
+        const llamada = fetchStub.getCalls().find((item) => (
+            String(item.args[0]).includes("/consultas?")
+        ));
+        assert.isDefined(llamada);
+
+        const url = new URL(llamada.args[0]);
+        expect(url.searchParams.get("tipoDocumento")).to.equal("1");
+        expect(url.searchParams.get("numeroDocumento")).to.equal("01234567-8");
+        expect(url.searchParams.get("idClinica")).to.equal("3");
+        expect(url.searchParams.get("fechaDesde")).to.equal("2026-11-01");
+        expect(url.searchParams.get("fechaHasta")).to.equal("2026-11-30");
+        expect(recibido).to.equal(detalle);
+        expect(host.shadowRoot.querySelectorAll("tarjeta-consulta")).to.have.length(1);
+    });
+
     test("muestra un estado vacío cuando la búsqueda no devuelve citas", async () => {
         citasRespuesta = [];
         await prepararBusqueda();

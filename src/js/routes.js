@@ -1,5 +1,7 @@
+import { API_BASE } from "./config.js";
+
 export const ENDPOINTS = Object.freeze({
-    API_BASE: "http://localhost:9080/galenoSV/api/v1",
+    API_BASE,
     CLINICAS: "/clinicas",
     TIPOS_DOCUMENTO: "/tipos-documento",
     TIPOS_EXAMEN: "/tipos-examen",
