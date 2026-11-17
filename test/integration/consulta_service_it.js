@@ -31,4 +31,22 @@ describe("ConsultaService (integración con Open Liberty)", function () {
 
         expect(resp.total).to.be.a("number");
     });
+
+    it("expone el contrato JSON de consultas con una petición fetch real", async function () {
+        this.timeout(20000);
+
+        const response = await fetch(
+            `${API_BASE}${ENDPOINTS.CONSULTAS}?first=0&max=5`,
+            { headers: { Accept: "application/json" } }
+        );
+
+        expect(response.status).to.equal(200);
+        expect(response.ok).to.be.true;
+
+        const payload = await response.json();
+        expect(payload).to.have.property("items").that.is.an("array");
+        expect(payload).to.have.property("total").that.is.a("number");
+        expect(payload).to.have.property("first").that.is.a("number");
+        expect(payload).to.have.property("max").that.is.a("number");
+    });
 });

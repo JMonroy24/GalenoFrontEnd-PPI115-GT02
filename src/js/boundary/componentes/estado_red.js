@@ -1,7 +1,7 @@
 import { store } from "../../store.js";
 
 const MSG_OFFLINE =
-    "Sin conexión. Se muestran los datos guardados y algunas acciones no estarán disponibles.";
+    "Sin conexión. La interfaz disponible se sirve desde la caché y algunas acciones no estarán disponibles.";
 const MSG_ONLINE = "Conexión restablecida.";
 
 /**

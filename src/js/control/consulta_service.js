@@ -117,7 +117,12 @@ export class ConsultaService extends DefaultService {
     }
 
     buscarCitas(filtros = {}, first = 0, max = DEFAULT_PAGE_SIZE) {
-        return this._buscarCitas(filtros, first, max);
+        const { clinicaId, ...resto } = filtros;
+        const normalizados = clinicaId !== undefined && clinicaId !== null && String(clinicaId).trim() !== ""
+            ? { ...resto, idClinica: filtros.idClinica ?? clinicaId }
+            : filtros;
+
+        return this._buscarCitas(normalizados, first, max);
     }
 
     buscarPorClinica(idClinica, first = 0, max = DEFAULT_PAGE_SIZE) {

@@ -8,7 +8,7 @@
 <body>
     <div id="mocha"></div>
     <script src="lib/mocha/mocha.js"></script>
-    <!-- Dos runners separados porque Mocha no mezcla las interfaces TDD (suite/test) y BDD (describe/it) en una misma ejecución. Este runner usa BDD para integración. -->
+    <!-- Runner aislado de integración BDD; runner.html también lo importa al final de las suites TDD. -->
     <script type="module" src="integration/consulta_service_it.js"></script>
     <script type="module">
         mocha.run();

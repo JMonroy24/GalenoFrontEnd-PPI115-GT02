@@ -302,6 +302,33 @@ suite("LoginView (unitaria)", () => {
         expect(host.shadowRoot.querySelector("#btn-iniciar-sesion").disabled).to.be.false;
     });
 
+    test("emite la notificación global de error al fallar la autenticación", async () => {
+        mensajeSpy.restore();
+
+        const notificaciones = [];
+        const oyente = (evento) => notificaciones.push(evento.detail);
+        window.addEventListener("notificacion", oyente);
+
+        try {
+            fetchStub.withArgs(sinon.match((url) => String(url).includes("/personas?")))
+                .resolves({ ...responder({ message: "Servidor no disponible" }), ok: false, status: 500 });
+            host.shadowRoot.querySelector("#numero-documento").value = "01234567-8";
+
+            await host._iniciarSesion();
+
+            expect(notificaciones).to.have.length(1);
+            expect(notificaciones[0]).to.include({
+                titulo: "Error al iniciar sesión",
+                detalle: "Servidor no disponible",
+                tipo: "error"
+            });
+            expect(navigateStub.called).to.be.false;
+        } finally {
+            window.removeEventListener("notificacion", oyente);
+            mensajeSpy = sinon.spy(GeneradorMensajes, "crearMensaje");
+        }
+    });
+
     test("una persona inexistente no consulta roles ni navega", async () => {
         fetchStub.withArgs(sinon.match((url) => String(url).includes("/personas?")))
             .resolves(responder({ items: [] }));
