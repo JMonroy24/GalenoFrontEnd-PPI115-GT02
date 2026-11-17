@@ -1,5 +1,7 @@
 import { BusquedaCitasView } from "../../src/js/boundary/vistas/busqueda_citas_view.js";
+import { consultaService } from "../../src/js/control/consulta_service.js";
 import store from "../../src/js/store.js";
+import GeneradorMensajes from "../../src/js/control/generador_mensajes.js";
 import { assert, expect } from "../lib/chai/index.js";
 
 mocha.setup("tdd");
@@ -8,6 +10,7 @@ suite("BusquedaCitasView (unitaria)", () => {
     let host;
     let fetchStub;
     let citasRespuesta;
+    let mensajeSpy;
 
     const esperar = (ms = 30) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -58,6 +61,7 @@ suite("BusquedaCitasView (unitaria)", () => {
     setup(async () => {
         citasRespuesta = [citaFicticia];
         store.setState({ online: true });
+        mensajeSpy = sinon.spy(GeneradorMensajes, "crearMensaje");
 
         fetchStub = sinon.stub(window, "fetch").callsFake(async (url) => {
             const recurso = String(url);
@@ -107,8 +111,9 @@ suite("BusquedaCitasView (unitaria)", () => {
     });
 
     teardown(() => {
-        fetchStub?.restore();
         host?.remove();
+        fetchStub?.restore();
+        mensajeSpy?.restore();
         store.setState({ online: true });
     });
 
@@ -122,6 +127,31 @@ suite("BusquedaCitasView (unitaria)", () => {
         expect(host.shadowRoot.querySelector("#resultados").hidden).to.be.true;
     });
 
+    test("renderiza las consultas de items con asociaciones anidadas del backend Java", async () => {
+        citasRespuesta = [{
+            idConsulta: 501,
+            fechaConsulta: "2026-11-16T09:30:00",
+            clinica: { idClinica: 3, nombre: "Clínica Norte" },
+            paciente: { persona: { idPersona: 42, nombres: "Ana", apellidos: "López", numeroDocumento: "01234567-8" } },
+            estado: { nombre: "Pendiente" },
+            consultaProcedimientos: [{ idConsultaProcedimiento: 71,
+                procedimiento: { idProcedimiento: 9, nombre: "Control General" } }]
+        }];
+
+        await host.buscar({ idClinica: 3 });
+
+        const tarjeta = host.shadowRoot.querySelector("tarjeta-consulta");
+        expect(tarjeta).to.exist;
+        expect(tarjeta.shadowRoot.querySelector("#fecha").textContent).to.equal("2026-11-16");
+        expect(tarjeta.shadowRoot.querySelector("#hora").textContent).to.equal("09:30");
+        expect(tarjeta.shadowRoot.querySelector("#clinica").textContent).to.equal("Clínica Norte");
+        expect(tarjeta.shadowRoot.querySelector("#paciente").textContent).to.equal("Ana López");
+        expect(tarjeta.shadowRoot.querySelector("#documento-paciente").textContent).to.equal("01234567-8");
+        expect(tarjeta.shadowRoot.querySelector("#lista-procedimientos li").textContent).to.equal("Control General");
+        expect(tarjeta.shadowRoot.querySelector("#estado").textContent).to.equal("Pendiente");
+        expect(host.shadowRoot.querySelector("#resultados").hidden).to.be.false;
+    });
+
     test("mantiene número de documento y clínica deshabilitados hasta elegir un tipo", () => {
         const asistente = obtenerAsistente();
         const numeroDocumento = asistente.shadowRoot.querySelector("#numeroDocumento");
@@ -129,6 +159,8 @@ suite("BusquedaCitasView (unitaria)", () => {
 
         expect(numeroDocumento.disabled).to.be.true;
         expect(clinica.disabled).to.be.true;
+        const buscador = asistente.shadowRoot.querySelector("buscador-tipo-documentos");
+        expect(buscador.value).to.equal("");
 
         seleccionarTipo();
 
@@ -150,6 +182,10 @@ suite("BusquedaCitasView (unitaria)", () => {
         ));
 
         assert.isDefined(llamadaPersonas);
+        const url = new URL(llamadaPersonas.args[0]);
+        expect(url.searchParams.get("valor")).to.equal("01234567-8");
+        expect(url.searchParams.get("tipoDocumentoId")).to.equal("1");
+        expect(url.searchParams.has("q")).to.be.false;
         expect(clinica.disabled).to.be.false;
         expect(clinica.querySelectorAll("option")).to.have.length(1);
         expect(clinica.value).to.equal("3");
@@ -201,5 +237,152 @@ suite("BusquedaCitasView (unitaria)", () => {
         expect(estado.textContent).to.equal("No se encontraron citas.");
         expect(resultados.hidden).to.be.true;
         expect(resultados.querySelectorAll("tarjeta-consulta")).to.have.length(0);
+    });
+
+    test("el botón de cada tarjeta descarga su consulta y bloquea clics repetidos", async () => {
+        let resolver;
+        const descargar = sinon.stub(consultaService, "descargarTicketPdf").returns(
+            new Promise((resolve) => { resolver = resolve; })
+        );
+        try {
+            await host.buscar({});
+            const tarjeta = host.shadowRoot.querySelector("tarjeta-consulta");
+            const boton = tarjeta.querySelector('button[slot="acciones"]');
+            expect(tarjeta.shadowRoot.querySelector('slot[name="acciones"]').assignedElements()).to.include(boton);
+            boton.click();
+            boton.click();
+            expect(descargar.calledOnceWithExactly(101)).to.be.true;
+            expect(boton.disabled).to.be.true;
+            resolver();
+            await esperar();
+            expect(boton.disabled).to.be.false;
+            expect(boton.textContent).to.equal("Descargar Ticket PDF");
+        } finally {
+            descargar.restore();
+        }
+    });
+
+    test("restaura el botón y muestra el error si falla la descarga", async () => {
+        const descargar = sinon.stub(consultaService, "descargarTicketPdf").rejects(new Error("Ticket no disponible"));
+        try {
+            await host.buscar({});
+            const boton = host.shadowRoot.querySelector("tarjeta-consulta button");
+            boton.click();
+            await esperar();
+            expect(boton.disabled).to.be.false;
+            expect(boton.hasAttribute("aria-busy")).to.be.false;
+            expect(mensajeSpy.calledOnceWithExactly("Error al descargar el ticket", "Ticket no disponible", "error")).to.be.true;
+        } finally {
+            descargar.restore();
+        }
+    });
+
+    test("muestra carga y descarta las tarjetas anteriores mientras espera la nueva búsqueda", async () => {
+        await host.buscar({});
+        let resolver;
+        fetchStub.withArgs(sinon.match((url) => String(url).includes("/consultas?")))
+            .returns(new Promise((resolve) => { resolver = resolve; }));
+        const pendiente = host.buscar({ numeroDocumento: "09876543-2" });
+
+        expect(host.shadowRoot.querySelector("#estado").textContent).to.equal("Cargando citas...");
+        expect(host.shadowRoot.querySelector("#estado").hidden).to.be.false;
+        expect(host.shadowRoot.querySelector("#resultados").hidden).to.be.true;
+        expect(host.shadowRoot.querySelectorAll("tarjeta-consulta")).to.have.length(0);
+
+        resolver(responder({ items: [{ ...citaFicticia, idConsulta: 202 }] }));
+        await pendiente;
+        expect(host.shadowRoot.querySelector("tarjeta-consulta").consulta.idConsulta).to.equal(202);
+        expect(host.shadowRoot.querySelector("#estado").hidden).to.be.true;
+    });
+
+    test("un error HTTP muestra el estado y la notificación sin conservar resultados anteriores", async () => {
+        await host.buscar({});
+        fetchStub.withArgs(sinon.match((url) => String(url).includes("/consultas?")))
+            .resolves({ ...responder({ message: "Consultas no disponibles" }), ok: false, status: 500 });
+
+        await host.buscar({});
+
+        expect(host.shadowRoot.querySelector("#estado").textContent).to.equal("No se pudieron cargar las citas.");
+        expect(host.shadowRoot.querySelector("#estado").hidden).to.be.false;
+        expect(host.shadowRoot.querySelector("#resultados").hidden).to.be.true;
+        expect(host.shadowRoot.querySelectorAll("tarjeta-consulta")).to.have.length(0);
+        expect(mensajeSpy.calledOnceWithExactly("Error al buscar citas", "Consultas no disponibles", "error")).to.be.true;
+    });
+
+    for (const fallaAnterior of [false, true]) {
+        test(`ignora la ${fallaAnterior ? "falla" : "respuesta"} tardía de una búsqueda anterior`, async () => {
+            let resolverAnterior;
+            let rechazarAnterior;
+            const consultas = fetchStub.withArgs(sinon.match((url) => String(url).includes("/consultas?")));
+            consultas.onFirstCall().returns(new Promise((resolve, reject) => {
+                resolverAnterior = resolve;
+                rechazarAnterior = reject;
+            }));
+            consultas.onSecondCall().resolves(responder({ items: [{ ...citaFicticia, idConsulta: 202 }] }));
+            const anterior = host.buscar({ numeroDocumento: "01234567-8" });
+            await host.buscar({ numeroDocumento: "09876543-2" });
+
+            if (fallaAnterior) rechazarAnterior(new Error("Búsqueda anterior fallida"));
+            else resolverAnterior(responder({ items: [citaFicticia] }));
+            await anterior;
+
+            const tarjetas = host.shadowRoot.querySelectorAll("tarjeta-consulta");
+            expect(tarjetas).to.have.length(1);
+            expect(tarjetas[0].consulta.idConsulta).to.equal(202);
+            expect(host.shadowRoot.querySelector("#estado").hidden).to.be.true;
+            expect(mensajeSpy.called).to.be.false;
+        });
+    }
+
+    test("cada tarjeta descarga su idConsulta y deshabilita el ticket si falta el identificador", async () => {
+        citasRespuesta = [
+            { ...citaFicticia, idConsulta: 101, id: 999 },
+            { ...citaFicticia, idConsulta: 202 },
+            { ...citaFicticia, idConsulta: null }
+        ];
+        const descargar = sinon.stub(consultaService, "descargarTicketPdf").resolves();
+        try {
+            await host.buscar({});
+            const botones = [...host.shadowRoot.querySelectorAll('tarjeta-consulta button[slot="acciones"]')];
+            botones.forEach((boton) => boton.click());
+            expect(botones[2].disabled).to.be.true;
+            expect(descargar.getCalls().map((llamada) => llamada.args[0])).to.deep.equal([101, 202]);
+            await Promise.resolve();
+        } finally {
+            descargar.restore();
+        }
+    });
+
+    test("el botón completa el flujo HTTP del ticket como blob sin navegar fuera del runner", async () => {
+        const pdf = new Blob(["%PDF-1.4\nTicket\n%%EOF"], { type: "application/pdf" });
+        const leerBlob = sinon.stub().resolves(pdf);
+        fetchStub.withArgs(sinon.match((url) => String(url).endsWith("/consultas/101/ticket")))
+            .resolves({ ok: true, status: 200, blob: leerBlob });
+        const crearUrl = sinon.stub(URL, "createObjectURL").returns("blob:ticket-unitario");
+        const revocarUrl = sinon.stub(URL, "revokeObjectURL");
+        const clickEnlace = sinon.stub(HTMLAnchorElement.prototype, "click");
+        let reloj;
+        try {
+            await host.buscar({});
+            reloj = sinon.useFakeTimers();
+            const boton = host.shadowRoot.querySelector("tarjeta-consulta button");
+            boton.click();
+            await reloj.tickAsync(1000);
+
+            const solicitud = fetchStub.getCalls().find((llamada) => String(llamada.args[0]).endsWith("/ticket"));
+            expect(solicitud.args[1].method).to.equal("GET");
+            expect(solicitud.args[1].headers.get("Accept")).to.equal("application/pdf");
+            expect(leerBlob.calledOnce).to.be.true;
+            expect(crearUrl.calledOnceWithExactly(pdf)).to.be.true;
+            expect(clickEnlace.calledOnce).to.be.true;
+            expect(clickEnlace.firstCall.thisValue.download).to.equal("ticket-cita-101.pdf");
+            expect(revocarUrl.calledOnceWithExactly("blob:ticket-unitario")).to.be.true;
+            expect(boton.disabled).to.be.false;
+        } finally {
+            reloj?.restore();
+            crearUrl.restore();
+            revocarUrl.restore();
+            clickEnlace.restore();
+        }
     });
 });

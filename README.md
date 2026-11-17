@@ -79,7 +79,7 @@ Las pruebas están escritas con la interfaz **TDD** de Mocha (`suite` / `test`) 
 ### Librerías de soporte (`test/lib/`)
 
 > [!IMPORTANT]
-> El directorio `test/lib/` **no forma parte del código fuente de producción** ubicado en `src/`. Contiene únicamente las librerías de terceros necesarias para ejecutar las pruebas unitarias en el navegador. Ningún archivo de este directorio se sirve ni se referencia desde la aplicación en producción.
+> El directorio `test/lib/` contiene **únicamente herramientas de prueba estáticas: Mocha, Chai y Sinon**. Se cargan localmente desde los runners, sin CDN ni instalación de paquetes. **No forma parte del código fuente de producción** ubicado en `src/`: ningún archivo de este directorio se importa desde la aplicación. El código de producción mantiene **cero librerías de terceros**, usando Vanilla JS, Web Components y CSS estándar.
 
 | Archivo | Librería | Versión | Propósito |
 |---|---|---|---|
@@ -88,7 +88,7 @@ Las pruebas están escritas con la interfaz **TDD** de Mocha (`suite` / `test`) 
 | `test/lib/chai/index.js` | [Chai](https://www.chaijs.com) | — | Librería de aserciones (`expect`, `assert`) |
 | `test/lib/sinon/sinon.js` | [Sinon.JS](https://sinonjs.org) | 22.1.0 | Espías, stubs y mocks para pruebas de servicios |
 
-Estas librerías se distribuyen como **bundles UMD/IIFE vendorizados** (copiados manualmente al repositorio) para que el runner HTML funcione sin herramientas de empaquetado. **No deben ser importadas desde `src/`** ni incluidas en ningún proceso de despliegue o auditoría de dependencias de producción.
+Estas herramientas se distribuyen como **archivos estáticos copiados al repositorio**: Mocha y Sinon como scripts para navegador y Chai como módulo ES. El runner funciona sin herramientas de empaquetado. **No deben ser importadas desde `src/`** ni incluidas en el despliegue de producción.
 
 > [!NOTE]
 > Si en algún momento se migra a un pipeline con `npm`, estas librerías pasarían a listarse en `devDependencies` del `package.json` y el directorio `test/lib/` podría eliminarse del repositorio.
@@ -108,6 +108,19 @@ Estas librerías se distribuyen como **bundles UMD/IIFE vendorizados** (copiados
 
 El reporte Mocha se muestra directamente en la página con el recuento de tests pasados, fallidos y pendientes.
 
+### Cobertura de vistas y componentes
+
+El runner unitario importa todas las suites desde un único módulo antes de llamar a `mocha.run()`. Las pruebas usan Mocha TDD (`suite`/`test`), Chai y `sinon.stub(window, "fetch")` para simular respuestas HTTP. No requieren un backend activo ni realizan peticiones reales a la API. Los componentes que sólo reciben datos comprueban que no se llame a `fetch`.
+
+| Suite canónica | Comportamientos cubiertos |
+|---|---|
+| `test/control/login_view_test.js` | Renderizado, validación y corrección de campos, carga, bloqueo de envíos duplicados, sesión y navegación, persona inexistente, roles inactivos y errores HTTP |
+| `test/control/busqueda_citas_view_test.js` | Asistente secuencial, filtros, resultados y estados vacíos, carga y errores, respuestas fuera de orden, ticket PDF por consulta y recuperación del botón |
+| `test/boundary/tarjeta_consulta_test.js` | Paciente y documento, fecha y estado, procedimientos activos, acciones por slot, texto seguro, historial y propagación de eventos |
+| `test/boundary/historial_pasos_test.js` | Jerarquía y registros ejecutados, estado vacío, normalización, contenido seguro, apertura/cierre del diálogo, foco, desmontaje y ciclos en los datos |
+
+Los archivos `test/control/tarjeta_consulta_test.js` y `test/control/historial_pasos_test.js` son accesos de compatibilidad a las suites de `boundary/`; el runner importa sólo las rutas canónicas para evitar duplicados. `test/runner_it.html` mantiene las pruebas BDD (`describe`/`it`) sobre HTTP real y requiere Open Liberty, HTTPS/CORS y credenciales válidas según `src/js/config.js`.
+
 ---
 
 ## Convenciones de código
@@ -117,7 +130,7 @@ El reporte Mocha se muestra directamente en la página con el recuento de tests 
 - **Sin dependencias de producción** — `src/` no tiene `node_modules` ni gestor de paquetes; todas las dependencias externas de producción son cero.
 - **Nomenclatura de archivos** — `snake_case` para todos los archivos `.js` y de test.
 - **Interfaz de pruebas TDD** — `suite()` / `test()` / `setup()` / `teardown()` (Mocha TDD); no mezclar con la interfaz BDD (`describe`/`it`) en el mismo runner.
-=======
+---
 # GalenoSV — Cliente Frontend (GalenoFE)
 
 Cliente web frontend para el sistema de gestión clínica **GalenoSV**, desarrollado para la asignatura *Programación para Internet (PPI115, Ciclo II-2026, FMOcc-UES)*.
@@ -141,6 +154,12 @@ El proyecto mantiene un desacoplamiento estricto bajo el patrón BCE:
 - **Entity (`src/js/entity/`)**:
   - `default_response.js`: Estructura unificada para respuestas paginadas (`items`, `total`, `first`, `max`).
   - `default_error.js`: Excepción tipada para fallos HTTP con metadatos de status y detalles del servidor.
+
+### 🛡️ Criterio de Cero Librerías de Terceros en Producción
+
+El código fuente de producción contenido íntegramente en el directorio `src/` está implementado al **100% con JavaScript nativo (ES6+), Web Components nativos (Custom Elements y Shadow DOM) y CSS estándar**, sin dependencia de librerías ni frameworks de terceros (cero React, Vue, Angular, Bootstrap, Tailwind o Axios).
+
+Las herramientas ubicadas en el directorio `test/lib/` (**Mocha**, **Chai**, **Sinon**) corresponden **exclusivamente a utilidades de prueba en navegador para la ejecución de la suite de pruebas unitarias TDD e integración BDD** en los runners de prueba (`test/runner.html` y `test/runner_it.html`). **Bajo ninguna circunstancia forman parte ni se empaquetan en el código fuente de producción en `src/`**, cumpliendo a cabalidad con el criterio evaluativo de *Cero librerías de terceros en código de producción*.
 
 ---
 

@@ -88,7 +88,9 @@ suite("OrdenExamenService (unitaria)", () => {
             error = e;
         }
 
-        assert.instanceOf(error, TypeError);
+        assert.instanceOf(error, DefaultError);
+        expect(error.error.code).to.equal("NETWORK_ERROR");
+        expect(error.details.causa).to.equal("Failed to fetch");
     });
 
     test("asignarOrdenes delega en crearOrdenes", async () => {
@@ -97,5 +99,16 @@ suite("OrdenExamenService (unitaria)", () => {
         await servicio.asignarOrdenes("c-1", ["5"]);
 
         expect(cuerpoEnviado(fetchStub.firstCall)).to.deep.equal({ idTipoExamen: "5", idConsulta: "c-1" });
+    });
+
+    test("crearOrdenes vincula cada orden del lote al paso activo", async () => {
+        fetchStub = sinon.stub(window, "fetch").callsFake(async () => ok({}));
+        await servicio.crearOrdenes("c-1", ["5", "7"], { idPaso: "p-9" });
+        expect(fetchStub.callCount).to.equal(2);
+        fetchStub.getCalls().forEach((llamada) => {
+            expect(llamada.args[0]).to.match(/\/ordenes-examen$/);
+            expect(cuerpoEnviado(llamada).idPaso).to.equal("p-9");
+            expect(cuerpoEnviado(llamada).idConsulta).to.equal("c-1");
+        });
     });
 });

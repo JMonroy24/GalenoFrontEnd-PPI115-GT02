@@ -75,6 +75,39 @@ suite("ListaExamenesAsignables (unitaria)", () => {
         expect(host.obtenerSeleccionados()).to.have.length(0);
     });
 
+    test("envía todos los exámenes seleccionados con el identificador del paso", async () => {
+        host.idPaso = "p-9";
+        marcar("1");
+        marcar("3");
+        await host.asignarSeleccionados();
+        expect(ordenStub.crearOrdenes.calledOnceWith("c-1", ["1", "3"], { idPaso: "p-9" })).to.be.true;
+    });
+
+    test("la respuesta de un lote conserva su contexto aunque cambie el paso durante el envío", async () => {
+        let resolver;
+        ordenStub.crearOrdenes.callsFake(() => new Promise((r) => { resolver = r; }));
+        host.idPaso = "p-1";
+        marcar("1");
+        let detalle;
+        host.addEventListener("ordenes-asignadas", (e) => { detalle = e.detail; });
+        const envio = host.asignarSeleccionados();
+        host.idPaso = "p-2";
+        host.idConsulta = "c-2";
+        resolver([{ idOrdenExamen: 90 }]);
+        await envio;
+        expect(detalle.idConsulta).to.equal("c-1");
+        expect(detalle.idPaso).to.equal("p-1");
+    });
+
+    test("cambiar de paso limpia la selección y quitar el paso elimina su identificador", () => {
+        host.idPaso = "p-1";
+        marcar("1");
+        host.idPaso = "p-2";
+        expect(host.obtenerSeleccionados()).to.deep.equal([]);
+        host.paso = null;
+        expect(host.idPaso).to.be.null;
+    });
+
     test("si el backend falla (422) emite notificación de error y conserva la selección", async () => {
         ordenStub.crearOrdenes.rejects({ status: 422, message: "Orden inválida" });
         const mensajes = [];

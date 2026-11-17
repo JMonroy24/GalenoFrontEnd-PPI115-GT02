@@ -7,6 +7,55 @@ import {
     serializarValorPaso
 } from "./consulta_procedimiento_service.js";
 
+function fuentesConsulta(consulta) {
+    return [consulta, consulta?.consulta, consulta?.cita, consulta?.consulta?.cita].filter(Boolean);
+}
+
+function candidatosPaciente(consulta) {
+    return fuentesConsulta(consulta).flatMap((datos) => [
+        datos?.paciente?.persona, datos?.paciente?.idPersona, datos?.paciente,
+        datos?.persona?.persona, datos?.persona, datos?.idPersona,
+        datos?.idPaciente?.persona, datos?.idPaciente?.idPersona, datos?.idPaciente,
+        ...(textoDato(datos?.nombrePaciente) || textoDato(datos?.nombresPaciente) ? [{
+            nombreCompleto: datos?.nombrePaciente, nombres: datos?.nombresPaciente,
+            apellidos: datos?.apellidosPaciente
+        }] : [])
+    ]);
+}
+
+function textoDato(valor) {
+    if (Array.isArray(valor)) return valor.map(textoDato).filter(Boolean).join(" ");
+    return typeof valor === "string" || typeof valor === "number" ? String(valor).trim() : "";
+}
+
+function documentoPaciente(paciente) {
+    return [paciente?.numeroDocumento, paciente?.documento, paciente?.dui, paciente?.identificacion]
+        .map((documento) => textoDato(documento?.numeroDocumento) || textoDato(documento?.numero)
+            || textoDato(documento?.valor) || textoDato(documento)).find(Boolean) || "";
+}
+
+export function obtenerDocumentoConsulta(consulta = {}) {
+    return candidatosPaciente(consulta).map(documentoPaciente).find(Boolean)
+        || fuentesConsulta(consulta).flatMap((datos) => [
+            { documento: datos?.documentoPaciente }, { documento: datos?.numeroDocumentoPaciente }, datos
+        ]).map(documentoPaciente).find(Boolean) || "";
+}
+
+export function obtenerPacienteConsulta(consulta = {}) {
+    const candidatos = candidatosPaciente(consulta);
+    // Una asociación vacía o un ID no debe ocultar otra que sí tenga el nombre.
+    const paciente = candidatos.find((paciente) => paciente && typeof paciente === "object"
+        && (textoDato(paciente.nombreCompleto) || textoDato(paciente.nombres) || textoDato(paciente.nombre)))
+        ?? candidatos.find((paciente) => typeof paciente === "string" && paciente.trim())
+        ?? candidatos.find((paciente) => paciente != null && Object.keys(Object(paciente)).length > 0);
+    const documento = obtenerDocumentoConsulta(consulta);
+    // El nombre y el documento pueden llegar en asociaciones diferentes.
+    if (paciente && typeof paciente === "object" && !documentoPaciente(paciente) && documento) {
+        return { ...paciente, numeroDocumento: documento };
+    }
+    return paciente;
+}
+
 export class ConsultaService extends DefaultService {
     constructor() {
         super(ENDPOINTS.CONSULTAS);
@@ -29,14 +78,42 @@ export class ConsultaService extends DefaultService {
             "Error al consultar las citas"
         );
         const payload = await response.json();
-        const items = Array.isArray(payload) ? payload : payload?.items;
+        const items = Array.isArray(payload?.items)
+            ? payload.items.filter((consulta) => consulta !== null
+                && typeof consulta === "object" && !Array.isArray(consulta))
+                .map((consulta) => this._mapearConsulta(consulta))
+            : [];
 
         return new DefaultResponse(
-            Array.isArray(items) ? items : [],
+            items,
             payload?.total ?? 0,
             payload?.first ?? 0,
             payload?.max ?? 0
         );
+    }
+
+    _mapearConsulta(consulta) {
+        const datos = { ...consulta.consulta?.cita, ...consulta.consulta, ...consulta.cita, ...consulta };
+        const paciente = obtenerPacienteConsulta(datos);
+        const procedimientos = datos.procedimientos
+            ?? datos.consultaProcedimientos
+            ?? datos.consultaProcedimientoList
+            ?? datos.procedimientosActivos
+            ?? datos.detalles ?? datos.detallesConsulta ?? datos.detalleConsulta;
+
+        // Conservar el JSON original (incluidos rol, clínica y pasos anidados)
+        // y exponer los nombres que comparten las vistas de búsqueda y dashboard.
+        return {
+            ...consulta,
+            idConsulta: consulta.idConsulta ?? consulta.id ?? datos.idConsulta ?? datos.id,
+            fecha: datos.inicio || datos.fecha || datos.fechaConsulta || datos.fechaCita
+                || datos.fechaHora || datos.fechaInicio || datos.fechaCreacion,
+            clinica: datos.clinica || datos.idClinica,
+            paciente,
+            procedimientos: Array.isArray(procedimientos)
+                ? procedimientos
+                : Array.isArray(procedimientos?.items) ? procedimientos.items : []
+        };
     }
 
     buscarCitas(filtros = {}, first = 0, max = DEFAULT_PAGE_SIZE) {
@@ -79,9 +156,12 @@ export class ConsultaService extends DefaultService {
      * compartido de paginación del servicio base.
      *
      * @param {object}  opciones
+     * @param {string|number} [opciones.pacienteId] - Identificador del paciente.
+     * @param {string|number} [opciones.idPaciente] - Alias identificador del paciente.
      * @param {string}  [opciones.tipoDocumento]   - Tipo de documento de identidad del paciente.
      * @param {string}  [opciones.numeroDocumento] - Número de documento de identidad del paciente.
      * @param {string|number} [opciones.idClinica] - Identificador de la clínica.
+     * @param {string|number} [opciones.clinicaId] - Alias identificador de la clínica.
      * @param {string}  [opciones.fechaDesde]      - Fecha de inicio del rango (ISO 8601, p. ej. "2024-01-01").
      * @param {string}  [opciones.fechaHasta]      - Fecha de fin del rango (ISO 8601, p. ej. "2024-12-31").
      * @param {number}  [first=0]                  - Índice del primer registro (paginación).
@@ -89,14 +169,17 @@ export class ConsultaService extends DefaultService {
      * @returns {Promise<DefaultResponse>}
      */
     async buscarPorPacienteYFechas(
-        { tipoDocumento, numeroDocumento, idClinica, fechaDesde, fechaHasta } = {},
+        { pacienteId, idPaciente, tipoDocumento, numeroDocumento, idClinica, clinicaId, fechaDesde, fechaHasta } = {},
         first = 0,
         max = DEFAULT_PAGE_SIZE
     ) {
+        const clinica = idClinica ?? clinicaId;
+        const paciente = pacienteId ?? idPaciente;
         const filtros = {
+            ...(paciente != null ? { pacienteId: paciente }         : {}),
             ...(tipoDocumento   ? { tipoDocumento }                : {}),
             ...(numeroDocumento ? { numeroDocumento }              : {}),
-            ...(idClinica        ? { idClinica }                    : {}),
+            ...(clinica         ? { idClinica: clinica }           : {}),
             ...(fechaDesde      ? { fechaDesde }                   : {}),
             ...(fechaHasta      ? { fechaHasta }                   : {})
         };
@@ -157,6 +240,7 @@ export class ConsultaService extends DefaultService {
         }
 
         const url = `${ENDPOINTS.API_BASE}${ENDPOINTS.CONSULTAS}/${encodeURIComponent(idConsulta)}/ticket`;
+        const url = `${this._urlBase}/${encodeURIComponent(idConsulta)}/ticket`;
         const response = await this._request(
             url,
             { method: "GET", headers: { Accept: "application/pdf" } },

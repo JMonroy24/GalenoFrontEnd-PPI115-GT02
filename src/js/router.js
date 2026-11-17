@@ -118,11 +118,16 @@ export class Router {
     }
 
     hasActiveSession() {
-        if (typeof store.isAuthenticated === "function") {
-            return store.isAuthenticated();
+        try {
+            if (typeof sessionStorage === "undefined"
+                || sessionStorage.getItem("usuarioActivo") === null) {
+                return false;
+            }
+        } catch {
+            return false;
         }
 
-        return Boolean(store.state?.usuario && store.state?.clinica);
+        return store.hasActiveSession();
     }
 
     isPrivateRoute(route) {

@@ -23,7 +23,7 @@ window.addEventListener("contexto-seleccionado", () => {
 });
 
 if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("sw.js").catch((err) => {
+    navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).catch((err) => {
         GeneradorMensajes.crearMensaje(
             "Error al registrar el service worker",
             err.message,

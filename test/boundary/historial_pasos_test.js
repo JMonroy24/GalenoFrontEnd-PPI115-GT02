@@ -13,6 +13,7 @@ mocha.setup("tdd");
 // ─────────────────────────────────────────────────────────────────────────────
 suite("HistorialPasos (unitaria)", () => {
     let host;
+    let fetchStub;
 
     // ── Datos de prueba ───────────────────────────────────────────────────────
 
@@ -45,12 +46,77 @@ suite("HistorialPasos (unitaria)", () => {
     // ── Ciclo de vida ─────────────────────────────────────────────────────────
 
     setup(() => {
+        fetchStub = sinon.stub(window, "fetch").rejects(new Error("El historial debe renderizar sin peticiones HTTP"));
         host = document.createElement("historial-pasos");
         document.body.appendChild(host);   // dispara connectedCallback → render()
     });
 
     teardown(() => {
         host?.remove();
+        fetchStub?.restore();
+    });
+
+    test("normaliza una respuesta envuelta y vuelve al estado vacío al recibir null", () => {
+        host.pasos = { items: pasosFicticios };
+        expect(host.cantidadRegistros).to.equal(2);
+        host.pasos = null;
+        expect(host.pasos).to.deep.equal([]);
+        expect(host.cantidadRegistros).to.equal(0);
+        expect(host.shadowRoot.querySelector("#historial-vacio").hidden).to.be.false;
+        expect(fetchStub.called).to.be.false;
+    });
+
+    test("el registro de un subpaso muestra sus propios datos y emite su detalle", () => {
+        host.pasos = pasosFicticios;
+        const abierto = sinon.spy();
+        host.addEventListener("registro-abierto", abierto);
+        host.shadowRoot.querySelector("#lista-pasos > li > ul .boton").click();
+
+        expect(host.shadowRoot.querySelector("#titulo-registro").textContent).to.equal("Signos vitales");
+        expect(host.shadowRoot.querySelector("#detalle-registro").textContent).to.equal("TA 120/80, temperatura 36.5 °C.");
+        expect(host.shadowRoot.querySelector("#datos-registro").textContent).to.contain("Enf. Ana Pérez");
+        expect(abierto.calledOnce).to.be.true;
+        expect(abierto.firstCall.args[0].detail.paso.nombre).to.equal("Signos vitales");
+        expect(fetchStub.called).to.be.false;
+    });
+
+    test("el cierre nativo del diálogo notifica una sola vez y devuelve el foco", async () => {
+        host.pasos = pasosFicticios;
+        const cerrado = sinon.spy();
+        host.addEventListener("registro-cerrado", cerrado);
+        const boton = host.shadowRoot.querySelector(".boton");
+        boton.click();
+        const dialogo = host.shadowRoot.querySelector("dialog");
+        const cierre = new Promise((resolve) => dialogo.addEventListener("close", resolve, { once: true }));
+        dialogo.close();
+        await cierre;
+
+        expect(cerrado.calledOnce).to.be.true;
+        expect(cerrado.firstCall.args[0].detail.paso.nombre).to.equal("Triaje inicial");
+        expect(host.shadowRoot.activeElement).to.equal(boton);
+        expect(dialogo.open).to.be.false;
+    });
+
+    test("desmontar el componente cierra su diálogo y notifica el cierre", () => {
+        host.pasos = pasosFicticios;
+        const cerrado = sinon.spy();
+        host.addEventListener("registro-cerrado", cerrado);
+        host.shadowRoot.querySelector(".boton").click();
+        const dialogo = host.shadowRoot.querySelector("dialog");
+        host.remove();
+
+        expect(dialogo.open).to.be.false;
+        expect(cerrado.calledOnce).to.be.true;
+    });
+
+    test("evita recursión infinita ante ciclos sin modificar los datos originales", () => {
+        const paso = { nombre: "Registro", estado: "COMPLETADO", pasos: [] };
+        paso.pasos.push(paso);
+        host.pasos = [paso];
+
+        expect(host.cantidadRegistros).to.equal(1);
+        expect(host.shadowRoot.querySelectorAll("li.paso")).to.have.length(1);
+        expect(paso.pasos[0]).to.equal(paso);
     });
 
     // ── Bloque 1: Custom Element y estado inicial ─────────────────────────────
@@ -184,6 +250,79 @@ suite("HistorialPasos (unitaria)", () => {
     });
 
     // ── Bloque 3: Diálogo modal "Ver Registro" ────────────────────────────────
+
+    test("excluye pendientes y pasos en curso sin alterar la secuencia original", () => {
+        const pasos = [
+            { nombre: "Ejecutado", estado: "COMPLETADO" },
+            { nombre: "Actual", estado: "EN_CURSO" },
+            { nombre: "Siguiente", estado: "PENDIENTE" }
+        ];
+        host.pasos = pasos;
+        expect(host.cantidadRegistros).to.equal(1);
+        expect(host.shadowRoot.querySelectorAll("li.paso")).to.have.length(1);
+        expect(pasos).to.have.length(3);
+        expect(pasos[0]).not.to.have.property("esGrupoHistorial");
+    });
+
+    test("conserva la jerarquía de un padre pendiente con un hijo ya ejecutado", () => {
+        host.pasos = [{ nombre: "Procedimiento", estado: "PENDIENTE", pasos: [
+            { nombre: "Medición", estado: "COMPLETADO", valor: { notas: "Registrado" } },
+            { nombre: "Pendiente", estado: "PENDIENTE" }
+        ] }];
+        expect(host.shadowRoot.querySelectorAll("#lista-pasos > li.paso > ul > li")).to.have.length(1);
+        expect(host.shadowRoot.querySelectorAll(".boton")).to.have.length(1);
+        expect(host.cantidadRegistros).to.equal(1);
+    });
+
+    test("un grupo que sólo contiene pendientes no se presenta como un registro ejecutado", () => {
+        host.pasos = [{ nombre: "Procedimiento", pasos: [{ nombre: "Futuro", estado: "PENDIENTE" }] }];
+        expect(host.cantidadRegistros).to.equal(0);
+        expect(host.shadowRoot.querySelector("#historial-vacio").hidden).to.be.false;
+    });
+
+    test("recupera notas, CIE-10 y plan desde valor serializado y muestra el ejecutor", () => {
+        host.pasos = [{ idProcedimientoPaso: { nombre: "Consulta" }, estadoPaso: "COMPLETADO",
+            idPersonaRol: { idPersona: { nombres: "Ana", apellidos: "Pérez" } },
+            fechaHoraEjecucion: "2026-11-16T09:30:00",
+            consulta_procedimiento_paso: { valor: JSON.stringify({ notas: "Estable",
+                diagnostico: [{ codigo: "J00", nombre: "Rinofaringitis" }], plan: "Reposo" }) }
+        }];
+        host.shadowRoot.querySelector(".boton").click();
+        const texto = host.shadowRoot.querySelector("#detalle-registro").textContent;
+        expect(texto).to.include("Notas:\nEstable");
+        expect(texto).to.include("J00 — Rinofaringitis");
+        expect(texto).to.include("Plan de tratamiento:\nReposo");
+        expect(host.shadowRoot.querySelector("#datos-registro").textContent).to.include("Ana Pérez");
+    });
+
+    test("el contenido grabado se muestra como texto seguro", () => {
+        host.pasos = [{ nombre: "<img src=x onerror=alert(1)>", valor: { notas: "<script>malicioso()</script>" } }];
+        host.shadowRoot.querySelector(".boton").click();
+        expect(host.shadowRoot.querySelector("#detalle-registro").textContent).to.include("<script>");
+        expect(host.shadowRoot.querySelector("script, img")).to.be.null;
+    });
+
+    test("abrir y cerrar emite CustomEvents y devuelve el foco al botón original", () => {
+        host.pasos = pasosFicticios;
+        const eventos = [];
+        host.addEventListener("registro-abierto", (e) => eventos.push(e));
+        host.addEventListener("registro-cerrado", (e) => eventos.push(e));
+        const boton = host.shadowRoot.querySelector(".boton");
+        boton.focus();
+        boton.click();
+        host.shadowRoot.querySelector("#cerrar-registro").click();
+        expect(eventos.map((e) => e.type)).to.deep.equal(["registro-abierto", "registro-cerrado"]);
+        expect(eventos.every((e) => e.bubbles && e.composed)).to.be.true;
+        expect(host.shadowRoot.activeElement).to.equal(boton);
+    });
+
+    test("reemplazar los datos cierra el registro anterior y descarta su contenido", () => {
+        host.pasos = pasosFicticios;
+        host.shadowRoot.querySelector(".boton").click();
+        host.pasos = [{ nombre: "Nuevo", estado: "COMPLETADO", valor: { notas: "Otra consulta" } }];
+        expect(host.shadowRoot.querySelector("dialog").open).to.be.false;
+        expect(host.shadowRoot.querySelector("#detalle-registro").textContent).to.equal("");
+    });
 
     suite("3. Diálogo modal <dialog> — apertura y cierre", () => {
         test("el diálogo comienza cerrado antes de hacer clic", () => {

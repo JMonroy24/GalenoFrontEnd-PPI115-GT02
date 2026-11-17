@@ -1,8 +1,8 @@
 import {
+    API_BASE,
     DEFAULT_PAGE_SIZE,
     HTTP_TIMEOUT_MS
 } from "../config.js";
-import { ENDPOINTS } from "../routes.js";
 import DefaultError from "../entity/default_error.js";
 import DefaultResponse from "../entity/default_response.js";
 import GeneradorMensajes from "./generador_mensajes.js";
@@ -13,14 +13,16 @@ const INTERCEPTED_STATUSES = new Set([401, 403, 412, 422, 428]);
 export class DefaultService {
     constructor(endpoint = "") {
         this.endpoint = endpoint;
-        this._urlBase = `${ENDPOINTS.API_BASE.replace(/\/+$/, "")}${endpoint}`;
+        this._urlBase = `${API_BASE.replace(/\/+$/, "")}${endpoint}`;
     }
 
     async _request(url, options = {}, fallbackMessage = "Error al acceder al repositorio") {
         const method = String(options.method ?? "GET").toUpperCase();
 
+        // Interceptar antes de preparar o enviar la petición, incluso si el store
+        // todavía no recibió el evento offline del navegador.
         if (this._esOperacionEscritura(method) && this._estaSinConexion()) {
-            const mensaje = "Operación no disponible sin conexión. Conéctese a internet para guardar los cambios";
+            const mensaje = "Operación no disponible sin conexión. Conéctese a internet para guardar, modificar o eliminar datos.";
 
             GeneradorMensajes.crearMensaje("Sin conexión", mensaje, "warning");
 
@@ -55,8 +57,23 @@ export class DefaultService {
             response = await fetch(url, {
                 ...options,
                 headers,
+                credentials: "omit",
                 signal: controller.signal
             });
+        } catch (error) {
+            if (error instanceof TypeError) {
+                throw new DefaultError(
+                    `No se pudo conectar con ${new URL(this._urlBase).origin}. `
+                    + "Verifique que Open Liberty esté iniciado en el puerto HTTP configurado "
+                    + "y que el backend permita el origen de la aplicación mediante CORS.",
+                    {
+                        code: "NETWORK_ERROR",
+                        details: { url: String(url), causa: error.message }
+                    }
+                );
+            }
+
+            throw error;
         } finally {
             clearTimeout(timeoutId);
             options.signal?.removeEventListener("abort", abortFromCaller);
@@ -76,7 +93,7 @@ export class DefaultService {
         }
 
         if (response.status === 401) {
-            store.setState({ token: null });
+            store.setState({ token: null, usuario: null, roles: [], rolSeleccionado: null, clinicaActiva: null });
             if (typeof window !== "undefined") {
                 window.dispatchEvent(new CustomEvent("navegar", { detail: "login" }));
             }
@@ -94,11 +111,7 @@ export class DefaultService {
     }
 
     _estaSinConexion() {
-        const navegadorOnline = typeof navigator === "undefined"
-            || navigator.onLine !== false;
-        const storeOnline = store.state?.online;
-
-        return !navegadorOnline || storeOnline === false;
+        return globalThis.navigator?.onLine === false || store.state?.online === false;
     }
 
     _notificarError(message, details) {
@@ -183,10 +196,9 @@ export class DefaultService {
             "Error al listar los recursos"
         );
         const payload = await response.json();
-        const items = Array.isArray(payload) ? payload : payload?.items;
 
         return new DefaultResponse(
-            Array.isArray(items) ? items : [],
+            payload?.items ?? [],
             payload?.total ?? 0,
             payload?.first ?? 0,
             payload?.max ?? 0

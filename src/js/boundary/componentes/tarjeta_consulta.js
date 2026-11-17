@@ -1,4 +1,5 @@
 import "./historial_pasos.js";
+import { obtenerPacienteConsulta, obtenerDocumentoConsulta } from "../../control/consulta_service.js";
 
 export class TarjetaConsulta extends HTMLElement {
     constructor() {
@@ -22,8 +23,10 @@ export class TarjetaConsulta extends HTMLElement {
 
     render() {
         const datos = {
-            ...(this._consulta ?? {}),
-            ...(this._consulta?.cita ?? {})
+            ...(this._consulta?.consulta?.cita ?? {}),
+            ...(this._consulta?.consulta ?? {}),
+            ...(this._consulta?.cita ?? {}),
+            ...(this._consulta ?? {})
         };
         const procedimientos = this._obtenerProcedimientos(datos);
         const estado = this._obtenerEstado(datos);
@@ -201,6 +204,14 @@ export class TarjetaConsulta extends HTMLElement {
                 </header>
                 <dl class="datos">
                     <div class="dato">
+                        <dt>Paciente</dt>
+                        <dd id="paciente"></dd>
+                    </div>
+                    <div class="dato">
+                        <dt>Documento</dt>
+                        <dd id="documento-paciente"></dd>
+                    </div>
+                    <div class="dato">
                         <dt>Hora</dt>
                         <dd id="hora"></dd>
                     </div>
@@ -237,9 +248,25 @@ export class TarjetaConsulta extends HTMLElement {
             </article>
         `;
 
-        this.shadowRoot.querySelector("#fecha").textContent = this._obtenerFecha(datos);
-        this.shadowRoot.querySelector("#hora").textContent = this._obtenerHora(datos);
-        this.shadowRoot.querySelector("#clinica").textContent = this._obtenerClinica(datos);
+        const fecha = this._obtenerFecha(datos);
+        const hora = this._obtenerHora(datos);
+        const paciente = obtenerPacienteConsulta(datos) ?? {};
+        const texto = (valor) => Array.isArray(valor)
+            ? valor.filter((parte) => typeof parte === "string" && parte.trim()).join(" ")
+            : typeof valor === "string" ? valor.trim() : "";
+        const nombrePaciente = typeof paciente === "string"
+            ? paciente
+            : texto(paciente?.nombreCompleto) || [
+                texto(paciente?.nombres) || texto(paciente?.nombre),
+                texto(paciente?.apellidos) || texto(paciente?.apellido)
+            ].filter(Boolean).join(" ") || "Sin paciente";
+        const doc = obtenerDocumentoConsulta(datos) || "Sin documento";
+        const clinica = this._obtenerClinica(datos);
+        this.shadowRoot.querySelector("#fecha").textContent = fecha;
+        this.shadowRoot.querySelector("#paciente").textContent = nombrePaciente;
+        this.shadowRoot.querySelector("#documento-paciente").textContent = doc;
+        this.shadowRoot.querySelector("#hora").textContent = hora;
+        this.shadowRoot.querySelector("#clinica").textContent = clinica;
         this.shadowRoot.querySelector("#estado-texto").textContent = estado;
 
         const estadoElemento = this.shadowRoot.querySelector("#estado");
@@ -263,77 +290,68 @@ export class TarjetaConsulta extends HTMLElement {
         const historialVacio = this.shadowRoot.querySelector("#historial-vacio");
 
         historial.pasos = pasos;
-        historialDesplegable.hidden = pasos.length === 0;
-        historialVacio.hidden = pasos.length > 0;
-        historialContador.textContent = pasos.length > 0
-            ? `(${pasos.length})`
+        const cantidad = historial.cantidadRegistros;
+        historialDesplegable.hidden = cantidad === 0;
+        historialVacio.hidden = cantidad > 0;
+        historialContador.textContent = cantidad > 0
+            ? `(${cantidad})`
             : "";
+        for (const tipo of ["registro-abierto", "registro-cerrado"]) {
+            historial.addEventListener(tipo, (evento) => {
+                this.dispatchEvent(new CustomEvent(`registro-consulta-${tipo === "registro-abierto" ? "abierto" : "cerrado"}`, {
+                    bubbles: true,
+                    composed: true,
+                    detail: { consulta: this._consulta, paso: evento.detail.paso }
+                }));
+            });
+        }
+    }
+
+    _fuentesDatos(datos) {
+        return [datos, datos?.consulta, datos?.cita, datos?.consulta?.cita].filter(Boolean);
+    }
+
+    _fechasConsulta(datos) {
+        return this._fuentesDatos(datos).flatMap((fuente) => [
+            fuente?.inicio, fuente?.fecha, fuente?.fechaConsulta, fuente?.fechaCita,
+            fuente?.fechaHora, fuente?.fechaInicio, fuente?.fechaCreacion
+        ]).filter((fecha) => typeof fecha === "string" && fecha.trim());
     }
 
     _obtenerFecha(datos) {
-        const fecha = datos.fecha
-            ?? datos.fechaConsulta
-            ?? datos.fechaCita
-            ?? datos.fechaHora
-            ?? "";
-
-        if (typeof fecha === "string" && fecha.includes("T")) {
-            return fecha.split("T")[0];
-        }
-
-        return fecha === "" ? "Sin fecha" : String(fecha);
+        const fecha = this._fechasConsulta(datos)[0]?.trim() || "";
+        return fecha.match(/^(\d{4}-\d{2}-\d{2})[T ]/)?.[1] || fecha || "Sin fecha";
     }
 
     _obtenerHora(datos) {
-        const hora = datos.hora
-            ?? datos.horaConsulta
-            ?? datos.horaCita
-            ?? "";
-
-        if (hora !== "") {
-            return String(hora);
-        }
-
-        const fechaHora = datos.fechaHora ?? datos.fechaConsulta ?? datos.fechaCita;
-
-        if (typeof fechaHora === "string" && fechaHora.includes("T")) {
-            return fechaHora.split("T")[1]?.slice(0, 5) ?? "Sin hora";
-        }
-
-        return "Sin hora";
+        const hora = this._fuentesDatos(datos).map((fuente) => fuente?.hora || fuente?.horaConsulta
+            || fuente?.horaCita || fuente?.horaInicio).find((valor) => valor != null && String(valor).trim());
+        if (hora) return String(hora).match(/[T ](\d{2}:\d{2})/)?.[1] || String(hora);
+        const fechaHora = this._fechasConsulta(datos).find((fecha) => /[T ]\d{2}:\d{2}/.test(fecha));
+        return fechaHora?.match(/[T ](\d{2}:\d{2})/)?.[1] || "Sin hora";
     }
 
     _obtenerClinica(datos) {
-        const clinica = datos.clinica ?? datos.idClinica;
-
-        if (typeof clinica === "string") {
-            return clinica;
-        }
-
-        return datos.nombreClinica
-            ?? clinica?.nombre
-            ?? clinica?.name
-            ?? datos.idClinica?.nombre
-            ?? datos.idClinica?.name
-            ?? "Sin clínica";
+        const fuentes = this._fuentesDatos(datos);
+        const relaciones = fuentes.flatMap((fuente) => [fuente?.clinica, fuente?.idClinica]);
+        return fuentes.map((fuente) => fuente?.nombreClinica || fuente?.clinicaNombre).find(Boolean)
+            || relaciones.map((clinica) => clinica?.nombre || clinica?.descripcion
+                || clinica?.nombreClinica || clinica?.name).find(Boolean)
+            || relaciones.find((clinica) => typeof clinica === "string" && clinica.trim())
+            || "Sin clínica";
     }
 
     _obtenerEstado(datos) {
-        const estado = datos.estado
-            ?? datos.estadoConsulta
-            ?? datos.estadoCita
-            ?? datos.cita?.estado
-            ?? "";
-
-        if (estado && typeof estado === "object") {
-            return String(estado.nombre ?? estado.descripcion ?? estado.estado ?? "Sin estado");
-        }
-
-        return estado === "" ? "Sin estado" : String(estado);
+        return this._fuentesDatos(datos).flatMap((fuente) => [fuente?.estado, fuente?.estadoConsulta, fuente?.estadoCita])
+            .map((estado) => typeof estado === "object"
+                ? estado?.nombre || estado?.descripcion || estado?.estado : estado)
+            .find((estado) => typeof estado === "string" && estado.trim()) || "Sin estado";
     }
 
     _obtenerProcedimientos(datos) {
         let procedimientos = datos.procedimientos
+            ?? datos.consultaProcedimientos
+            ?? datos.consultaProcedimientoList
             ?? datos.procedimientosActivos
             ?? datos.detalles
             ?? datos.detallesConsulta
@@ -360,6 +378,11 @@ export class TarjetaConsulta extends HTMLElement {
 
     _obtenerPasos(datos) {
         const fuentes = [
+            datos.pasosClinicos,
+            datos.pasos_clinicos,
+            datos.consulta_procedimiento_paso,
+            datos.consultaProcedimientoPasos,
+            datos.consultaProcedimientoPasoList,
             datos.pasosEjecutados,
             datos.historialPasos,
             datos.historial,
@@ -382,7 +405,20 @@ export class TarjetaConsulta extends HTMLElement {
             }
         }
 
-        return [];
+        // Si los pasos vienen dentro de cada procedimiento, conserva ese nivel
+        // del árbol, incluyendo procedimientos que ya no están activos.
+        const procedimientos = this._normalizarPasos(datos.procedimientos ?? datos.consultaProcedimientos);
+        return procedimientos.flatMap((procedimiento) => {
+            const pasos = this._normalizarPasos(
+                procedimiento.pasosClinicos ?? procedimiento.consulta_procedimiento_paso
+                ?? procedimiento.consultaProcedimientoPasoList ?? procedimiento.pasos
+            );
+            return pasos.length > 0 ? [{
+                nombre: this._nombreProcedimiento(procedimiento),
+                esGrupoHistorial: true,
+                pasos
+            }] : [];
+        });
     }
 
     _normalizarPasos(valor) {
@@ -400,7 +436,7 @@ export class TarjetaConsulta extends HTMLElement {
             ?? valor.resultado
             ?? valor.datos;
 
-        return Array.isArray(lista) ? lista : [];
+        return lista && lista !== valor ? this._normalizarPasos(lista) : [];
     }
 
     _nombreProcedimiento(procedimiento) {
@@ -441,4 +477,6 @@ export class TarjetaConsulta extends HTMLElement {
 
 export default TarjetaConsulta;
 
-customElements.define("tarjeta-consulta", TarjetaConsulta);
+if (!customElements.get("tarjeta-consulta")) {
+    customElements.define("tarjeta-consulta", TarjetaConsulta);
+}

@@ -1,4 +1,4 @@
-const CACHE_NAME = "galenosv-app-shell-v15";
+const CACHE_NAME = "galenosv-app-shell-v22";
 
 const APP_SHELL = [
     "/index.html",
@@ -12,6 +12,7 @@ const APP_SHELL = [
     "/js/routes.js",
     "/js/router.js",
     "/js/store.js",
+    "/js/entity/rol_empleado.js",
     "/js/boundary/vistas/busqueda_citas_view.js",
     "/js/boundary/vistas/login_view.js",
     "/js/boundary/vistas/dashboard_view.js",
@@ -50,7 +51,7 @@ const APP_SHELL = [
     "/js/control/tipo_medio_contacto_service.js",
     "/js/entity/default_error.js",
     "/js/entity/default_response.js"
-];
+].map((path) => new URL(path.slice(1), self.registration.scope).href);
 
 const offlineFallback = () => new Response(
     JSON.stringify({
@@ -66,7 +67,7 @@ const networkFirst = async (request) => {
     const cache = await caches.open(CACHE_NAME);
 
     try {
-        const response = await fetch(request);
+        const response = await fetch(request, { cache: "no-cache" });
 
         if (response && response.ok) {
             await cache.put(request, response.clone());
@@ -81,7 +82,7 @@ const networkFirst = async (request) => {
         }
 
         if (request.mode === "navigate") {
-            const appShell = await cache.match("/index.html");
+            const appShell = await cache.match(new URL("index.html", self.registration.scope).href);
 
             if (appShell) {
                 return appShell;
@@ -95,7 +96,7 @@ const networkFirst = async (request) => {
 self.addEventListener("install", (event) => {
     event.waitUntil(
         caches.open(CACHE_NAME)
-            .then((cache) => cache.addAll(APP_SHELL))
+            .then((cache) => cache.addAll(APP_SHELL.map((url) => new Request(url, { cache: "reload" }))))
             .then(() => self.skipWaiting())
     );
 });
@@ -114,6 +115,12 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
     if (event.request.method !== "GET") {
+        return;
+    }
+
+    // Los datos y las credenciales de la API se consultan siempre al servidor.
+    if (event.request.headers.has("Authorization")
+        || new URL(event.request.url).pathname.startsWith("/galenoSV/api/")) {
         return;
     }
 

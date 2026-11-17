@@ -20,7 +20,17 @@ export class HistorialPasos extends HTMLElement {
         this.render();
     }
 
+    disconnectedCallback() {
+        this._cerrarRegistro();
+    }
+
+    get cantidadRegistros() {
+        return this._cantidadRegistros;
+    }
+
     render() {
+        this._cerrarRegistro();
+        this._cantidadRegistros = 0;
         this.shadowRoot.innerHTML = `
             <link rel="stylesheet" href="recursos/estilos/principal.css">
             <style>
@@ -190,8 +200,10 @@ export class HistorialPasos extends HTMLElement {
                             id="cerrar-registro"
                             class="boton-cerrar"
                             aria-label="Cerrar registro"
+                            autofocus
                         >Cerrar</button>
                     </header>
+                    <p id="datos-registro" class="paso-datos"></p>
                     <div id="detalle-registro" class="detalle-registro"></div>
                 </div>
             </dialog>
@@ -199,7 +211,7 @@ export class HistorialPasos extends HTMLElement {
 
         const lista = this.shadowRoot.querySelector("#lista-pasos");
         const vacio = this.shadowRoot.querySelector("#historial-vacio");
-        const pasos = this._normalizarPasos(this._pasos);
+        const pasos = this._filtrarEjecutados(this._normalizarPasos(this._pasos));
 
         lista.replaceChildren();
         vacio.hidden = pasos.length > 0;
@@ -208,8 +220,15 @@ export class HistorialPasos extends HTMLElement {
         const dialogo = this.shadowRoot.querySelector("#dialogo-registro");
         const cerrar = this.shadowRoot.querySelector("#cerrar-registro");
 
-        cerrar.addEventListener("click", () => this._cerrarRegistro());
+        cerrar.addEventListener("click", (evento) => {
+            evento.stopPropagation();
+            this._cerrarRegistro();
+        });
+        dialogo.addEventListener("close", () => {
+            if (!dialogo.open) this._notificarCierre();
+        });
         dialogo.addEventListener("click", (evento) => {
+            evento.stopPropagation();
             if (evento.target === dialogo) {
                 this._cerrarRegistro();
             }
@@ -231,6 +250,7 @@ export class HistorialPasos extends HTMLElement {
             const nombre = document.createElement("h4");
             nombre.className = "paso-nombre";
             nombre.textContent = this._nombrePaso(paso);
+            const esGrupo = paso.esGrupoHistorial === true;
 
             const datos = document.createElement("p");
             datos.className = "paso-datos";
@@ -244,7 +264,8 @@ export class HistorialPasos extends HTMLElement {
             fechaHora.textContent = `Fecha y hora: ${this._fechaHoraPaso(paso)}`;
 
             datos.append(profesional, fechaHora);
-            info.append(nombre, datos);
+            info.append(nombre);
+            if (!esGrupo) info.append(datos);
 
             const boton = document.createElement("button");
             boton.type = "button";
@@ -277,6 +298,10 @@ export class HistorialPasos extends HTMLElement {
 
         titulo.textContent = this._nombrePaso(paso);
         detalle.textContent = this._detallePaso(paso);
+        this.shadowRoot.querySelector("#datos-registro").textContent =
+            `Profesional: ${this._nombreProfesional(paso)} · Fecha y hora: ${this._fechaHoraPaso(paso)}`;
+        this._pasoRegistro = paso;
+        this._botonRegistro = boton;
 
         if (typeof dialogo.showModal !== "function") {
             dialogo.setAttribute("open", "");
@@ -293,6 +318,7 @@ export class HistorialPasos extends HTMLElement {
 
     _cerrarRegistro() {
         const dialogo = this.shadowRoot.querySelector("#dialogo-registro");
+        if (!dialogo?.open) return;
 
         if (!dialogo?.open) {
             return;
@@ -311,6 +337,21 @@ export class HistorialPasos extends HTMLElement {
         if (!this._pasoRegistro) {
             return;
         }
+        this._notificarCierre();
+    }
+
+    _notificarCierre() {
+        if (!this._pasoRegistro) return;
+        const paso = this._pasoRegistro;
+        this._pasoRegistro = null;
+        this._botonRegistro?.focus();
+        this._botonRegistro = null;
+        this.dispatchEvent(new CustomEvent("registro-cerrado", {
+            bubbles: true,
+            composed: true,
+            detail: { paso }
+        }));
+    }
 
         const paso = this._pasoRegistro;
 
@@ -378,6 +419,8 @@ export class HistorialPasos extends HTMLElement {
 
         return paso?.nombre
             ?? paso?.nombrePaso
+            ?? paso?.idProcedimientoPaso?.nombre
+            ?? paso?.procedimientoPaso?.nombre
             ?? paso?.titulo
             ?? paso?.descripcion
             ?? paso?.procedimiento?.nombre
@@ -391,6 +434,8 @@ export class HistorialPasos extends HTMLElement {
             ?? paso?.responsable
             ?? paso?.medico
             ?? paso?.empleado
+            ?? paso?.idPersonaRol
+            ?? paso?.ejecutor
             ?? paso?.usuario;
 
         return this._nombrePersona(profesional) || "Sin profesional";
@@ -409,7 +454,7 @@ export class HistorialPasos extends HTMLElement {
             return String(persona);
         }
 
-        const personaInterna = persona.persona ?? persona.perfil;
+        const personaInterna = persona.persona ?? persona.perfil ?? persona.idPersona;
 
         if (personaInterna !== undefined && personaInterna !== null && personaInterna !== "") {
             return this._nombrePersona(personaInterna);
@@ -537,6 +582,20 @@ export class HistorialPasos extends HTMLElement {
 
         if (this._esRegistroClinico(detalle)) {
             return this._formatearRegistroClinico(detalle);
+        if (["notas", "notasConsulta", "diagnostico", "diagnosticos", "plan", "planTratamiento"]
+            .some((clave) => Object.hasOwn(detalle, clave))) {
+            const diagnosticos = detalle.diagnostico ?? detalle.diagnosticos ?? [];
+            const lista = Array.isArray(diagnosticos) ? diagnosticos : [diagnosticos];
+            const textoDiagnosticos = lista.map((item) => {
+                if (item && typeof item === "object") {
+                    return [item.codigo ?? item.code, item.nombre ?? item.descripcion ?? item.description]
+                        .filter(Boolean).join(" — ") || this._textoDetalle(item);
+                }
+                return String(item ?? "");
+            }).filter(Boolean).join("\n");
+            return `Notas:\n${detalle.notas ?? detalle.notasConsulta ?? "Sin notas"}\n\n`
+                + `Diagnóstico CIE-10:\n${textoDiagnosticos || "Sin diagnósticos"}\n\n`
+                + `Plan de tratamiento:\n${detalle.plan ?? detalle.planTratamiento ?? "Sin plan"}`;
         }
 
         const interno = detalle.contenido
@@ -604,4 +663,6 @@ export class HistorialPasos extends HTMLElement {
 
 export default HistorialPasos;
 
-customElements.define("historial-pasos", HistorialPasos);
+if (!customElements.get("historial-pasos")) {
+    customElements.define("historial-pasos", HistorialPasos);
+}

@@ -1,4 +1,5 @@
 import GeneradorMensajes from "./control/generador_mensajes.js";
+import { esRolEmpleado } from "./entity/rol_empleado.js";
 
 const LEGACY_KEYS = Object.freeze({
     session: "token",
@@ -28,7 +29,7 @@ function _leerSesionStorage() {
         const datos = JSON.parse(raw);
         const token = datos?.token ?? null;
         const perfil = datos?.perfil ?? datos?.usuario ?? null;
-        const roles = Array.isArray(datos?.roles) ? datos.roles : [];
+        const roles = Array.isArray(datos?.roles) ? datos.roles.filter(esRolEmpleado) : [];
         const clinicaActiva = datos?.clinicaActiva ?? datos?.clinica ?? null;
         const rolSeleccionado = datos?.rolSeleccionado ?? roles[0] ?? null;
         if (!token && !perfil && !clinicaActiva && !rolSeleccionado) return null;
@@ -106,8 +107,15 @@ export class Store extends EventTarget {
         this.dispatchEvent(new CustomEvent("state-changed", { detail: this.state }));
     }
 
+    hasActiveSession() {
+        return Boolean(
+            this.state.usuario && (this.state.clinica || this.state.clinicaActiva)
+            && Array.isArray(this.state.roles) && this.state.roles.some(esRolEmpleado)
+        );
+    }
+
     isAuthenticated() {
-        const autenticado = Boolean(this.state.usuario && this.state.clinica);
+        const autenticado = this.hasActiveSession();
 
         this._persistirSesion();
 
@@ -144,7 +152,14 @@ export class Store extends EventTarget {
 
             if (!tieneSesion) {
                 sessionStorage.removeItem(SESSION_KEY);
+                sessionStorage.removeItem("usuarioActivo");
                 return;
+            }
+
+            if (this.hasActiveSession()) {
+                sessionStorage.setItem("usuarioActivo", JSON.stringify(usuario));
+            } else {
+                sessionStorage.removeItem("usuarioActivo");
             }
 
             sessionStorage.setItem(SESSION_KEY, JSON.stringify({
