@@ -1,5 +1,4 @@
 import "./boundary/componentes/notificacion_emergente.js";
-import "./boundary/componentes/acceso_api.js";
 import "./boundary/componentes/instalador_app.js";
 import "./boundary/componentes/encabezado_app.js";
 import "./boundary/componentes/menu_lateral.js";

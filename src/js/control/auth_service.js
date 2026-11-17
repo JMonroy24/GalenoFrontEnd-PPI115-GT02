@@ -4,7 +4,6 @@ import { ENDPOINTS } from "../routes.js";
 import GeneradorMensajes from "./generador_mensajes.js";
 import DefaultError from "../entity/default_error.js";
 import { store } from "../store.js";
-import { apiAuthService } from "./api_auth_service.js";
 
 export const SESSION_STORAGE_KEY = "galeno_session";
 
@@ -175,7 +174,6 @@ export class AuthService extends DefaultService {
     }
 
     logout() {
-        apiAuthService.logout();
         const almacen = this._obtenerAlmacen();
 
         if (almacen) {

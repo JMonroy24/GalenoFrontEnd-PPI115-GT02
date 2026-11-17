@@ -7,7 +7,6 @@ import DefaultError from "../entity/default_error.js";
 import DefaultResponse from "../entity/default_response.js";
 import GeneradorMensajes from "./generador_mensajes.js";
 import { store } from "../store.js";
-import { apiAuthService } from "./api_auth_service.js";
 
 const INTERCEPTED_STATUSES = new Set([401, 403, 412, 422, 428]);
 
@@ -17,7 +16,7 @@ export class DefaultService {
         this._urlBase = `${API_BASE.replace(/\/+$/, "")}${endpoint}`;
     }
 
-    async _request(url, options = {}, fallbackMessage = "Error al acceder al repositorio", reintentarAutenticacion = true) {
+    async _request(url, options = {}, fallbackMessage = "Error al acceder al repositorio") {
         const method = String(options.method ?? "GET").toUpperCase();
 
         // Interceptar antes de preparar o enviar la petición, incluso si el store
@@ -35,18 +34,12 @@ export class DefaultService {
         }
 
         const headers = new Headers(options.headers);
-        const destino = new URL(url, this._urlBase);
-        const baseApi = new URL(API_BASE);
-        const esPeticionApi = destino.origin === baseApi.origin
-            && destino.pathname.startsWith(`${baseApi.pathname.replace(/\/+$/, "")}/`);
         const session = store.state?.token;
         const token = typeof session === "string"
             ? session
             : session?.token ?? session?.accessToken ?? session?.access_token;
 
-        if (esPeticionApi && apiAuthService.autorizacion) {
-            headers.set("Authorization", apiAuthService.autorizacion);
-        } else if (typeof token === "string" && token.trim() !== "") {
+        if (typeof token === "string" && token.trim() !== "") {
             headers.set("Authorization", `Bearer ${token.replace(/^Bearer\s+/i, "").trim()}`);
             if (!headers.has("Content-Type")) {
                 headers.set("Content-Type", "application/json");
@@ -71,7 +64,7 @@ export class DefaultService {
             if (error instanceof TypeError) {
                 throw new DefaultError(
                     `No se pudo conectar con ${new URL(this._urlBase).origin}. `
-                    + "Verifique que Open Liberty esté iniciado, que el certificado HTTPS sea de confianza "
+                    + "Verifique que Open Liberty esté iniciado en el puerto HTTP configurado "
                     + "y que el backend permita el origen de la aplicación mediante CORS.",
                     {
                         code: "NETWORK_ERROR",
@@ -90,19 +83,6 @@ export class DefaultService {
             return response;
         }
 
-        if (response.status === 401 && esPeticionApi && reintentarAutenticacion) {
-            if (apiAuthService.autorizacion && headers.get("Authorization") !== apiAuthService.autorizacion) {
-                return this._request(url, options, fallbackMessage, false);
-            }
-
-            apiAuthService.logout();
-            const autorizacion = await apiAuthService.solicitarCredenciales();
-
-            if (autorizacion) {
-                return this._request(url, options, fallbackMessage, false);
-            }
-        }
-
         const details = await this._readErrorDetails(response);
         const message = details && typeof details === "object"
             ? details.message ?? details.mensaje ?? details.detail ?? fallbackMessage
@@ -113,7 +93,6 @@ export class DefaultService {
         }
 
         if (response.status === 401) {
-            apiAuthService.logout();
             store.setState({ token: null, usuario: null, roles: [], rolSeleccionado: null, clinicaActiva: null });
             if (typeof window !== "undefined") {
                 window.dispatchEvent(new CustomEvent("navegar", { detail: "login" }));
