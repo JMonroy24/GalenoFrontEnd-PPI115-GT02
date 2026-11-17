@@ -79,7 +79,7 @@ Las pruebas están escritas con la interfaz **TDD** de Mocha (`suite` / `test`) 
 ### Librerías de soporte (`test/lib/`)
 
 > [!IMPORTANT]
-> El directorio `test/lib/` **no forma parte del código fuente de producción** ubicado en `src/`. Contiene únicamente las librerías de terceros necesarias para ejecutar las pruebas unitarias en el navegador. Ningún archivo de este directorio se sirve ni se referencia desde la aplicación en producción.
+> El directorio `test/lib/` contiene **únicamente herramientas de prueba estáticas: Mocha, Chai y Sinon**. Se cargan localmente desde los runners, sin CDN ni instalación de paquetes. **No forma parte del código fuente de producción** ubicado en `src/`: ningún archivo de este directorio se importa desde la aplicación. El código de producción mantiene **cero librerías de terceros**, usando Vanilla JS, Web Components y CSS estándar.
 
 | Archivo | Librería | Versión | Propósito |
 |---|---|---|---|
@@ -88,7 +88,7 @@ Las pruebas están escritas con la interfaz **TDD** de Mocha (`suite` / `test`) 
 | `test/lib/chai/index.js` | [Chai](https://www.chaijs.com) | — | Librería de aserciones (`expect`, `assert`) |
 | `test/lib/sinon/sinon.js` | [Sinon.JS](https://sinonjs.org) | 22.1.0 | Espías, stubs y mocks para pruebas de servicios |
 
-Estas librerías se distribuyen como **bundles UMD/IIFE vendorizados** (copiados manualmente al repositorio) para que el runner HTML funcione sin herramientas de empaquetado. **No deben ser importadas desde `src/`** ni incluidas en ningún proceso de despliegue o auditoría de dependencias de producción.
+Estas herramientas se distribuyen como **archivos estáticos copiados al repositorio**: Mocha y Sinon como scripts para navegador y Chai como módulo ES. El runner funciona sin herramientas de empaquetado. **No deben ser importadas desde `src/`** ni incluidas en el despliegue de producción.
 
 > [!NOTE]
 > Si en algún momento se migra a un pipeline con `npm`, estas librerías pasarían a listarse en `devDependencies` del `package.json` y el directorio `test/lib/` podría eliminarse del repositorio.
@@ -108,6 +108,19 @@ Estas librerías se distribuyen como **bundles UMD/IIFE vendorizados** (copiados
 
 El reporte Mocha se muestra directamente en la página con el recuento de tests pasados, fallidos y pendientes.
 
+### Cobertura de vistas y componentes
+
+El runner unitario importa todas las suites desde un único módulo antes de llamar a `mocha.run()`. Las pruebas usan Mocha TDD (`suite`/`test`), Chai y `sinon.stub(window, "fetch")` para simular respuestas HTTP. No requieren un backend activo ni realizan peticiones reales a la API. Los componentes que sólo reciben datos comprueban que no se llame a `fetch`.
+
+| Suite canónica | Comportamientos cubiertos |
+|---|---|
+| `test/control/login_view_test.js` | Renderizado, validación y corrección de campos, carga, bloqueo de envíos duplicados, sesión y navegación, persona inexistente, roles inactivos y errores HTTP |
+| `test/control/busqueda_citas_view_test.js` | Asistente secuencial, filtros, resultados y estados vacíos, carga y errores, respuestas fuera de orden, ticket PDF por consulta y recuperación del botón |
+| `test/boundary/tarjeta_consulta_test.js` | Paciente y documento, fecha y estado, procedimientos activos, acciones por slot, texto seguro, historial y propagación de eventos |
+| `test/boundary/historial_pasos_test.js` | Jerarquía y registros ejecutados, estado vacío, normalización, contenido seguro, apertura/cierre del diálogo, foco, desmontaje y ciclos en los datos |
+
+Los archivos `test/control/tarjeta_consulta_test.js` y `test/control/historial_pasos_test.js` son accesos de compatibilidad a las suites de `boundary/`; el runner importa sólo las rutas canónicas para evitar duplicados. `test/runner_it.html` mantiene las pruebas BDD (`describe`/`it`) sobre HTTP real y requiere Open Liberty, HTTPS/CORS y credenciales válidas según `src/js/config.js`.
+
 ---
 
 ## Convenciones de código
@@ -117,7 +130,7 @@ El reporte Mocha se muestra directamente en la página con el recuento de tests 
 - **Sin dependencias de producción** — `src/` no tiene `node_modules` ni gestor de paquetes; todas las dependencias externas de producción son cero.
 - **Nomenclatura de archivos** — `snake_case` para todos los archivos `.js` y de test.
 - **Interfaz de pruebas TDD** — `suite()` / `test()` / `setup()` / `teardown()` (Mocha TDD); no mezclar con la interfaz BDD (`describe`/`it`) en el mismo runner.
-=======
+---
 # GalenoSV — Cliente Frontend (GalenoFE)
 
 Cliente web frontend para el sistema de gestión clínica **GalenoSV**, desarrollado para la asignatura *Programación para Internet (PPI115, Ciclo II-2026, FMOcc-UES)*.
@@ -205,12 +218,10 @@ Cubren con aislamiento total (`sinon.stub`) la capa de servicios, el store react
   - `control/consulta_service_test.js`: Paginación, token bearer, errores 401, 422 y 500.
   - `control/auth_service_test.js`: Login, gestión de roles de empleado, sessionStorage y logout.
   - `control/orden_examen_service_test.js`: Creación en lote de órdenes de examen.
-  - `control/store_test.js`: Reactividad del estado global (`EventTarget`).
-  - `control/router_test.js`: Navegación por hash y guardias de sesión.
   - `control/login_view_test.js`: Pruebas unitarias de HU2 (renderizado de login, validaciones y navegación).
   - `control/busqueda_citas_view_test.js`: Pruebas unitarias de HU1 (búsqueda reactiva, tarjetas y descarga de ticket).
-  - `control/tarjeta_consulta_test.js`: Pruebas de proyección de slots, datos clínicos e historial embebido.
-  - `control/historial_pasos_test.js`: Pruebas de lista jerárquica de pasos y modal de registros.
+  - `boundary/tarjeta_consulta_test.js`: Pruebas de proyección de slots, datos clínicos e historial embebido.
+  - `boundary/historial_pasos_test.js`: Pruebas de lista jerárquica de pasos y modal de registros.
   - `boundary/*_test.js`: Web Components (`dashboard_view`, `atencion_consulta_view`, `stepper_progreso`, `autocomplete_cie10`, `asistente_busqueda`, `lista_examenes`, `estado_red`).
 
 ### 2. Pruebas de Integración BDD (`test/runner_it.html`)

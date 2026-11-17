@@ -12,6 +12,10 @@ suite("AtencionConsultaView (unitaria)", () => {
     let navigateStub;
     let registrarAtencionStub;
     let tipoExamenStub;
+    let estadoOriginal;
+
+    const seleccionarPaso = (indice) => host.shadowRoot.querySelector("stepper-progreso")
+        .shadowRoot.querySelector(`[data-indice="${indice}"] button`).click();
 
     const consultaFicticia = {
         idConsulta: 55,
@@ -27,6 +31,7 @@ suite("AtencionConsultaView (unitaria)", () => {
     };
 
     setup(() => {
+        estadoOriginal = { ...store.getState() };
         navigateStub = sinon.stub(routerModule.router, "navigate");
 
         registrarAtencionStub = sinon
@@ -39,7 +44,7 @@ suite("AtencionConsultaView (unitaria)", () => {
 
         store.setState({
             token: "fake-jwt",
-            consultaActiva: consultaFicticia
+            consultaActiva: structuredClone(consultaFicticia)
         });
 
         host = document.createElement("atencion-consulta-view");
@@ -47,17 +52,12 @@ suite("AtencionConsultaView (unitaria)", () => {
     });
 
     teardown(() => {
+        host?.remove();
         navigateStub?.restore();
         registrarAtencionStub?.restore();
         tipoExamenStub?.restore();
-        if (host?.parentNode) {
-            host.parentNode.removeChild(host);
-        }
-        store.setState({
-            consultaActiva: null,
-            consultaSeleccionada: null,
-            consulta: null
-        });
+        store.setState({ ...estadoOriginal, consultaActiva: null,
+            consultaSeleccionada: null, consulta: null });
     });
 
     // ── Registro del componente ──────────────────────────────────────────────
@@ -238,35 +238,47 @@ suite("AtencionConsultaView (unitaria)", () => {
         expect(btnAnterior.disabled).to.be.false;
 
         // Cambiar al paso 0
-        host._irAlPaso(0);
-        expect(btnAnterior.disabled).to.be.true;
+        seleccionarPaso(0);
+        expect(host.shadowRoot.querySelector("#btn-anterior").disabled).to.be.true;
 
         // Retroceder al paso 1
-        host._irAlPaso(1);
-        expect(btnAnterior.disabled).to.be.false;
+        seleccionarPaso(1);
+        expect(host.shadowRoot.querySelector("#btn-anterior").disabled).to.be.false;
     });
 
-    test("botón #btn-anterior retrocede al paso anterior al hacer clic", () => {
-        const btnAnterior = host.shadowRoot.querySelector("#btn-anterior");
-        host._irAlPaso(2);
-        expect(host._pasoActivo).to.equal(2);
+    test("botón #btn-anterior retrocede al paso anterior al hacer clic", async () => {
+        seleccionarPaso(2);
+        expect(host.shadowRoot.querySelector("stepper-progreso").pasoActivo).to.equal(2);
 
-        btnAnterior.click();
-        expect(host._pasoActivo).to.equal(1);
+        const retroceder = sinon.spy(host, "_retrocederPaso");
+        try {
+            host.shadowRoot.querySelector("#btn-anterior").click();
+            expect(retroceder.calledOnce).to.be.true;
+            await retroceder.firstCall.returnValue;
+        } finally {
+            retroceder.restore();
+        }
+        expect(host.shadowRoot.querySelector("stepper-progreso").pasoActivo).to.equal(1);
+        expect(registrarAtencionStub.called).to.be.true;
     });
 
     test("en paso intermedio guarda y avanza al siguiente paso sin salir al dashboard", async () => {
-        host._irAlPaso(1); // paso 1 de 4 (intermedio)
+        seleccionarPaso(1); // paso 1 de 4 (intermedio)
         host.shadowRoot.querySelector("#notas-consulta").value = "Notas paso intermedio";
 
-        const btnGuardar = host.shadowRoot.querySelector("#btn-guardar");
+        const btnGuardar = host.shadowRoot.querySelector("#btn-siguiente");
         expect(btnGuardar.textContent).to.contain("Guardar y Avanzar");
 
-        host.shadowRoot.querySelector("form#form-clinico").dispatchEvent(
-            new Event("submit", { bubbles: true, cancelable: true })
-        );
-
-        await new Promise((r) => setTimeout(r, 60));
+        const enviar = sinon.spy(host, "_alEnviarFormulario");
+        try {
+            host.shadowRoot.querySelector("form#form-clinico").dispatchEvent(
+                new Event("submit", { bubbles: true, cancelable: true })
+            );
+            expect(enviar.calledOnce).to.be.true;
+            await enviar.firstCall.returnValue;
+        } finally {
+            enviar.restore();
+        }
 
         expect(registrarAtencionStub.called).to.be.true;
         expect(host._pasoActivo).to.equal(2);
@@ -274,7 +286,7 @@ suite("AtencionConsultaView (unitaria)", () => {
     });
 
     test("en el último paso muestra botón Finalizar Consulta y al enviar redirige a #dashboard", async () => {
-        host._irAlPaso(3); // paso 3 de 4 (último paso)
+        seleccionarPaso(3); // paso 3 de 4 (último paso)
 
         const btnFinalizar = host.shadowRoot.querySelector("#btn-finalizar");
         assert.isNotNull(btnFinalizar, "Debe existir botón Finalizar en el último paso");

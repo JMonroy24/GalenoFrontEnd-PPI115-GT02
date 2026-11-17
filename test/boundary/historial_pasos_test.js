@@ -13,6 +13,7 @@ mocha.setup("tdd");
 // ─────────────────────────────────────────────────────────────────────────────
 suite("HistorialPasos (unitaria)", () => {
     let host;
+    let fetchStub;
 
     // ── Datos de prueba ───────────────────────────────────────────────────────
 
@@ -45,12 +46,77 @@ suite("HistorialPasos (unitaria)", () => {
     // ── Ciclo de vida ─────────────────────────────────────────────────────────
 
     setup(() => {
+        fetchStub = sinon.stub(window, "fetch").rejects(new Error("El historial debe renderizar sin peticiones HTTP"));
         host = document.createElement("historial-pasos");
         document.body.appendChild(host);   // dispara connectedCallback → render()
     });
 
     teardown(() => {
         host?.remove();
+        fetchStub?.restore();
+    });
+
+    test("normaliza una respuesta envuelta y vuelve al estado vacío al recibir null", () => {
+        host.pasos = { items: pasosFicticios };
+        expect(host.cantidadRegistros).to.equal(2);
+        host.pasos = null;
+        expect(host.pasos).to.deep.equal([]);
+        expect(host.cantidadRegistros).to.equal(0);
+        expect(host.shadowRoot.querySelector("#historial-vacio").hidden).to.be.false;
+        expect(fetchStub.called).to.be.false;
+    });
+
+    test("el registro de un subpaso muestra sus propios datos y emite su detalle", () => {
+        host.pasos = pasosFicticios;
+        const abierto = sinon.spy();
+        host.addEventListener("registro-abierto", abierto);
+        host.shadowRoot.querySelector("#lista-pasos > li > ul .boton").click();
+
+        expect(host.shadowRoot.querySelector("#titulo-registro").textContent).to.equal("Signos vitales");
+        expect(host.shadowRoot.querySelector("#detalle-registro").textContent).to.equal("TA 120/80, temperatura 36.5 °C.");
+        expect(host.shadowRoot.querySelector("#datos-registro").textContent).to.contain("Enf. Ana Pérez");
+        expect(abierto.calledOnce).to.be.true;
+        expect(abierto.firstCall.args[0].detail.paso.nombre).to.equal("Signos vitales");
+        expect(fetchStub.called).to.be.false;
+    });
+
+    test("el cierre nativo del diálogo notifica una sola vez y devuelve el foco", async () => {
+        host.pasos = pasosFicticios;
+        const cerrado = sinon.spy();
+        host.addEventListener("registro-cerrado", cerrado);
+        const boton = host.shadowRoot.querySelector(".boton");
+        boton.click();
+        const dialogo = host.shadowRoot.querySelector("dialog");
+        const cierre = new Promise((resolve) => dialogo.addEventListener("close", resolve, { once: true }));
+        dialogo.close();
+        await cierre;
+
+        expect(cerrado.calledOnce).to.be.true;
+        expect(cerrado.firstCall.args[0].detail.paso.nombre).to.equal("Triaje inicial");
+        expect(host.shadowRoot.activeElement).to.equal(boton);
+        expect(dialogo.open).to.be.false;
+    });
+
+    test("desmontar el componente cierra su diálogo y notifica el cierre", () => {
+        host.pasos = pasosFicticios;
+        const cerrado = sinon.spy();
+        host.addEventListener("registro-cerrado", cerrado);
+        host.shadowRoot.querySelector(".boton").click();
+        const dialogo = host.shadowRoot.querySelector("dialog");
+        host.remove();
+
+        expect(dialogo.open).to.be.false;
+        expect(cerrado.calledOnce).to.be.true;
+    });
+
+    test("evita recursión infinita ante ciclos sin modificar los datos originales", () => {
+        const paso = { nombre: "Registro", estado: "COMPLETADO", pasos: [] };
+        paso.pasos.push(paso);
+        host.pasos = [paso];
+
+        expect(host.cantidadRegistros).to.equal(1);
+        expect(host.shadowRoot.querySelectorAll("li.paso")).to.have.length(1);
+        expect(paso.pasos[0]).to.equal(paso);
     });
 
     // ── Bloque 1: Custom Element y estado inicial ─────────────────────────────

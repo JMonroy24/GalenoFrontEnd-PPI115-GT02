@@ -14,6 +14,7 @@ mocha.setup("tdd");
 // ─────────────────────────────────────────────────────────────────────────────
 suite("TarjetaConsulta (unitaria)", () => {
     let host;
+    let fetchStub;
 
     // ── Datos de prueba ───────────────────────────────────────────────────────
 
@@ -52,12 +53,96 @@ suite("TarjetaConsulta (unitaria)", () => {
     // ── Ciclo de vida ─────────────────────────────────────────────────────────
 
     setup(() => {
+        fetchStub = sinon.stub(window, "fetch").rejects(new Error("La tarjeta debe renderizar sin peticiones HTTP"));
         host = document.createElement("tarjeta-consulta");
         document.body.appendChild(host);   // dispara connectedCallback → render()
     });
 
     teardown(() => {
         host?.remove();
+        fetchStub?.restore();
+    });
+
+    test("muestra paciente y documento sin realizar peticiones HTTP", () => {
+        host.consulta = crearConsulta({ paciente: {
+            nombres: "Ana", apellidos: ["López", "Pérez"], numeroDocumento: "01234567-8"
+        } });
+        expect(host.shadowRoot.querySelector("#paciente").textContent).to.equal("Ana López Pérez");
+        expect(host.shadowRoot.querySelector("#documento-paciente").textContent).to.equal("01234567-8");
+        expect(fetchStub.called).to.be.false;
+    });
+
+    test("una consulta vacía muestra datos alternativos y limpia el historial anterior", () => {
+        host.consulta = crearConsulta({ pasos: pasosFicticios });
+        host.consulta = null;
+        for (const [selector, texto] of [
+            ["#fecha", "Sin fecha"], ["#hora", "Sin hora"], ["#paciente", "Sin paciente"],
+            ["#documento-paciente", "Sin documento"], ["#clinica", "Sin clínica"], ["#estado", "Sin estado"]
+        ]) {
+            expect(host.shadowRoot.querySelector(selector).textContent).to.equal(texto);
+        }
+        expect(host.shadowRoot.querySelector("historial-pasos").cantidadRegistros).to.equal(0);
+        expect(host.shadowRoot.querySelector("#historial-desplegable").hidden).to.be.true;
+    });
+
+    test("excluye procedimientos inactivos, cancelados o eliminados", () => {
+        host.consulta = crearConsulta({ procedimientos: [
+            { nombre: "Control", activo: true },
+            { nombre: "No activo", activo: false },
+            { nombre: "Baja", estado: "INACTIVO" },
+            { nombre: "Cancelación", estado: "CANCELADO" },
+            { nombre: "Eliminación", estado: "ELIMINADO" }
+        ] });
+        const nombres = [...host.shadowRoot.querySelectorAll("#lista-procedimientos li")].map((item) => item.textContent);
+        expect(nombres).to.deep.equal(["Control"]);
+    });
+
+    test("muestra los datos recibidos como texto sin insertar HTML", () => {
+        const texto = '<img src=x onerror="alert(1)">';
+        host.consulta = crearConsulta({ paciente: texto, clinica: texto, procedimientos: [{ nombre: texto }] });
+        expect(host.shadowRoot.querySelector("#paciente").textContent).to.equal(texto);
+        expect(host.shadowRoot.querySelector("#clinica").textContent).to.equal(texto);
+        expect(host.shadowRoot.querySelector("#lista-procedimientos li").textContent).to.equal(texto);
+        expect(host.shadowRoot.querySelector("img, script")).to.be.null;
+        expect(fetchStub.called).to.be.false;
+    });
+
+    test("conserva las acciones y sus escuchadores al cambiar la consulta", () => {
+        const boton = document.createElement("button");
+        boton.slot = "acciones";
+        const click = sinon.spy();
+        boton.addEventListener("click", click);
+        host.appendChild(boton);
+        host.consulta = crearConsulta();
+        host.consulta = crearConsulta({ idConsulta: 202 });
+
+        expect(host.shadowRoot.querySelector('slot[name="acciones"]').assignedElements()).to.deep.equal([boton]);
+        boton.click();
+        expect(click.calledOnce).to.be.true;
+    });
+
+    test("propaga la apertura y cierre del registro con su consulta y paso", async () => {
+        const consulta = crearConsulta({ pasos: pasosFicticios });
+        host.consulta = consulta;
+        const eventos = [];
+        host.addEventListener("registro-consulta-abierto", (evento) => eventos.push(evento));
+        host.addEventListener("registro-consulta-cerrado", (evento) => eventos.push(evento));
+        const historial = host.shadowRoot.querySelector("historial-pasos");
+        historial.shadowRoot.querySelector(".boton").click();
+        const dialogo = historial.shadowRoot.querySelector("dialog");
+        const cierre = new Promise((resolve) => dialogo.addEventListener("close", resolve, { once: true }));
+        historial.shadowRoot.querySelector("#cerrar-registro").click();
+        await cierre;
+
+        expect(eventos.map((evento) => evento.type)).to.deep.equal([
+            "registro-consulta-abierto", "registro-consulta-cerrado"
+        ]);
+        eventos.forEach((evento) => {
+            expect(evento.detail.consulta).to.equal(consulta);
+            expect(evento.detail.paso.nombre).to.equal("Triage inicial");
+            expect(evento.bubbles && evento.composed).to.be.true;
+        });
+        expect(fetchStub.called).to.be.false;
     });
 
     // ── Bloque 1: Custom Element y Shadow DOM ─────────────────────────────────

@@ -7,6 +7,7 @@ mocha.setup("tdd");
 suite("AsistenteBusqueda (unitaria)", () => {
     let host;
     let buscarClinicasPacienteStub;
+    let fetchStub;
 
     const clinicasFicticias = [
         { idClinica: 1, nombre: "Clínica Escalón" },
@@ -31,6 +32,13 @@ suite("AsistenteBusqueda (unitaria)", () => {
     };
 
     setup(async () => {
+        fetchStub = sinon.stub(window, "fetch").resolves({
+            ok: true,
+            json: async () => ({ items: [
+                { idTipoDocumento: 1, codigo: "DUI", nombre: "DUI", activo: true },
+                { idTipoDocumento: 2, codigo: "PASAPORTE", nombre: "Pasaporte", activo: true }
+            ] })
+        });
         buscarClinicasPacienteStub = sinon
             .stub(personaService, "buscarClinicasPaciente")
             .resolves(clinicasFicticias);
@@ -42,8 +50,9 @@ suite("AsistenteBusqueda (unitaria)", () => {
     });
 
     teardown(() => {
-        buscarClinicasPacienteStub?.restore();
         host?.remove();
+        buscarClinicasPacienteStub?.restore();
+        fetchStub?.restore();
     });
 
     test("renderiza estructura del formulario con la clínica deshabilitada", () => {
