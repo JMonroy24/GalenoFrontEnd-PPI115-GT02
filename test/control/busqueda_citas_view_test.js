@@ -127,6 +127,31 @@ suite("BusquedaCitasView (unitaria)", () => {
         expect(host.shadowRoot.querySelector("#resultados").hidden).to.be.true;
     });
 
+    test("renderiza las consultas de items con asociaciones anidadas del backend Java", async () => {
+        citasRespuesta = [{
+            idConsulta: 501,
+            fechaConsulta: "2026-11-16T09:30:00",
+            clinica: { idClinica: 3, nombre: "Clínica Norte" },
+            paciente: { persona: { idPersona: 42, nombres: "Ana", apellidos: "López", numeroDocumento: "01234567-8" } },
+            estado: { nombre: "Pendiente" },
+            consultaProcedimientos: [{ idConsultaProcedimiento: 71,
+                procedimiento: { idProcedimiento: 9, nombre: "Control General" } }]
+        }];
+
+        await host.buscar({ idClinica: 3 });
+
+        const tarjeta = host.shadowRoot.querySelector("tarjeta-consulta");
+        expect(tarjeta).to.exist;
+        expect(tarjeta.shadowRoot.querySelector("#fecha").textContent).to.equal("2026-11-16");
+        expect(tarjeta.shadowRoot.querySelector("#hora").textContent).to.equal("09:30");
+        expect(tarjeta.shadowRoot.querySelector("#clinica").textContent).to.equal("Clínica Norte");
+        expect(tarjeta.shadowRoot.querySelector("#paciente").textContent).to.equal("Ana López");
+        expect(tarjeta.shadowRoot.querySelector("#documento-paciente").textContent).to.equal("01234567-8");
+        expect(tarjeta.shadowRoot.querySelector("#lista-procedimientos li").textContent).to.equal("Control General");
+        expect(tarjeta.shadowRoot.querySelector("#estado").textContent).to.equal("Pendiente");
+        expect(host.shadowRoot.querySelector("#resultados").hidden).to.be.false;
+    });
+
     test("mantiene número de documento y clínica deshabilitados hasta elegir un tipo", () => {
         const asistente = obtenerAsistente();
         const numeroDocumento = asistente.shadowRoot.querySelector("#numeroDocumento");

@@ -71,11 +71,11 @@ export class AuthService extends DefaultService {
 
             const roles = await this._obtenerRoles(idPersona);
             const rolesEmpleado = roles.filter((personaRol) => (
-                this._perteneceAPersona(personaRol, idPersona) && this._esRolEmpleado(personaRol)
+                this._perteneceAPersona(personaRol, idPersona)
             ));
 
             if (rolesEmpleado.length === 0) {
-                const mensaje = "Acceso denegado: la persona no tiene roles de empleado activos.";
+                const mensaje = "Acceso denegado: la persona no tiene roles asignados.";
                 GeneradorMensajes.crearMensaje("Acceso denegado", mensaje, "error");
                 throw new DefaultError(mensaje, {
                     status: 403,
@@ -241,15 +241,12 @@ export class AuthService extends DefaultService {
     async _obtenerRoles(idPersona) {
         const respuesta = await personaRolService.buscarRolesPorPersona(idPersona);
 
-        if (Array.isArray(respuesta?.items)) {
-            return respuesta.items;
-        }
-
-        if (Array.isArray(respuesta?.datos)) {
-            return respuesta.datos;
-        }
-
-        return Array.isArray(respuesta) ? respuesta : [];
+        // El backend decide qué asignaciones son válidas; no inferir permisos
+        // a partir del nombre de registro.rol ni de un atributo esEmpleado.
+        return Array.isArray(respuesta?.items)
+            ? respuesta.items.filter((registro) => registro !== null
+                && typeof registro === "object" && !Array.isArray(registro))
+            : [];
     }
 
     _perteneceAPersona(personaRol, idPersona) {
@@ -263,7 +260,6 @@ export class AuthService extends DefaultService {
         const fuentes = [
             rolSeleccionado,
             rolSeleccionado?.rol,
-            rolSeleccionado?.idRol,
             perfil,
             ...roles,
             ...roles.map((personaRol) => personaRol?.rol)
@@ -363,49 +359,6 @@ export class AuthService extends DefaultService {
             ?? perfil?.token
             ?? perfil?.sesion?.token
             ?? (tokenCabecera || null);
-    }
-
-    _esRolEmpleado(personaRol) {
-        if (!this._estaActivo(personaRol)) {
-            return false;
-        }
-
-        const rol = personaRol?.rol ?? personaRol?.idRol ?? null;
-
-        if (!this._estaActivo(rol)) {
-            return false;
-        }
-
-        if (rol?.esEmpleado === false || personaRol?.esEmpleado === false) {
-            return false;
-        }
-
-        const nombre = this._normalizarTexto(
-            rol?.nombre
-            ?? rol?.name
-            ?? rol?.descripcion
-            ?? personaRol?.nombreRol
-            ?? personaRol?.rolNombre
-            ?? (typeof rol === "string" ? rol : "")
-            ?? ""
-        );
-
-        const tipo = this._normalizarTexto(
-            rol?.tipo
-            ?? rol?.tipoRol
-            ?? personaRol?.tipoRol
-            ?? ""
-        );
-
-        if (nombre.includes("PACIENTE")) {
-            return false;
-        }
-
-        if (rol?.esEmpleado === true || personaRol?.esEmpleado === true) {
-            return true;
-        }
-
-        return /\b(EMPLEAD[OA]S?|MEDIC[OA]S?|RECEPCIONISTAS?|ADMINISTRADOR(?:A|ES|AS)?|ENFERMER[OA]S?|ESPECIALISTAS?|LABORATORISTAS?)\b/.test(`${nombre} ${tipo}`);
     }
 
     _estaActivo(personaRol) {

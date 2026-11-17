@@ -111,29 +111,15 @@ suite("AuthService (unitaria)", () => {
             expect(errorLanzado.message).to.contain("No se encontró la persona");
         });
 
-        test("falla con DefaultError 403 si la persona no tiene roles de empleado activos", async () => {
+        test("falla con DefaultError 403 si items no contiene roles asignados", async () => {
             fetchStub = sinon.stub(window, "fetch").resolves({
                 ok: true,
                 status: 200,
                 text: async () => JSON.stringify([perfilPersonaFicticia])
             });
 
-            // Solo rol PACIENTE o inactivo
-            const rolesSoloPaciente = [
-                {
-                    idPersonaRol: 10,
-                    activo: true,
-                    rol: { idRol: 99, nombre: "PACIENTE", esEmpleado: false }
-                },
-                {
-                    idPersonaRol: 11,
-                    activo: false,
-                    rol: { idRol: 2, nombre: "MEDICO GENERAL", esEmpleado: true }
-                }
-            ];
-
             buscarRolesStub = sinon.stub(personaRolService, "buscarRolesPorPersona")
-                .resolves({ items: rolesSoloPaciente });
+                .resolves({ items: [] });
 
             let errorLanzado = null;
             try {
@@ -144,7 +130,7 @@ suite("AuthService (unitaria)", () => {
 
             assert.instanceOf(errorLanzado, DefaultError);
             expect(errorLanzado.status).to.equal(403);
-            expect(errorLanzado.message).to.contain("no tiene roles de empleado activos");
+            expect(errorLanzado.message).to.contain("no tiene roles asignados");
         });
 
         test("no autentica a otra persona si el servidor devuelve una lista sin filtrar", async () => {
@@ -163,17 +149,15 @@ suite("AuthService (unitaria)", () => {
             expect(store.isAuthenticated()).to.be.false;
         });
 
-        test("rechaza roles desconocidos, de otra persona o con la definición inactiva", async () => {
+        test("rechaza registros de otra persona y entradas que no son objetos", async () => {
             fetchStub = sinon.stub(window, "fetch").resolves({
                 ok: true,
                 status: 200,
                 json: async () => ({ items: [perfilPersonaFicticia] })
             });
             buscarRolesStub = sinon.stub(personaRolService, "buscarRolesPorPersona").resolves({ items: [
-                { activo: true, rol: { nombre: "INVITADO" } },
-                { ...rolesEmpleadoValidos[0], idPersona: 99 },
-                { activo: true, rol: { nombre: "MEDICO", esEmpleado: true, activo: false } },
-                { activo: "false", rol: { nombre: "EMPLEADO" } }
+                { persona: { idPersona: 99 }, rol: { nombre: "MEDICO" } },
+                null, "MEDICO", [], 42
             ] });
 
             let error;
@@ -181,6 +165,62 @@ suite("AuthService (unitaria)", () => {
 
             expect(error?.status).to.equal(403);
             expect(sessionStorage.getItem(SESSION_STORAGE_KEY)).to.be.null;
+            expect(store.isAuthenticated()).to.be.false;
+        });
+
+        test("acepta items con persona, rol y clínica anidados sin atributos inventados", async () => {
+            const registro = {
+                idPersonaRol: 15,
+                persona: { idPersona: 42 },
+                rol: { idRol: 7, nombre: "Personal de apoyo" },
+                clinica: { idClinica: 8, nombre: "Clínica Central" }
+            };
+            fetchStub = sinon.stub(window, "fetch").callsFake(async (url) => ({
+                ok: true, status: 200,
+                json: async () => ({ items: String(url).includes("/personas-roles?")
+                    ? [registro] : [perfilPersonaFicticia] })
+            }));
+
+            const sesion = await servicio.login(1, "01234567-8");
+
+            expect(fetchStub.callCount).to.equal(2);
+            const urlRoles = new URL(fetchStub.secondCall.args[0]);
+            expect(urlRoles.pathname).to.match(/\/personas-roles$/);
+            expect(urlRoles.searchParams.get("q")).to.equal("42");
+            expect(sesion.roles).to.deep.equal([registro]);
+            expect(sesion.rolSeleccionado.rol.nombre).to.equal("Personal de apoyo");
+            expect(sesion.clinicaActiva).to.deep.equal(registro.clinica);
+            expect(store.isAuthenticated()).to.be.true;
+        });
+
+        test("delega la validez del rol al backend sin clasificar nombres ni esEmpleado", async () => {
+            const registros = [
+                { idPersonaRol: 1, persona: { idPersona: 42 }, rol: { nombre: "PACIENTE", esEmpleado: false } },
+                { idPersonaRol: 2, persona: { idPersona: 42 }, activo: false, rol: { nombre: "INVITADO" } }
+            ];
+            fetchStub = sinon.stub(window, "fetch").resolves({
+                ok: true, json: async () => ({ items: [perfilPersonaFicticia] })
+            });
+            buscarRolesStub = sinon.stub(personaRolService, "buscarRolesPorPersona")
+                .resolves({ items: registros });
+
+            const sesion = await servicio.login(1, "01234567-8");
+
+            expect(sesion.roles).to.deep.equal(registros);
+            expect(store.isAuthenticated()).to.be.true;
+        });
+
+        test("lee los roles exclusivamente de items aunque existan otras propiedades", async () => {
+            fetchStub = sinon.stub(window, "fetch").resolves({
+                ok: true, json: async () => ({ items: [perfilPersonaFicticia] })
+            });
+            buscarRolesStub = sinon.stub(personaRolService, "buscarRolesPorPersona")
+                .resolves({ items: [], datos: rolesEmpleadoValidos });
+
+            let error;
+            try { await servicio.login(1, "01234567-8"); } catch (err) { error = err; }
+
+            expect(error?.status).to.equal(403);
             expect(store.isAuthenticated()).to.be.false;
         });
 

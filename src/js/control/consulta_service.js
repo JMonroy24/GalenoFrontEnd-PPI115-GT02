@@ -29,14 +29,41 @@ export class ConsultaService extends DefaultService {
             "Error al consultar las citas"
         );
         const payload = await response.json();
-        const items = Array.isArray(payload) ? payload : payload?.items;
+        const items = Array.isArray(payload?.items)
+            ? payload.items.filter((consulta) => consulta !== null
+                && typeof consulta === "object" && !Array.isArray(consulta))
+                .map((consulta) => this._mapearConsulta(consulta))
+            : [];
 
         return new DefaultResponse(
-            Array.isArray(items) ? items : [],
+            items,
             payload?.total ?? 0,
             payload?.first ?? 0,
             payload?.max ?? 0
         );
+    }
+
+    _mapearConsulta(consulta) {
+        const datos = { ...consulta.cita, ...consulta };
+        const paciente = datos.paciente ?? datos.persona ?? datos.idPersona;
+        const procedimientos = datos.procedimientos
+            ?? datos.consultaProcedimientos
+            ?? datos.consultaProcedimientoList
+            ?? datos.procedimientosActivos
+            ?? datos.detalles ?? datos.detallesConsulta ?? datos.detalleConsulta;
+
+        // Conservar el JSON original (incluidos rol, clínica y pasos anidados)
+        // y exponer los nombres que comparten las vistas de búsqueda y dashboard.
+        return {
+            ...consulta,
+            idConsulta: consulta.idConsulta ?? consulta.id,
+            fecha: datos.fecha ?? datos.fechaConsulta ?? datos.fechaCita ?? datos.fechaHora,
+            clinica: datos.clinica ?? datos.idClinica,
+            paciente: paciente?.persona ?? paciente,
+            procedimientos: Array.isArray(procedimientos)
+                ? procedimientos
+                : Array.isArray(procedimientos?.items) ? procedimientos.items : []
+        };
     }
 
     buscarCitas(filtros = {}, first = 0, max = DEFAULT_PAGE_SIZE) {

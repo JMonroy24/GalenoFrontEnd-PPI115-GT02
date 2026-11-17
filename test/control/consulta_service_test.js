@@ -12,6 +12,78 @@ suite("ConsultaService (unitaria)", () => {
 
     teardown(() => fetchStub?.restore());
 
+    test("buscarCitas mapea items con asociaciones Java y conserva los metadatos", async () => {
+        const clinica = { idClinica: 3, nombre: "Clínica Norte" };
+        const persona = { idPersona: 42, nombres: "Ana", numeroDocumento: "01234567-8" };
+        const procedimientos = [{ idConsultaProcedimiento: 71,
+            procedimiento: { idProcedimiento: 9, nombre: "Control General" } }];
+        const consulta = {
+            id: 101, fechaConsulta: "2026-11-16T09:30:00", clinica, persona,
+            consultaProcedimientoList: procedimientos,
+            pasosClinicos: [{ nombre: "Evaluación", estado: "COMPLETADO" }]
+        };
+        const original = structuredClone(consulta);
+        fetchStub = sinon.stub(window, "fetch").resolves({
+            ok: true, status: 200,
+            json: async () => ({ items: [consulta], total: 12, first: 5, max: 5 })
+        });
+
+        const respuesta = await servicio.buscarCitas({ idClinica: 3 }, 5, 5);
+
+        expect(respuesta).to.be.instanceOf(DefaultResponse);
+        expect(respuesta.items).to.have.length(1);
+        expect(respuesta.items[0]).to.include({ idConsulta: 101, fecha: "2026-11-16T09:30:00" });
+        expect(respuesta.items[0].clinica).to.equal(clinica);
+        expect(respuesta.items[0].paciente).to.equal(persona);
+        expect(respuesta.items[0].procedimientos).to.deep.equal(procedimientos);
+        expect(respuesta.items[0].pasosClinicos).to.deep.equal(consulta.pasosClinicos);
+        expect(respuesta.total).to.equal(12);
+        expect(respuesta.first).to.equal(5);
+        expect(respuesta.max).to.equal(5);
+        expect(consulta).to.deep.equal(original);
+    });
+
+    test("buscarCitas conserva los campos canónicos fecha, clínica y procedimientos", async () => {
+        const consulta = {
+            idConsulta: 101, fecha: "2026-11-16", hora: "10:00", estado: "PENDIENTE",
+            paciente: { nombres: "Ana" }, clinica: { idClinica: 3, nombre: "Central" },
+            procedimientos: [{ procedimiento: { nombre: "Consulta" } }]
+        };
+        fetchStub = sinon.stub(window, "fetch").resolves({
+            ok: true, json: async () => ({ items: [consulta], total: 1 })
+        });
+
+        const respuesta = await servicio.buscarCitas();
+
+        expect(respuesta.items).to.deep.equal([consulta]);
+    });
+
+    test("buscarCitas usa exclusivamente items sin confundir el envoltorio con una consulta", async () => {
+        const consulta = { idConsulta: 101 };
+        const payloads = [[consulta], { datos: [consulta] }, { items: [], datos: [consulta] }, { items: null }, null];
+        fetchStub = sinon.stub(window, "fetch");
+        payloads.forEach((payload, indice) => fetchStub.onCall(indice)
+            .resolves({ ok: true, json: async () => payload }));
+
+        for (const payload of payloads) {
+            expect((await servicio.buscarCitas()).items, JSON.stringify(payload)).to.deep.equal([]);
+        }
+    });
+
+    test("buscarCitas tolera asociaciones nulas y descarta entradas que no son consultas", async () => {
+        fetchStub = sinon.stub(window, "fetch").resolves({
+            ok: true, json: async () => ({ items: [null, [], 101, {
+                idConsulta: 101, paciente: null, clinica: null, procedimientos: null
+            }] })
+        });
+
+        const respuesta = await servicio.buscarCitas();
+
+        expect(respuesta.items).to.have.length(1);
+        expect(respuesta.items[0].idConsulta).to.equal(101);
+        expect(respuesta.items[0].procedimientos).to.deep.equal([]);
+    });
+
     test("descargarTicketPdf solicita PDF, descarga el blob y libera su URL después", async () => {
         const blob = new Blob(["%PDF-1.4\nTicket de cita"], { type: "application/pdf" });
         const leerBlob = sinon.stub().resolves(blob);

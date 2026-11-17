@@ -221,9 +221,9 @@ suite("LoginView (unitaria)", () => {
         expect(host.shadowRoot.querySelector("#btn-iniciar-sesion").disabled).to.be.false;
     });
 
-    test("no navega ni crea una sesión para una persona con rol de paciente", async () => {
+    test("no navega ni crea una sesión si el backend devuelve items sin roles", async () => {
         fetchStub.withArgs(sinon.match((url) => String(url).includes("/personas-roles?")))
-            .resolves(responder({ items: [{ activo: true, rol: { nombre: "PACIENTE" } }] }));
+            .resolves(responder({ items: [] }));
         host.shadowRoot.querySelector("#numero-documento").value = "01234567-8";
 
         enviarFormulario();
@@ -292,18 +292,16 @@ suite("LoginView (unitaria)", () => {
         expect(store.isAuthenticated()).to.be.false;
     });
 
-    test("rechaza al empleado cuyos roles están inactivos", async () => {
+    test("acepta los roles que el backend devuelve sin reclasificar sus atributos", async () => {
         fetchStub.withArgs(sinon.match((url) => String(url).includes("/personas-roles?")))
             .resolves(responder({ items: [{ ...rolEmpleado, activo: false }] }));
         host.shadowRoot.querySelector("#numero-documento").value = "01234567-8";
 
         await host._iniciarSesion();
 
-        expect(navigateStub.called).to.be.false;
-        expect(host.sesion).to.be.null;
-        expect(store.isAuthenticated()).to.be.false;
-        expect(sessionStorage.getItem(SESSION_STORAGE_KEY)).to.be.null;
-        expect(mensajeSpy.calledWith("Error al iniciar sesión", sinon.match(/roles de empleado activos/), "error")).to.be.true;
+        expect(navigateStub.calledOnceWith("#dashboard")).to.be.true;
+        expect(host.sesion.roles).to.deep.equal([{ ...rolEmpleado, activo: false }]);
+        expect(store.isAuthenticated()).to.be.true;
     });
 
     test("limpia los errores de validación al corregir los campos sin llamar al backend", async () => {
