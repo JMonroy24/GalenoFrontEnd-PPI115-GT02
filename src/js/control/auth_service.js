@@ -43,8 +43,7 @@ export class AuthService extends DefaultService {
 
         const params = new URLSearchParams();
         params.set("tipoDocumentoId", idTipoDocumento);
-        params.set("idTipoDocumento", idTipoDocumento);
-        params.set("numeroDocumento", documento);
+        params.set("valor", documento);
         const url = `${this._urlBase}?${params.toString()}`;
 
         try {
@@ -339,12 +338,13 @@ export class AuthService extends DefaultService {
                 return false;
             }
 
-            const documento = persona.numeroDocumento ?? persona.documento ?? persona.dui;
+            const documento = persona.valor ?? persona.numeroDocumento ?? persona.documento ?? persona.dui;
             const tipo = persona.idTipoDocumento ?? persona.tipoDocumentoId ?? persona.tipoDocumento;
             const idTipo = typeof tipo === "object" ? tipo?.idTipoDocumento ?? tipo?.id : tipo;
 
             return this._obtenerIdPersona(persona) != null
-                && (documento == null || this._normalizarTexto(documento) === this._normalizarTexto(numeroDocumento))
+                && documento != null
+                && this._normalizarTexto(documento) === this._normalizarTexto(numeroDocumento)
                 && (idTipo == null || String(idTipo) === String(tipoDocumento));
         }) ?? null;
     }

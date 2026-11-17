@@ -679,10 +679,13 @@ export class DashboardView extends HTMLElement {
             lista.push(estado.clinicaActiva);
         }
 
-        this._obtenerRoles(estado).forEach((rol) => {
+        // Conservar todas las asignaciones: un mismo rol puede tener varias clínicas.
+        const asignaciones = estado?.roles ?? estado?.usuario?.roles ?? [];
+        [...asignaciones, estado?.rolSeleccionado].forEach((rol) => {
             const clinica = rol?.clinica
-                ?? rol?.idClinica
                 ?? rol?.clinicaActiva
+                ?? rol?.rol?.clinica
+                ?? rol?.idClinica
                 ?? rol?.idClinicaEmpleado;
 
             if (clinica === undefined || clinica === null) {
@@ -708,7 +711,8 @@ export class DashboardView extends HTMLElement {
             }
 
             const id = String(this._idClinica(clinica));
-            if (id !== "" && !unicas.has(id)) {
+            if (id !== "" && (!unicas.has(id)
+                || this._nombreClinica(unicas.get(id)) === "Clínica sin nombre")) {
                 unicas.set(id, clinica);
             }
         });
@@ -735,7 +739,8 @@ export class DashboardView extends HTMLElement {
             }
 
             const id = String(this._idRol(rol));
-            if (id !== "" && !unicos.has(id)) {
+            if (id !== "" && (!unicos.has(id)
+                || this._nombreRol(unicos.get(id)) === "Rol sin nombre")) {
                 unicos.set(id, rol);
             }
         });
@@ -757,14 +762,9 @@ export class DashboardView extends HTMLElement {
     }
 
     _nombreClinica(clinica) {
-        if (typeof clinica === "object") {
-            return clinica.nombre
-                ?? clinica.name
-                ?? clinica.nombreClinica
-                ?? `Clínica ${this._idClinica(clinica)}`;
-        }
-
-        return `Clínica ${clinica}`;
+        return [clinica?.nombre, clinica?.name, clinica?.nombreClinica, clinica?.descripcion]
+            .find((nombre) => typeof nombre === "string" && nombre.trim() !== "")
+            ?? "Clínica sin nombre";
     }
 
     _idRol(rol) {
@@ -784,19 +784,11 @@ export class DashboardView extends HTMLElement {
     }
 
     _nombreRol(rol) {
-        const entidad = rol?.rol ?? rol?.idRol ?? rol;
-
-        if (entidad && typeof entidad === "object") {
-            return entidad.nombre
-                ?? entidad.name
-                ?? entidad.descripcion
-                ?? rol?.nombreRol
-                ?? `Rol ${this._idRol(rol)}`;
-        }
-
-        return rol?.nombreRol
-            ?? rol?.nombre
-            ?? `Rol ${this._idRol(rol)}`;
+        const entidad = rol?.rol ?? rol?.idRol;
+        return [entidad?.nombre, entidad?.name, entidad?.descripcion,
+            rol?.nombreRol, rol?.nombre, rol?.name, rol?.descripcion]
+            .find((nombre) => typeof nombre === "string" && nombre.trim() !== "")
+            ?? "Rol sin nombre";
     }
 }
 

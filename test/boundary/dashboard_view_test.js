@@ -128,6 +128,33 @@ suite("DashboardView (unitaria)", () => {
         );
     });
 
+    test("muestra nombres anidados y descripciones, conservando UUID solo en value", () => {
+        const clinicaId = "fe837c00-0000-4000-8000-000000000001";
+        const otraClinicaId = "fe837c00-0000-4000-8000-000000000002";
+        const rolId = "ab837c00-0000-4000-8000-000000000001";
+        const rolPlanoId = "ab837c00-0000-4000-8000-000000000002";
+        const asignaciones = [
+            { id: "asignacion-1", clinica: { id: clinicaId, descripcion: "Clínica Central" },
+                rol: { id: rolId, nombre: "Médico General" } },
+            { id: "asignacion-2", clinica: { id: otraClinicaId, nombre: "Clínica Norte" },
+                rol: { id: rolId, nombre: "Médico General" } },
+            { idRol: rolPlanoId, descripcion: "Personal de apoyo" }
+        ];
+        store.setState({ clinicas: [clinicaId], roles: asignaciones,
+            clinicaActiva: { idClinica: clinicaId }, rolSeleccionado: asignaciones[0] });
+
+        const clinicas = [...host.shadowRoot.querySelector("#clinica-activa").options];
+        const roles = [...host.shadowRoot.querySelector("#rol-activo").options];
+        expect(clinicas.map((opcion) => [opcion.value, opcion.textContent])).to.deep.equal([
+            [clinicaId, "Clínica Central"], [otraClinicaId, "Clínica Norte"]
+        ]);
+        expect(roles.map((opcion) => [opcion.value, opcion.textContent])).to.deep.equal([
+            [rolId, "Médico General"], [rolPlanoId, "Personal de apoyo"]
+        ]);
+        expect(host.shadowRoot.querySelector("#clinica-activa").value).to.equal(clinicaId);
+        expect(host.shadowRoot.querySelector("#rol-activo").value).to.equal(rolId);
+    });
+
     test("carga citas al conectar y renderiza <tarjeta-consulta> para cada cita", async () => {
         await new Promise((r) => setTimeout(r, 50));
 

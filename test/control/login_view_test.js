@@ -202,8 +202,9 @@ suite("LoginView (unitaria)", () => {
 
         const urlLogin = new URL(llamadaLogin.args[0]);
         expect(urlLogin.searchParams.get("tipoDocumentoId")).to.equal("1");
-        expect(urlLogin.searchParams.get("idTipoDocumento")).to.equal("1");
-        expect(urlLogin.searchParams.get("numeroDocumento")).to.equal("01234567-8");
+        expect(urlLogin.searchParams.get("valor")).to.equal("01234567-8");
+        expect(urlLogin.searchParams.has("idTipoDocumento")).to.be.false;
+        expect(urlLogin.searchParams.has("numeroDocumento")).to.be.false;
 
         expect(sesionGuardada.token).to.equal("jwt-login");
         expect(sesionGuardada.perfil.idPersona).to.equal(42);
@@ -219,6 +220,29 @@ suite("LoginView (unitaria)", () => {
         expect(buscador.value).to.equal("");
         expect(host.cargando).to.be.false;
         expect(host.shadowRoot.querySelector("#btn-iniciar-sesion").disabled).to.be.false;
+    });
+
+    test("lee el select y el input actuales al enviar, incluso sin eventos change o input", async () => {
+        const select = obtenerBuscador().shadowRoot.querySelector("select");
+        const opcion = document.createElement("option");
+        opcion.value = "tipo-pasaporte";
+        opcion.textContent = "Pasaporte";
+        select.appendChild(opcion);
+        select.value = "tipo-pasaporte";
+        host.shadowRoot.querySelector("#numero-documento").value = " PAS-987&6 ";
+        fetchStub.withArgs(sinon.match((url) => String(url).includes("/personas?")))
+            .resolves(responder({ items: [{ ...perfilFicticio,
+                tipoDocumentoId: "tipo-pasaporte", numeroDocumento: "PAS-987&6" }] }));
+        fetchStub.resetHistory();
+
+        enviarFormulario();
+        await esperar(60);
+
+        const llamada = fetchStub.getCalls().find((item) => String(item.args[0]).includes("/personas?"));
+        expect(Object.fromEntries(new URL(llamada.args[0]).searchParams)).to.deep.equal({
+            tipoDocumentoId: "tipo-pasaporte", valor: "PAS-987&6"
+        });
+        expect(navigateStub.calledOnceWith("#dashboard")).to.be.true;
     });
 
     test("no navega ni crea una sesión si el backend devuelve items sin roles", async () => {

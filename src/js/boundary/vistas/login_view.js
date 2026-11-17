@@ -158,9 +158,9 @@ export class LoginView extends HTMLElement {
 
         const buscador = this.shadowRoot.querySelector("buscador-tipo-documentos");
         const numeroDocumento = this.shadowRoot.querySelector("#numero-documento");
-        const tipoDocumento = String(buscador?.value ?? "").trim();
-        const numero = numeroDocumento.value.trim();
-        const tipoValido = tipoDocumento !== "";
+        const tipoDocumentoId = String(buscador?.value ?? "").trim();
+        const numero = String(numeroDocumento?.value ?? "").trim();
+        const tipoValido = tipoDocumentoId !== "";
         const numeroValido = numero !== "";
 
         this._marcarError("tipo-documento-error", !tipoValido);
@@ -176,7 +176,7 @@ export class LoginView extends HTMLElement {
         this.sesion = null;
 
         try {
-            this.sesion = await authService.login(tipoDocumento, numero);
+            this.sesion = await authService.login(tipoDocumentoId, numero);
         } catch (error) {
             GeneradorMensajes.crearMensaje(
                 "Error al iniciar sesión",
