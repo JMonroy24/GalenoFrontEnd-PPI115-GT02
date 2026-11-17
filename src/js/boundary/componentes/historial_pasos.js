@@ -5,7 +5,6 @@ export class HistorialPasos extends HTMLElement {
         this._pasos = [];
         this._pasoRegistro = null;
         this._botonRegistro = null;
-        this._cantidadRegistros = 0;
     }
 
     get pasos() {
@@ -234,6 +233,7 @@ export class HistorialPasos extends HTMLElement {
                 this._cerrarRegistro();
             }
         });
+        dialogo.addEventListener("close", () => this._notificarCierre());
     }
 
     _renderizarPasos(contenedor, pasos) {
@@ -271,18 +271,9 @@ export class HistorialPasos extends HTMLElement {
             boton.type = "button";
             boton.className = "boton";
             boton.textContent = "Ver Registro";
-            boton.setAttribute("aria-haspopup", "dialog");
-            boton.setAttribute("aria-label", `Ver Registro de ${this._nombrePaso(paso)}`);
-            boton.addEventListener("click", (evento) => {
-                evento.stopPropagation();
-                this._abrirRegistro(paso, boton);
-            });
+            boton.addEventListener("click", () => this._abrirRegistro(paso, boton));
 
-            contenido.append(info);
-            if (!esGrupo) {
-                contenido.append(boton);
-                this._cantidadRegistros++;
-            }
+            contenido.append(info, boton);
             item.appendChild(contenido);
 
             const subpasos = this._obtenerSubpasos(paso);
@@ -302,6 +293,9 @@ export class HistorialPasos extends HTMLElement {
         const titulo = this.shadowRoot.querySelector("#titulo-registro");
         const detalle = this.shadowRoot.querySelector("#detalle-registro");
 
+        this._pasoRegistro = paso;
+        this._botonRegistro = boton;
+
         titulo.textContent = this._nombrePaso(paso);
         detalle.textContent = this._detallePaso(paso);
         this.shadowRoot.querySelector("#datos-registro").textContent =
@@ -314,6 +308,7 @@ export class HistorialPasos extends HTMLElement {
         } else if (!dialogo.open) {
             dialogo.showModal();
         }
+
         this.dispatchEvent(new CustomEvent("registro-abierto", {
             bubbles: true,
             composed: true,
@@ -325,10 +320,22 @@ export class HistorialPasos extends HTMLElement {
         const dialogo = this.shadowRoot.querySelector("#dialogo-registro");
         if (!dialogo?.open) return;
 
+        if (!dialogo?.open) {
+            return;
+        }
+
         if (typeof dialogo.close === "function") {
             dialogo.close();
         } else {
             dialogo.removeAttribute("open");
+        }
+
+        this._notificarCierre();
+    }
+
+    _notificarCierre() {
+        if (!this._pasoRegistro) {
+            return;
         }
         this._notificarCierre();
     }
@@ -346,28 +353,17 @@ export class HistorialPasos extends HTMLElement {
         }));
     }
 
-    _filtrarEjecutados(pasos, ancestros = new Set()) {
-        return pasos.flatMap((paso) => {
-            if (!paso || ancestros.has(paso)) return [];
-            const ruta = new Set(ancestros).add(paso);
-            const subpasos = this._obtenerSubpasos(paso);
-            const hijos = this._filtrarEjecutados(subpasos, ruta);
-            const estadoOriginal = paso.estadoPaso ?? paso.estado ?? "";
-            const estado = String(estadoOriginal?.nombre ?? estadoOriginal?.descripcion
-                ?? estadoOriginal?.codigo ?? estadoOriginal?.estado ?? estadoOriginal)
-                .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-                .toUpperCase().trim().replace(/[\s-]+/g, "_");
-            const completado = ["COMPLETADO", "COMPLETADA", "FINALIZADO", "FINALIZADA", "EJECUTADO", "REALIZADO"].includes(estado);
-            // Los registros antiguos sin estado conservan su contenido y metadatos.
-            const tieneRegistro = paso.valor != null || paso.consulta_procedimiento_paso?.valor != null
-                || paso.fechaHoraEjecucion || paso.fechaHoraRegistro || paso.contenidoCompleto
-                || paso.contenido || paso.detalle || paso.registro || paso.notas;
-            const esGrupo = paso.esGrupoHistorial === true || (subpasos.length > 0 && !estado && !tieneRegistro);
-            const ejecutado = !esGrupo && (completado || !estado);
-            if (!ejecutado && hijos.length === 0) return [];
-            if (typeof paso === "string") return [paso];
-            return [{ ...paso, pasos: hijos, esGrupoHistorial: !ejecutado }];
-        });
+        const paso = this._pasoRegistro;
+
+        this._pasoRegistro = null;
+        this._botonRegistro?.focus();
+        this._botonRegistro = null;
+
+        this.dispatchEvent(new CustomEvent("registro-cerrado", {
+            bubbles: true,
+            composed: true,
+            detail: { paso }
+        }));
     }
 
     _normalizarPasos(valor) {
@@ -564,8 +560,11 @@ export class HistorialPasos extends HTMLElement {
         if (typeof detalle === "string") {
             try {
                 const datos = JSON.parse(detalle);
-                return typeof datos === "object" && datos !== null ? this._textoDetalle(datos) : detalle;
-            } catch (_) {
+
+                return datos && typeof datos === "object"
+                    ? this._textoDetalle(datos)
+                    : detalle;
+            } catch {
                 return detalle;
             }
         }
@@ -581,6 +580,8 @@ export class HistorialPasos extends HTMLElement {
                 .join("\n");
         }
 
+        if (this._esRegistroClinico(detalle)) {
+            return this._formatearRegistroClinico(detalle);
         if (["notas", "notasConsulta", "diagnostico", "diagnosticos", "plan", "planTratamiento"]
             .some((clave) => Object.hasOwn(detalle, clave))) {
             const diagnosticos = detalle.diagnostico ?? detalle.diagnosticos ?? [];
@@ -616,6 +617,47 @@ export class HistorialPasos extends HTMLElement {
         } catch {
             return String(detalle);
         }
+    }
+
+    _esRegistroClinico(detalle) {
+        return [
+            "notas", "notasConsulta", "diagnostico", "diagnosticos",
+            "plan", "planTratamiento", "observaciones", "observacion"
+        ].some((clave) => Object.prototype.hasOwnProperty.call(detalle, clave));
+    }
+
+    _formatearRegistroClinico(detalle) {
+        const diagnosticos = detalle.diagnostico ?? detalle.diagnosticos ?? [];
+        const lista = Array.isArray(diagnosticos) ? diagnosticos : [diagnosticos];
+        const textoDiagnosticos = lista
+            .map((item) => {
+                if (item && typeof item === "object") {
+                    return [
+                        item.codigo ?? item.code,
+                        item.nombre ?? item.descripcion ?? item.description
+                    ].filter(Boolean).join(" — ") || this._textoDetalle(item);
+                }
+
+                return String(item ?? "");
+            })
+            .filter(Boolean)
+            .join("\n");
+
+        const secciones = [
+            ["Notas clínicas", detalle.notas ?? detalle.notasConsulta],
+            ["Diagnósticos", textoDiagnosticos],
+            ["Plan de tratamiento", detalle.plan ?? detalle.planTratamiento],
+            ["Observaciones", detalle.observaciones ?? detalle.observacion]
+        ];
+
+        const texto = secciones
+            .filter(([, valor]) => (
+                valor !== undefined && valor !== null && String(valor).trim() !== ""
+            ))
+            .map(([titulo, valor]) => `${titulo}:\n${this._textoDetalle(valor)}`)
+            .join("\n\n");
+
+        return texto || JSON.stringify(detalle, null, 2);
     }
 }
 

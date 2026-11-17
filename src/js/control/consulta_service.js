@@ -239,6 +239,7 @@ export class ConsultaService extends DefaultService {
             throw new Error("La consulta no tiene un identificador válido para descargar el ticket.");
         }
 
+        const url = `${ENDPOINTS.API_BASE}${ENDPOINTS.CONSULTAS}/${encodeURIComponent(idConsulta)}/ticket`;
         const url = `${this._urlBase}/${encodeURIComponent(idConsulta)}/ticket`;
         const response = await this._request(
             url,
@@ -258,7 +259,6 @@ export class ConsultaService extends DefaultService {
             enlace.click();
         } finally {
             enlace.remove?.();
-            // Da tiempo al navegador para iniciar la descarga antes de liberar el blob.
             setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
         }
 
