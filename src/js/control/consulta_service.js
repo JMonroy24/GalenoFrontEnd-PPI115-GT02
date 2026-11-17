@@ -117,7 +117,12 @@ export class ConsultaService extends DefaultService {
     }
 
     buscarCitas(filtros = {}, first = 0, max = DEFAULT_PAGE_SIZE) {
-        return this._buscarCitas(filtros, first, max);
+        const { clinicaId, ...resto } = filtros;
+        const normalizados = clinicaId !== undefined && clinicaId !== null && String(clinicaId).trim() !== ""
+            ? { ...resto, idClinica: filtros.idClinica ?? clinicaId }
+            : filtros;
+
+        return this._buscarCitas(normalizados, first, max);
     }
 
     buscarPorClinica(idClinica, first = 0, max = DEFAULT_PAGE_SIZE) {
@@ -239,7 +244,7 @@ export class ConsultaService extends DefaultService {
             throw new Error("La consulta no tiene un identificador válido para descargar el ticket.");
         }
 
-        const url = `${this._urlBase}/${encodeURIComponent(idConsulta)}/ticket`;
+        const url = `${ENDPOINTS.API_BASE}${ENDPOINTS.CONSULTAS}/${encodeURIComponent(idConsulta)}/ticket`;
         const response = await this._request(
             url,
             { method: "GET", headers: { Accept: "application/pdf" } },

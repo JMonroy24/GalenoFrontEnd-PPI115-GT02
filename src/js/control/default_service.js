@@ -22,15 +22,7 @@ export class DefaultService {
         // Interceptar antes de preparar o enviar la petición, incluso si el store
         // todavía no recibió el evento offline del navegador.
         if (this._esOperacionEscritura(method) && this._estaSinConexion()) {
-            const mensaje = "Operación no disponible sin conexión. Conéctese a internet para guardar, modificar o eliminar datos.";
-
-            GeneradorMensajes.crearMensaje("Sin conexión", mensaje, "warning");
-
-            throw new DefaultError(mensaje, {
-                code: "OFFLINE",
-                method,
-                details: { code: "OFFLINE", method }
-            });
+            throw this._errorOffline(method);
         }
 
         const headers = new Headers(options.headers);
@@ -49,7 +41,12 @@ export class DefaultService {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), HTTP_TIMEOUT_MS);
         const abortFromCaller = () => controller.abort(options.signal.reason);
-        options.signal?.addEventListener("abort", abortFromCaller, { once: true });
+
+        if (options.signal?.aborted) {
+            controller.abort(options.signal.reason);
+        } else {
+            options.signal?.addEventListener("abort", abortFromCaller, { once: true });
+        }
 
         let response;
 
@@ -61,6 +58,10 @@ export class DefaultService {
                 signal: controller.signal
             });
         } catch (error) {
+            if (this._esOperacionEscritura(method) && this._estaSinConexion()) {
+                throw this._errorOffline(method);
+            }
+
             if (error instanceof TypeError) {
                 throw new DefaultError(
                     `No se pudo conectar con ${new URL(this._urlBase).origin}. `
@@ -108,6 +109,18 @@ export class DefaultService {
         }
 
         return response;
+    }
+
+    _errorOffline(method) {
+        const mensaje = "Operación no disponible en modo offline. Conéctese a internet para guardar los cambios";
+
+        GeneradorMensajes.crearMensaje("Sin conexión", mensaje, "warning");
+
+        return new DefaultError(mensaje, {
+            code: "OFFLINE",
+            method,
+            details: { code: "OFFLINE", method }
+        });
     }
 
     _esOperacionEscritura(method) {

@@ -225,9 +225,6 @@ export class HistorialPasos extends HTMLElement {
             evento.stopPropagation();
             this._cerrarRegistro();
         });
-        dialogo.addEventListener("close", () => {
-            if (!dialogo.open) this._notificarCierre();
-        });
         dialogo.addEventListener("click", (evento) => {
             evento.stopPropagation();
             if (evento.target === dialogo) {
@@ -308,6 +305,7 @@ export class HistorialPasos extends HTMLElement {
         detalle.textContent = this._detallePaso(paso);
         this.shadowRoot.querySelector("#datos-registro").textContent =
             `Profesional: ${this._nombreProfesional(paso)} · Fecha y hora: ${this._fechaHoraPaso(paso)}`;
+
         if (typeof dialogo.showModal !== "function") {
             dialogo.setAttribute("open", "");
         } else if (!dialogo.open) {
@@ -323,7 +321,10 @@ export class HistorialPasos extends HTMLElement {
 
     _cerrarRegistro() {
         const dialogo = this.shadowRoot.querySelector("#dialogo-registro");
-        if (!dialogo?.open) return;
+
+        if (!dialogo?.open) {
+            return;
+        }
 
         if (typeof dialogo.close === "function") {
             dialogo.close();
@@ -335,11 +336,16 @@ export class HistorialPasos extends HTMLElement {
     }
 
     _notificarCierre() {
-        if (!this._pasoRegistro) return;
+        if (!this._pasoRegistro) {
+            return;
+        }
+
         const paso = this._pasoRegistro;
+
         this._pasoRegistro = null;
         this._botonRegistro?.focus();
         this._botonRegistro = null;
+
         this.dispatchEvent(new CustomEvent("registro-cerrado", {
             bubbles: true,
             composed: true,

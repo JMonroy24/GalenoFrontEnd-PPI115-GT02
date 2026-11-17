@@ -9,10 +9,11 @@ PWA médica para la gestión de consultas y atención clínica, construida ínte
 1. [Requisitos](#requisitos)
 2. [Estructura del proyecto](#estructura-del-proyecto)
 3. [Código fuente (`src/`)](#código-fuente-src)
-4. [Pruebas unitarias (`test/`)](#pruebas-unitarias-test)
+4. [Arquitectura de pruebas](#arquitectura-de-pruebas)
+5. [Pruebas unitarias (`test/`)](#pruebas-unitarias-test)
    - [Librerías de soporte (`test/lib/`)](#librerías-de-soporte-testlib)
-5. [Ejecución de las pruebas](#ejecución-de-las-pruebas)
-6. [Convenciones de código](#convenciones-de-código)
+6. [Ejecución de las pruebas](#ejecución-de-las-pruebas)
+7. [Convenciones de código](#convenciones-de-código)
 
 ---
 
@@ -45,8 +46,8 @@ GalenoFrontEnd/
 │           └── vistas/         # Páginas/vistas de la aplicación
 │
 └── test/                       # 🧪 Infraestructura de pruebas (solo desarrollo)
-    ├── runner.html             # Runner de pruebas unitarias (TDD – Mocha)
-    ├── runner_it.html          # Runner de pruebas de integración
+    ├── runner.html             # Runner principal (TDD + integración BDD al final)
+    ├── runner_it.html          # Runner aislado de integración BDD
     ├── lib/                    # ⚠️ Librerías de soporte — ver nota abajo
     │   ├── mocha/              #    Mocha 12.0.3 (mocha.js + mocha.css)
     │   ├── chai/               #    Chai (index.js)
@@ -72,9 +73,27 @@ Los Web Components se definen como clases ES que extienden `HTMLElement` y utili
 
 ---
 
+## Arquitectura de pruebas
+
+Toda la infraestructura de QA vive en `test/` y se ejecuta directamente en el navegador: `src/` no importa suites ni librerías de pruebas.
+
+| Runner | Interfaz | Red | Propósito |
+|---|---|---|---|
+| `test/runner.html` | TDD (`suite`/`test`) y BDD (`describe`/`it`) importado al final | `sinon.stub(window, "fetch")` en unitarias; `fetch` real en integración | Ejecuta todas las suites juntas |
+| `test/runner_it.html` | BDD (`describe`/`it`) | `fetch` real contra Open Liberty | Ejecuta sólo la integración de forma aislada |
+
+- `test/control/` y `test/boundary/`: suites TDD de servicios, vistas y Web Components. Los archivos de `control/` para componentes son delegados de `boundary/` y el runner importa una sola ruta para evitar duplicados.
+- `test/integration/`: suites BDD sin stubs que validan contrato de endpoints, códigos de estado y CORS reales.
+- `test/lib/`: **únicamente herramientas de testing usadas en desarrollo** (Mocha, Chai y Sinon), servidas como archivos estáticos y cargadas por los runners. **No se importan, empaquetan ni despliegan junto a `src/`.**
+
+> [!IMPORTANT]
+> El código de producción en `src/` está construido al **100% en Vanilla JS / Web Components nativos** (ES Modules, Custom Elements, Shadow DOM, `<slot>` y Service Worker) con CSS estándar: **cero librerías, frameworks o dependencias externas en runtime**. Mocha, Chai y Sinon existen sólo dentro de `test/lib/` como herramientas de desarrollo ejecutadas a través de `test/runner.html` (y opcionalmente `test/runner_it.html`).
+
+---
+
 ## Pruebas unitarias (`test/`)
 
-Las pruebas están escritas con la interfaz **TDD** de Mocha (`suite` / `test`) y las aserciones de **Chai** (`expect` / `assert`). Se ejecutan directamente en el navegador cargando `test/runner.html`; no existe un paso de compilación ni transpilación.
+Las pruebas unitarias están escritas con la interfaz **TDD** de Mocha (`suite` / `test`) y las aserciones de **Chai** (`expect` / `assert`). Se ejecutan directamente en el navegador cargando `test/runner.html`, que también importa la suite BDD de integración al final; no existe un paso de compilación ni transpilación.
 
 ### Librerías de soporte (`test/lib/`)
 
@@ -104,13 +123,13 @@ Estas herramientas se distribuyen como **archivos estáticos copiados al reposit
    ```
 2. Abre en el navegador:
    - **Pruebas unitarias:** `http://localhost:8080/test/runner.html`
-   - **Pruebas de integración:** `http://localhost:8080/test/runner_it.html`
+   - **Pruebas de integración:** `http://localhost:8080/test/runner.html` (junto al resto) o `http://localhost:8080/test/runner_it.html` (sólo BDD)
 
 El reporte Mocha se muestra directamente en la página con el recuento de tests pasados, fallidos y pendientes.
 
 ### Cobertura de vistas y componentes
 
-El runner unitario importa todas las suites desde un único módulo antes de llamar a `mocha.run()`. Las pruebas usan Mocha TDD (`suite`/`test`), Chai y `sinon.stub(window, "fetch")` para simular respuestas HTTP. No requieren un backend activo ni realizan peticiones reales a la API. Los componentes que sólo reciben datos comprueban que no se llame a `fetch`.
+El runner importa todas las suites desde un único módulo antes de llamar a `mocha.run()`. Las suites unitarias usan Mocha TDD (`suite`/`test`), Chai y `sinon.stub(window, "fetch")` para simular respuestas HTTP, por lo que no requieren backend. La suite de integración usa Mocha BDD (`describe`/`it`) con `fetch` real contra Open Liberty, sin stubs, y se importa al final del mismo runner.
 
 | Suite canónica | Comportamientos cubiertos |
 |---|---|
@@ -119,7 +138,7 @@ El runner unitario importa todas las suites desde un único módulo antes de lla
 | `test/boundary/tarjeta_consulta_test.js` | Paciente y documento, fecha y estado, procedimientos activos, acciones por slot, texto seguro, historial y propagación de eventos |
 | `test/boundary/historial_pasos_test.js` | Jerarquía y registros ejecutados, estado vacío, normalización, contenido seguro, apertura/cierre del diálogo, foco, desmontaje y ciclos en los datos |
 
-Los archivos `test/control/tarjeta_consulta_test.js` y `test/control/historial_pasos_test.js` son accesos de compatibilidad a las suites de `boundary/`; el runner importa sólo las rutas canónicas para evitar duplicados. `test/runner_it.html` mantiene las pruebas BDD (`describe`/`it`) sobre HTTP real y requiere Open Liberty, HTTPS/CORS y credenciales válidas según `src/js/config.js`.
+Los archivos `test/control/tarjeta_consulta_test.js`, `test/control/historial_pasos_test.js` y `test/control/atencion_consulta_view_test.js` son accesos de compatibilidad a las suites de `boundary/`; el runner importa esas rutas de `control/` para evitar duplicados. `test/runner_it.html` permite ejecutar sólo las pruebas BDD (`describe`/`it`) sobre HTTP real; requiere Open Liberty y CORS habilitado según `src/js/config.js`.
 
 ---
 
@@ -129,7 +148,7 @@ Los archivos `test/control/tarjeta_consulta_test.js` y `test/control/historial_p
 - **Custom Elements v1** — cada componente registra su etiqueta con `customElements.define(...)` al final del módulo.
 - **Sin dependencias de producción** — `src/` no tiene `node_modules` ni gestor de paquetes; todas las dependencias externas de producción son cero.
 - **Nomenclatura de archivos** — `snake_case` para todos los archivos `.js` y de test.
-- **Interfaz de pruebas TDD** — `suite()` / `test()` / `setup()` / `teardown()` (Mocha TDD); no mezclar con la interfaz BDD (`describe`/`it`) en el mismo runner.
+- **Interfaces de pruebas** — TDD (`suite()` / `test()` / `setup()` / `teardown()`) para unitarias y BDD (`describe()` / `it()`) para integración; en `test/runner.html` la suite BDD se importa al final, después de registrar todas las TDD.
 ---
 # GalenoSV — Cliente Frontend (GalenoFE)
 
@@ -167,7 +186,7 @@ Las herramientas ubicadas en el directorio `test/lib/` (**Mocha**, **Chai**, **S
 
 1. **Navegador web moderno**: Google Chrome, Brave, Microsoft Edge o Mozilla Firefox.
 2. **Servidor web estático local**: `browser-sync`, `python3` o la extensión *Live Server* de Visual Studio Code.
-3. **Backend Jakarta EE**: Open Liberty en ejecución en `http://localhost:9080/galenoSV/resources/v1` (respaldado por PostgreSQL).
+3. **Backend Jakarta EE**: Open Liberty en ejecución en `http://localhost:9080/galenoSV/api/v1` (respaldado por PostgreSQL).
 
 ---
 
@@ -206,7 +225,7 @@ http://localhost:3000/
 
 ## 🧪 Ejecución de la Suite de Pruebas Automáticas
 
-La estrategia de pruebas sigue una separación estricta entre TDD (unitarias) y BDD (integración sobre HTTP real):
+La estrategia separa las interfaces TDD (unitarias, con stubs) y BDD (integración con HTTP real). Ambas se ejecutan juntas en `test/runner.html`; la suite BDD también puede ejecutarse de forma aislada en `test/runner_it.html`.
 
 ### 1. Pruebas Unitarias TDD (`test/runner.html`)
 Cubren con aislamiento total (`sinon.stub`) la capa de servicios y los Web Components:
@@ -220,12 +239,12 @@ Cubren con aislamiento total (`sinon.stub`) la capa de servicios y los Web Compo
   - `control/orden_examen_service_test.js`: Creación en lote de órdenes de examen.
   - `boundary/*_test.js`: Web Components (`dashboard_view`, `atencion_consulta_view`, `stepper_progreso`, `autocomplete_cie10`, `asistente_busqueda`, `lista_examenes`, `estado_red`).
 
-### 2. Pruebas de Integración BDD (`test/runner_it.html`)
-Verifican la conectividad contra los endpoints de Open Liberty en `http://localhost:9080`:
+### 2. Pruebas de Integración BDD (`test/runner.html` y `test/runner_it.html`)
+Verifican la conectividad contra los endpoints de Open Liberty en `http://localhost:9080/galenoSV/api/v1`:
 
-- **URL en navegador**: `http://localhost:3000/test/runner_it.html`
+- **URL en navegador**: `http://localhost:3000/test/runner.html` (junto al resto de suites) o `http://localhost:3000/test/runner_it.html` (sólo integración)
 - **Suites incluidas**:
-  - `integration/consulta_service_it.js`: Conexión real, verificación CORS y estructuración de DTOs.
+  - `integration/consulta_service_it.js`: petición `fetch` real, verificación de status/CORS y estructuración de DTOs (`items`, `total`, `first`, `max`).
 
 ---
 

@@ -114,10 +114,13 @@ suite("ListaExamenesAsignables (unitaria)", () => {
         const oyente = (e) => mensajes.push(e.detail);
         window.addEventListener("notificacion", oyente);
 
-        marcar("2");
-        host.shadowRoot.querySelector("#btn-asignar").click();
-        await esperar();
-        window.removeEventListener("notificacion", oyente);
+        try {
+            marcar("2");
+            host.shadowRoot.querySelector("#btn-asignar").click();
+            await esperar();
+        } finally {
+            window.removeEventListener("notificacion", oyente);
+        }
 
         expect(mensajes.some((m) => m.tipo === "error")).to.be.true;
         expect(host.obtenerSeleccionados()).to.deep.equal(["2"]);
