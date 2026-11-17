@@ -1,5 +1,6 @@
 import DefaultService from "./default_service.js";
-import { personaRolService } from "./persona_rol_service.js";
+import { API_BASE, DEFAULT_PAGE_SIZE } from "../config.js";
+import { ENDPOINTS } from "../routes.js";
 import GeneradorMensajes from "./generador_mensajes.js";
 import DefaultError from "../entity/default_error.js";
 import { store } from "../store.js";
@@ -25,7 +26,7 @@ const ESTADOS_INACTIVOS = new Set([
 
 export class AuthService extends DefaultService {
     constructor() {
-        super("/personas");
+        super(ENDPOINTS.PERSONAS);
         this.sesion = null;
         this.restaurarSesion();
     }
@@ -44,14 +45,17 @@ export class AuthService extends DefaultService {
         params.set("tipoDocumentoId", idTipoDocumento);
         params.set("idTipoDocumento", idTipoDocumento);
         params.set("numeroDocumento", documento);
+        const url = `${this._urlBase}?${params.toString()}`;
 
         try {
+            console.log("Petición Persona URL:", url);
             const response = await this._request(
-                `${this._urlBase}?${params.toString()}`,
+                url,
                 { method: "GET" },
                 "Error al autenticar al empleado"
             );
             const payload = await this._parseBody(response);
+            console.log("Respuesta Backend Persona:", payload);
             const perfil = this._extraerPerfil(payload, idTipoDocumento, documento);
 
             if (!perfil) {
@@ -239,14 +243,21 @@ export class AuthService extends DefaultService {
     }
 
     async _obtenerRoles(idPersona) {
-        const respuesta = await personaRolService.buscarRolesPorPersona(idPersona);
+        const params = new URLSearchParams({ first: "0", max: String(DEFAULT_PAGE_SIZE), q: String(idPersona) });
+        const url = `${API_BASE.replace(/\/+$/, "")}${ENDPOINTS.PERSONAS_ROLES}?${params.toString()}`;
+
+        console.log("Petición Roles URL:", url);
+        const response = await this._request(url, { method: "GET" }, "Error al obtener los roles de la persona");
+        const respuesta = await this._parseBody(response);
+        console.log("Respuesta Backend Roles:", respuesta);
+        const roles = Array.isArray(respuesta?.items)
+            ? respuesta.items
+            : Array.isArray(respuesta) ? respuesta : [];
 
         // El backend decide qué asignaciones son válidas; no inferir permisos
         // a partir del nombre de registro.rol ni de un atributo esEmpleado.
-        return Array.isArray(respuesta?.items)
-            ? respuesta.items.filter((registro) => registro !== null
-                && typeof registro === "object" && !Array.isArray(registro))
-            : [];
+        return roles.filter((registro) => registro !== null
+            && typeof registro === "object" && !Array.isArray(registro));
     }
 
     _perteneceAPersona(personaRol, idPersona) {
@@ -339,10 +350,10 @@ export class AuthService extends DefaultService {
     }
 
     _obtenerIdPersona(perfil) {
-        return perfil?.idPersona
-            ?? perfil?.id
-            ?? perfil?.persona?.idPersona
-            ?? perfil?.persona?.id;
+        return [perfil?.id, perfil?.idPersona, perfil?.persona?.id, perfil?.persona?.idPersona]
+            .map((id) => typeof id === "string" ? id.trim() : id)
+            .find((id) => (typeof id === "string" && id !== "")
+                || (typeof id === "number" && Number.isFinite(id)));
     }
 
     _obtenerToken(payload, perfil, response) {
