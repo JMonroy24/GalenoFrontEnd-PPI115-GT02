@@ -159,6 +159,27 @@ suite("StepperProgreso (unitaria)", () => {
         expect(paso2Der.classList.contains("stepper-conector--completado")).to.be.false;
     });
 
+    test("seleccionar un pendiente conserva los estados del backend y emite el estado canónico", () => {
+        host.estados = ["COMPLETADO", "EN_CURSO", "PENDIENTE", "PENDIENTE"];
+        host.pasoActivo = 2;
+        expect(host.obtenerEstadoPaso(1)).to.equal("activo");
+        expect(host.obtenerEstadoPaso(2)).to.equal("pendiente");
+        const seleccionado = host.shadowRoot.querySelector('[aria-current="step"]');
+        expect(seleccionado.dataset.indice).to.equal("2");
+        let evento;
+        host.addEventListener("paso-click", (e) => { evento = e; });
+        seleccionado.querySelector("button").click();
+        expect(evento.detail.estado).to.equal("PENDIENTE");
+        expect(evento.bubbles).to.be.true;
+        expect(evento.composed).to.be.true;
+    });
+
+    test("resuelve el paso activo desde los estados reales sin un índice fijo", () => {
+        host.estados = ["COMPLETADO", "COMPLETADO", "EN_CURSO", "PENDIENTE"];
+        expect(host.pasoActivo).to.equal(2);
+        expect(host.obtenerEstadoPaso(2)).to.equal("activo");
+    });
+
     test("muestra cada etapa numerada tanto en texto como en indicador", () => {
         const numerosTexto = Array.from(host.shadowRoot.querySelectorAll(".stepper-numero"))
             .map((el) => el.textContent.trim());

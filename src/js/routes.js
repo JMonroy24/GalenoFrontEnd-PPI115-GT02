@@ -3,5 +3,8 @@ export const ENDPOINTS = {
     TIPOS_DOCUMENTO: '/tipos-documento',
     PERSONAS_ROLES: '/personas-roles',
     CONSULTAS: '/consultas',
-    PROCEDIMIENTOS: '/procedimientos'
+    PROCEDIMIENTOS: '/procedimientos',
+    CIE10: '/cie10',
+    TIPOS_EXAMEN: '/tipos-examen',
+    ORDENES_EXAMEN: '/ordenes-examen'
 };

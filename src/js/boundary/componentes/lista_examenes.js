@@ -49,7 +49,11 @@ export class ListaExamenesAsignables extends HTMLElement {
     }
 
     set idConsulta(valor) {
+        const anterior = this.idConsulta;
         this._idConsulta = valor;
+        if (valor == null || valor === "") this.removeAttribute("id-consulta");
+        else this.setAttribute("id-consulta", String(valor));
+        if (anterior !== valor) this._limpiarSeleccion();
         this._actualizarBoton();
     }
 
@@ -60,7 +64,12 @@ export class ListaExamenesAsignables extends HTMLElement {
     }
 
     set idPaso(valor) {
+        const anterior = this.idPaso;
         this._idPaso = valor;
+        this.removeAttribute("id-paso-clinico");
+        if (valor == null || valor === "") this.removeAttribute("id-paso");
+        else this.setAttribute("id-paso", String(valor));
+        if (anterior !== valor) this._limpiarSeleccion();
         this._actualizarBoton();
     }
 
@@ -70,26 +79,30 @@ export class ListaExamenesAsignables extends HTMLElement {
 
     set paso(valor) {
         this._paso = valor ?? null;
-        this._idPaso = valor?.idPaso
+        this.idPaso = valor?.idConsultaProcedimientoPaso
+            ?? valor?.idPaso
             ?? valor?.idPasoClinico
             ?? valor?.id
             ?? null;
-
-        if (this._idPaso !== null && this._idPaso !== undefined) {
-            this.setAttribute("id-paso", String(this._idPaso));
-        }
-
-        this._actualizarBoton();
     }
 
     attributeChangedCallback(nombre, valorViejo, valorNuevo) {
+        if (valorViejo === valorNuevo) return;
         if (nombre === "id-consulta") {
             this._idConsulta = valorNuevo;
         } else if (nombre === "id-paso" || nombre === "id-paso-clinico") {
             this._idPaso = valorNuevo;
         }
 
+        this._limpiarSeleccion();
         this._actualizarBoton();
+    }
+
+    _limpiarSeleccion() {
+        this._seleccion.clear();
+        this.shadowRoot?.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+            input.checked = false;
+        });
     }
 
     async connectedCallback() {
@@ -209,6 +222,9 @@ export class ListaExamenesAsignables extends HTMLElement {
 
         boton.disabled = this._enviando || cantidad === 0 || !this.idConsulta;
         boton.setAttribute("aria-busy", String(this._enviando));
+        this.shadowRoot.querySelectorAll('input[type="checkbox"]').forEach((input) => {
+            input.disabled = this._enviando;
+        });
         this.shadowRoot.querySelector("#contador").textContent =
             cantidad === 1 ? "1 examen seleccionado" : `${cantidad} exámenes seleccionados`;
     }
@@ -216,7 +232,7 @@ export class ListaExamenesAsignables extends HTMLElement {
     _onCambioCheckbox(evento) {
         const input = evento.target;
 
-        if (input.type !== "checkbox") {
+        if (input.type !== "checkbox" || this._enviando) {
             return;
         }
 
@@ -236,6 +252,7 @@ export class ListaExamenesAsignables extends HTMLElement {
 
         const ids = this.obtenerSeleccionados();
         const contexto = this._contextoPaso();
+        const idConsulta = this.idConsulta;
 
         this._enviando = true;
         this._actualizarBoton();
@@ -245,9 +262,9 @@ export class ListaExamenesAsignables extends HTMLElement {
             const tieneContexto = Object.keys(contexto).length > 0;
             const ordenes = typeof servicio.crearOrdenes === "function"
                 ? tieneContexto
-                    ? await servicio.crearOrdenes(this.idConsulta, ids, contexto)
-                    : await servicio.crearOrdenes(this.idConsulta, ids)
-                : await servicio.asignarOrdenes(this.idConsulta, ids);
+                    ? await servicio.crearOrdenes(idConsulta, ids, contexto)
+                    : await servicio.crearOrdenes(idConsulta, ids)
+                : await servicio.asignarOrdenes(idConsulta, ids, contexto);
 
             GeneradorMensajes.crearMensaje(
                 "Exámenes asignados",
@@ -259,14 +276,17 @@ export class ListaExamenesAsignables extends HTMLElement {
                 bubbles: true,
                 composed: true,
                 detail: {
-                    idConsulta: this.idConsulta,
+                    idConsulta,
                     ...contexto,
                     ordenes,
                     examenes: ids
                 }
             }));
-            this._seleccion.clear();
-            this._pintarLista();
+            if (String(this.idConsulta) === String(idConsulta)
+                && String(this.idPaso ?? "") === String(contexto.idPaso ?? "")) {
+                ids.forEach((id) => this._seleccion.delete(id));
+                this._pintarLista();
+            }
         } catch (error) {
             GeneradorMensajes.crearMensaje(
                 "No se pudieron asignar los exámenes",
