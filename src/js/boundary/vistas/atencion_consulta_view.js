@@ -27,6 +27,12 @@ const ESTADO_PENDIENTE = "PENDIENTE";
 const ESTADO_EN_CURSO = "EN_CURSO";
 const ESTADO_COMPLETADO = "COMPLETADO";
 
+export const EstadoPaso = Object.freeze({
+    PENDIENTE: ESTADO_PENDIENTE,
+    EN_CURSO: ESTADO_EN_CURSO,
+    COMPLETADO: ESTADO_COMPLETADO
+});
+
 /** Textos de acción de la botonera. */
 const TEXTO_SIGUIENTE = "Guardar y Avanzar al Siguiente Paso >";
 const TEXTO_FINALIZAR = "Finalizar Consulta";

@@ -1,127 +1,99 @@
 const MENU = {
     "Atención clínica": [
-        { id: "buscar-citas", texto: "Consultas" }
+        { id: "buscar-citas", texto: "Buscar Citas" },
+        { id: "dashboard", texto: "Dashboard de Consultas" },
+        { id: "atencion", texto: "Atención Médica" }
     ],
-    "Cambiar rol": [
-        { id: "login", texto: "Cambiar rol" }
+    "Sesión": [
+        { id: "login", texto: "Iniciar Sesión / Cambiar Rol" }
     ]
 };
 
-export default class MenuLateral extends HTMLElement {
+export class MenuLateral extends HTMLElement {
     constructor() {
         super();
         this.attachShadow({ mode: "open" });
-        this.activo = null;
-        this.alAlternarMenu = () => {
-            this.toggleAttribute("abierto");
-        };
     }
 
     connectedCallback() {
+        this.render();
+    }
+
+    render() {
+        const hashActual = (window.location.hash || "#buscar-citas").replace(/^#/, "");
+
         this.shadowRoot.innerHTML = `
             <link rel="stylesheet" href="recursos/estilos/principal.css">
             <style>
                 :host {
                     display: block;
-                    height: 100%;
+                    width: 100%;
                 }
-
                 nav {
                     display: flex;
                     flex-direction: column;
-                    gap: 0.25rem;
-                    height: 100%;
-                    padding: 1rem 0.75rem;
-                    overflow-y: auto;
-                    background-color: var(--color-superficie);
-                    border-right: 1px solid var(--color-borde);
+                    gap: var(--space-4, 1rem);
                 }
-
-                h4 {
-                    margin: 0.75rem 0 0.25rem;
-                    color: var(--color-primario);
-                    font-size: 0.75rem;
-                    letter-spacing: 0.05em;
+                .seccion-titulo {
+                    margin: 0;
+                    padding: 0 var(--space-3, 0.75rem);
+                    font-size: var(--text-xs, 0.75rem);
+                    font-weight: 700;
                     text-transform: uppercase;
+                    letter-spacing: 0.05em;
+                    color: var(--color-text-muted, #475569);
                 }
-
-                h4:first-child {
-                    margin-top: 0;
+                ul {
+                    list-style: none;
+                    margin: 0;
+                    padding: 0;
+                    display: flex;
+                    flex-direction: column;
+                    gap: var(--space-1, 0.25rem);
                 }
-
-                button {
-                    display: block;
-                    width: 100%;
-                    padding: 0.5rem 0.75rem;
-                    border: none;
-                    border-radius: var(--radio);
-                    background-color: var(--color-superficie);
-                    color: var(--color-texto);
-                    font: inherit;
-                    text-align: left;
-                    cursor: pointer;
+                a {
+                    display: flex;
+                    align-items: center;
+                    gap: var(--space-3, 0.75rem);
+                    padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
+                    border-radius: var(--radius-md, 0.5rem);
+                    color: var(--color-text, #0f172a);
+                    text-decoration: none;
+                    font-size: var(--text-sm, 0.875rem);
+                    font-weight: 500;
+                    transition: background-color var(--transition-fast, 150ms ease),
+                                color var(--transition-fast, 150ms ease);
                 }
-
-                button.activo {
-                    background-color: var(--color-primario-claro);
-                    color: var(--color-primario);
-                    font-weight: 600;
+                a:hover {
+                    background-color: var(--color-surface-alt, #e2e8f0);
+                    color: var(--color-primary, #1e3a8a);
                 }
-
-                @media (max-width: 800px) {
-                    nav {
-                        display: none;
-                    }
-
-                    :host([abierto]) nav {
-                        display: flex;
-                    }
+                a.activo {
+                    background-color: var(--color-primary, #1e3a8a);
+                    color: #ffffff;
                 }
             </style>
+            <nav aria-label="Menú principal">
+                ${Object.entries(MENU).map(([seccion, items]) => `
+                    <section>
+                        <h3 class="seccion-titulo">${seccion}</h3>
+                        <ul>
+                            ${items.map((item) => `
+                                <li>
+                                    <a
+                                        href="#${item.id}"
+                                        class="${hashActual === item.id ? "activo" : ""}"
+                                        aria-current="${hashActual === item.id ? "page" : "false"}"
+                                    >
+                                        ${item.texto}
+                                    </a>
+                                </li>
+                            `).join("")}
+                        </ul>
+                    </section>
+                `).join("")}
+            </nav>
         `;
-
-        const nav = document.createElement("nav");
-        this.shadowRoot.appendChild(nav);
-
-        Object.entries(MENU).forEach(([grupo, items]) => {
-            const titulo = document.createElement("h4");
-            titulo.textContent = grupo;
-            nav.appendChild(titulo);
-
-            items.forEach((item) => {
-                const boton = document.createElement("button");
-                boton.type = "button";
-                boton.dataset.id = item.id;
-                boton.textContent = item.texto;
-                boton.addEventListener("click", () => {
-                    this.marcarActivo(item.id);
-                    this.dispatchEvent(new CustomEvent("navegar", {
-                        detail: item.id,
-                        bubbles: true,
-                        composed: true
-                    }));
-                });
-                nav.appendChild(boton);
-            });
-        });
-
-        if (this.activo) {
-            this.marcarActivo(this.activo);
-        }
-
-        window.addEventListener("alternar-menu", this.alAlternarMenu);
-    }
-
-    disconnectedCallback() {
-        window.removeEventListener("alternar-menu", this.alAlternarMenu);
-    }
-
-    marcarActivo(id) {
-        this.activo = id;
-        const botones = this.shadowRoot.querySelectorAll("nav button");
-        botones.forEach((boton) => {
-            boton.classList.toggle("activo", boton.dataset.id === id);
-        });
     }
 }
 
