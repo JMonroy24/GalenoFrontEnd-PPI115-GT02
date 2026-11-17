@@ -311,7 +311,7 @@ suite("LoginView (unitaria)", () => {
         await host._iniciarSesion();
 
         expect(fetchStub.getCalls().some((llamada) => String(llamada.args[0]).includes("/personas-roles?"))).to.be.false;
-        expect(mensajeSpy.calledWith("Error al iniciar sesión", "No se encontró la persona indicada.", "error")).to.be.true;
+        expect(mensajeSpy.calledWith("Error al iniciar sesión", "Usuario no encontrado", "error")).to.be.true;
         expect(navigateStub.called).to.be.false;
         expect(store.isAuthenticated()).to.be.false;
     });

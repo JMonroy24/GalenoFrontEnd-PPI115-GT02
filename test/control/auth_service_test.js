@@ -60,6 +60,57 @@ suite("AuthService (unitaria)", () => {
     });
 
     suite("login", () => {
+        for (const campoId of ["id", "idPersona"]) {
+            test(`elige la coincidencia exacta entre seis items y consulta roles usando ${campoId}`, async () => {
+                const documento = "01234567-8";
+                const personaId = "fe837c00-0000-4000-8000-000000000005";
+                const personas = Array.from({ length: 6 }, (_, indice) => ({
+                    [campoId]: `persona-${indice}`,
+                    numeroDocumento: `9999999${indice}-9`
+                }));
+                personas[0].valor = documento;
+                personas[4] = { [campoId]: personaId, numeroDocumento: documento, valor: "otro-valor" };
+                const asignacion = {
+                    persona: { [campoId]: personaId }, rol: { id: "rol-1", nombre: "Médico" },
+                    clinica: { id: "clinica-1", nombre: "Central" }
+                };
+                fetchStub = sinon.stub(window, "fetch").callsFake(async (url) => ({
+                    ok: true, status: 200,
+                    json: async () => new URL(url).pathname.endsWith("/personas-roles")
+                        ? { items: [asignacion] }
+                        : { items: personas, perfil: personas[0] }
+                }));
+
+                const sesion = await servicio.login(1, documento);
+
+                expect(sesion.perfil).to.equal(personas[4]);
+                expect(fetchStub.callCount).to.equal(2);
+                const urlRoles = new URL(fetchStub.secondCall.args[0]);
+                expect(urlRoles.pathname).to.match(/\/personas-roles$/);
+                expect(urlRoles.searchParams.get("personaId")).to.equal(personaId);
+                expect(store.state.usuario).to.equal(personas[4]);
+            });
+        }
+
+        for (const documentoRecibido of ["doc-a", "DÓC-A", "DOC-A "]) {
+            test(`rechaza el documento ${JSON.stringify(documentoRecibido)} al buscar exactamente DOC-A`, async () => {
+                fetchStub = sinon.stub(window, "fetch").resolves({
+                    ok: true, status: 200,
+                    json: async () => ({ items: [{ id: "persona-1", numeroDocumento: documentoRecibido }] })
+                });
+
+                let error;
+                try { await servicio.login(1, "DOC-A"); } catch (err) { error = err; }
+
+                expect(error).to.be.instanceOf(DefaultError);
+                expect(error.status).to.equal(404);
+                expect(error.message).to.equal("Usuario no encontrado");
+                expect(fetchStub.calledOnce).to.be.true;
+                expect(servicio.sesion).to.be.null;
+                expect(sessionStorage.getItem(SESSION_STORAGE_KEY)).to.be.null;
+            });
+        }
+
         test("usa el tipo y valor recibidos y selecciona la persona correspondiente en cada login", async () => {
             const personas = [
                 { id: "persona-a", tipoDocumento: { id: "tipo-a" }, valor: "DOC-A", nombres: "Ana" },
@@ -240,7 +291,7 @@ suite("AuthService (unitaria)", () => {
 
             assert.instanceOf(errorLanzado, DefaultError);
             expect(errorLanzado.status).to.equal(404);
-            expect(errorLanzado.message).to.contain("No se encontró la persona");
+            expect(errorLanzado.message).to.equal("Usuario no encontrado");
         });
 
         test("falla con DefaultError 403 si items no contiene roles asignados", async () => {

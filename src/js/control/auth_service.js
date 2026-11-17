@@ -58,7 +58,7 @@ export class AuthService extends DefaultService {
             const perfil = this._extraerPerfil(payload, idTipoDocumento, documento);
 
             if (!perfil) {
-                const mensaje = "No se encontró la persona indicada.";
+                const mensaje = "Usuario no encontrado";
                 GeneradorMensajes.crearMensaje("Usuario no encontrado", mensaje, "error");
                 throw new DefaultError(mensaje, {
                     status: 404,
@@ -325,9 +325,11 @@ export class AuthService extends DefaultService {
         const perfil = payload?.perfil
             ?? payload?.persona
             ?? payload?.usuario;
-        const personas = Array.isArray(payload)
-            ? payload
-            : payload?.items ?? payload?.datos ?? (perfil ? [perfil] : [payload]);
+        const personas = Array.isArray(payload?.items)
+            ? payload.items
+            : Array.isArray(payload)
+                ? payload
+                : payload?.datos ?? (perfil ? [perfil] : [payload]);
 
         if (!Array.isArray(personas)) {
             return null;
@@ -338,13 +340,13 @@ export class AuthService extends DefaultService {
                 return false;
             }
 
-            const documento = persona.valor ?? persona.numeroDocumento ?? persona.documento ?? persona.dui;
+            const documento = persona.numeroDocumento ?? persona.valor ?? persona.documento ?? persona.dui;
             const tipo = persona.idTipoDocumento ?? persona.tipoDocumentoId ?? persona.tipoDocumento;
             const idTipo = typeof tipo === "object" ? tipo?.idTipoDocumento ?? tipo?.id : tipo;
 
             return this._obtenerIdPersona(persona) != null
                 && documento != null
-                && this._normalizarTexto(documento) === this._normalizarTexto(numeroDocumento)
+                && String(documento) === numeroDocumento
                 && (idTipo == null || String(idTipo) === String(tipoDocumento));
         }) ?? null;
     }
@@ -385,10 +387,6 @@ export class AuthService extends DefaultService {
         const nombreEstado = typeof estado === "object" ? estado?.nombre : estado;
 
         return !ESTADOS_INACTIVOS.has(String(nombreEstado ?? "").trim().toLowerCase());
-    }
-
-    _normalizarTexto(valor) {
-        return String(valor ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toUpperCase();
     }
 }
 
