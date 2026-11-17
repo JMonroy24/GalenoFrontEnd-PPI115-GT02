@@ -190,7 +190,7 @@ http://localhost:3000/
 La estrategia de pruebas sigue una separación estricta entre TDD (unitarias) y BDD (integración sobre HTTP real):
 
 ### 1. Pruebas Unitarias TDD (`test/runner.html`)
-Cubren con aislamiento total (`sinon.stub`) la capa de servicios, el store reactivo, el router y los Web Components:
+Cubren con aislamiento total (`sinon.stub`) la capa de servicios y los Web Components:
 
 - **URL en navegador**: `http://localhost:3000/test/runner.html`
 - **Suites incluidas**:
@@ -199,8 +199,6 @@ Cubren con aislamiento total (`sinon.stub`) la capa de servicios, el store react
   - `control/consulta_service_test.js`: Paginación, token bearer, errores 401, 422 y 500.
   - `control/auth_service_test.js`: Login, gestión de roles de empleado, sessionStorage y logout.
   - `control/orden_examen_service_test.js`: Creación en lote de órdenes de examen.
-  - `control/store_test.js`: Reactividad del estado global (`EventTarget`).
-  - `control/router_test.js`: Navegación por hash y guardias de sesión.
   - `boundary/*_test.js`: Web Components (`dashboard_view`, `atencion_consulta_view`, `stepper_progreso`, `autocomplete_cie10`, `asistente_busqueda`, `lista_examenes`, `estado_red`).
 
 ### 2. Pruebas de Integración BDD (`test/runner_it.html`)

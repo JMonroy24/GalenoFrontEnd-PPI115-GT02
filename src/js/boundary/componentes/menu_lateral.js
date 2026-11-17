@@ -1,9 +1,11 @@
 const MENU = {
     "Atención clínica": [
-        { id: "buscar-citas", texto: "Consultas" }
+        { id: "buscar-citas", texto: "Buscar Citas" },
+        { id: "dashboard", texto: "Dashboard de Consultas" },
+        { id: "atencion", texto: "Atención Médica" }
     ],
-    "Cambiar rol": [
-        { id: "login", texto: "Cambiar rol" }
+    "Sesión": [
+        { id: "login", texto: "Iniciar Sesión / Cambiar Rol" }
     ]
 };
 
