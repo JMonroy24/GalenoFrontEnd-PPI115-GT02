@@ -3,6 +3,8 @@ export class HistorialPasos extends HTMLElement {
         super();
         this.attachShadow({ mode: "open" });
         this._pasos = [];
+        this._pasoRegistro = null;
+        this._botonRegistro = null;
     }
 
     get pasos() {
@@ -212,6 +214,7 @@ export class HistorialPasos extends HTMLElement {
                 this._cerrarRegistro();
             }
         });
+        dialogo.addEventListener("close", () => this._notificarCierre());
     }
 
     _renderizarPasos(contenedor, pasos) {
@@ -247,7 +250,7 @@ export class HistorialPasos extends HTMLElement {
             boton.type = "button";
             boton.className = "boton";
             boton.textContent = "Ver Registro";
-            boton.addEventListener("click", () => this._abrirRegistro(paso));
+            boton.addEventListener("click", () => this._abrirRegistro(paso, boton));
 
             contenido.append(info, boton);
             item.appendChild(contenido);
@@ -264,33 +267,62 @@ export class HistorialPasos extends HTMLElement {
         });
     }
 
-    _abrirRegistro(paso) {
+    _abrirRegistro(paso, boton = null) {
         const dialogo = this.shadowRoot.querySelector("#dialogo-registro");
         const titulo = this.shadowRoot.querySelector("#titulo-registro");
         const detalle = this.shadowRoot.querySelector("#detalle-registro");
+
+        this._pasoRegistro = paso;
+        this._botonRegistro = boton;
 
         titulo.textContent = this._nombrePaso(paso);
         detalle.textContent = this._detallePaso(paso);
 
         if (typeof dialogo.showModal !== "function") {
             dialogo.setAttribute("open", "");
-            return;
-        }
-
-        if (!dialogo.open) {
+        } else if (!dialogo.open) {
             dialogo.showModal();
         }
+
+        this.dispatchEvent(new CustomEvent("registro-abierto", {
+            bubbles: true,
+            composed: true,
+            detail: { paso }
+        }));
     }
 
     _cerrarRegistro() {
         const dialogo = this.shadowRoot.querySelector("#dialogo-registro");
 
-        if (typeof dialogo.close === "function") {
-            dialogo.close();
+        if (!dialogo?.open) {
             return;
         }
 
-        dialogo.removeAttribute("open");
+        if (typeof dialogo.close === "function") {
+            dialogo.close();
+        } else {
+            dialogo.removeAttribute("open");
+        }
+
+        this._notificarCierre();
+    }
+
+    _notificarCierre() {
+        if (!this._pasoRegistro) {
+            return;
+        }
+
+        const paso = this._pasoRegistro;
+
+        this._pasoRegistro = null;
+        this._botonRegistro?.focus();
+        this._botonRegistro = null;
+
+        this.dispatchEvent(new CustomEvent("registro-cerrado", {
+            bubbles: true,
+            composed: true,
+            detail: { paso }
+        }));
     }
 
     _normalizarPasos(valor) {
@@ -460,14 +492,17 @@ export class HistorialPasos extends HTMLElement {
             return paso;
         }
 
-        const detalle = paso.contenidoCompleto
+        const detalle = paso.consulta_procedimiento_paso?.valor
+            ?? paso.valor
+            ?? paso.contenidoCompleto
             ?? paso.contenido
             ?? paso.detalle
             ?? paso.registro
             ?? paso.observaciones
             ?? paso.notas
             ?? paso.descripcion
-            ?? paso.texto;
+            ?? paso.texto
+            ?? paso.datos;
 
         return this._textoDetalle(detalle) || "Sin registro disponible.";
     }
@@ -478,7 +513,15 @@ export class HistorialPasos extends HTMLElement {
         }
 
         if (typeof detalle === "string") {
-            return detalle;
+            try {
+                const datos = JSON.parse(detalle);
+
+                return datos && typeof datos === "object"
+                    ? this._textoDetalle(datos)
+                    : detalle;
+            } catch {
+                return detalle;
+            }
         }
 
         if (typeof detalle !== "object") {
@@ -490,6 +533,10 @@ export class HistorialPasos extends HTMLElement {
                 .map((item) => this._textoDetalle(item))
                 .filter(Boolean)
                 .join("\n");
+        }
+
+        if (this._esRegistroClinico(detalle)) {
+            return this._formatearRegistroClinico(detalle);
         }
 
         const interno = detalle.contenido
@@ -511,6 +558,47 @@ export class HistorialPasos extends HTMLElement {
         } catch {
             return String(detalle);
         }
+    }
+
+    _esRegistroClinico(detalle) {
+        return [
+            "notas", "notasConsulta", "diagnostico", "diagnosticos",
+            "plan", "planTratamiento", "observaciones", "observacion"
+        ].some((clave) => Object.prototype.hasOwnProperty.call(detalle, clave));
+    }
+
+    _formatearRegistroClinico(detalle) {
+        const diagnosticos = detalle.diagnostico ?? detalle.diagnosticos ?? [];
+        const lista = Array.isArray(diagnosticos) ? diagnosticos : [diagnosticos];
+        const textoDiagnosticos = lista
+            .map((item) => {
+                if (item && typeof item === "object") {
+                    return [
+                        item.codigo ?? item.code,
+                        item.nombre ?? item.descripcion ?? item.description
+                    ].filter(Boolean).join(" — ") || this._textoDetalle(item);
+                }
+
+                return String(item ?? "");
+            })
+            .filter(Boolean)
+            .join("\n");
+
+        const secciones = [
+            ["Notas clínicas", detalle.notas ?? detalle.notasConsulta],
+            ["Diagnósticos", textoDiagnosticos],
+            ["Plan de tratamiento", detalle.plan ?? detalle.planTratamiento],
+            ["Observaciones", detalle.observaciones ?? detalle.observacion]
+        ];
+
+        const texto = secciones
+            .filter(([, valor]) => (
+                valor !== undefined && valor !== null && String(valor).trim() !== ""
+            ))
+            .map(([titulo, valor]) => `${titulo}:\n${this._textoDetalle(valor)}`)
+            .join("\n\n");
+
+        return texto || JSON.stringify(detalle, null, 2);
     }
 }
 

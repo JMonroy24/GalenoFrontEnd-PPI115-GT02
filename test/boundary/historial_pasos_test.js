@@ -252,4 +252,86 @@ suite("HistorialPasos (unitaria)", () => {
             expect(dialogo.open).to.be.false;
         });
     });
+
+    // ── Bloque 4: Detalle clínico y eventos del modal ─────────────────────────
+
+    suite("4. Detalle clínico y eventos del modal", () => {
+        test("muestra notas, diagnóstico CIE-10, plan y observaciones desde consulta_procedimiento_paso.valor", () => {
+            host.pasos = [{
+                nombre: "Evolución médica",
+                consulta_procedimiento_paso: {
+                    valor: {
+                        notas: "Paciente estable",
+                        diagnostico: [{ codigo: "J10", nombre: "Gripe" }],
+                        plan: "Reposo y control",
+                        observaciones: "Sin novedades"
+                    }
+                }
+            }];
+
+            host.shadowRoot.querySelector(".paso .boton").click();
+
+            const detalle = host.shadowRoot.querySelector("#detalle-registro").textContent;
+            expect(detalle).to.contain("Notas clínicas:\nPaciente estable");
+            expect(detalle).to.contain("J10 — Gripe");
+            expect(detalle).to.contain("Plan de tratamiento:\nReposo y control");
+            expect(detalle).to.contain("Observaciones:\nSin novedades");
+        });
+
+        test("interpreta registros serializados como JSON en consulta_procedimiento_paso.valor", () => {
+            host.pasos = [{
+                nombre: "Evolución médica",
+                consulta_procedimiento_paso: {
+                    valor: '{"notas":"Control satisfactorio","plan":"Alta médica"}'
+                }
+            }];
+
+            host.shadowRoot.querySelector(".paso .boton").click();
+
+            const detalle = host.shadowRoot.querySelector("#detalle-registro").textContent;
+            expect(detalle).to.contain("Notas clínicas:\nControl satisfactorio");
+            expect(detalle).to.contain("Plan de tratamiento:\nAlta médica");
+            expect(detalle).to.not.contain("{");
+        });
+
+        test("emite registro-abierto y registro-cerrado con el paso seleccionado", () => {
+            host.pasos = pasosFicticios;
+
+            const abiertos = [];
+            const cerrados = [];
+            host.addEventListener("registro-abierto", (evento) => abiertos.push(evento.detail.paso));
+            host.addEventListener("registro-cerrado", (evento) => cerrados.push(evento.detail.paso));
+
+            host.shadowRoot.querySelector(".paso .boton").click();
+            host.shadowRoot.querySelector("#cerrar-registro").click();
+
+            expect(abiertos).to.have.length(1);
+            expect(cerrados).to.have.length(1);
+            expect(abiertos[0]).to.equal(pasosFicticios[0]);
+            expect(cerrados[0]).to.equal(pasosFicticios[0]);
+        });
+
+        test("no emite registro-cerrado dos veces por el evento nativo 'close'", () => {
+            host.pasos = pasosFicticios;
+
+            let cierres = 0;
+            host.addEventListener("registro-cerrado", () => { cierres += 1; });
+
+            host.shadowRoot.querySelector(".paso .boton").click();
+            host.shadowRoot.querySelector("#cerrar-registro").click();
+            host.shadowRoot.querySelector("#dialogo-registro").dispatchEvent(new Event("close"));
+
+            expect(cierres).to.equal(1);
+        });
+
+        test("devuelve el foco al botón 'Ver Registro' al cerrar", () => {
+            host.pasos = pasosFicticios;
+
+            const boton = host.shadowRoot.querySelector(".paso .boton");
+            boton.click();
+            host.shadowRoot.querySelector("#cerrar-registro").click();
+
+            expect(host.shadowRoot.activeElement).to.equal(boton);
+        });
+    });
 });
