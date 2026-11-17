@@ -1,4 +1,5 @@
 import { BusquedaCitasView } from "../../src/js/boundary/vistas/busqueda_citas_view.js";
+import { consultaService } from "../../src/js/control/consulta_service.js";
 import store from "../../src/js/store.js";
 import { assert, expect } from "../lib/chai/index.js";
 
@@ -129,6 +130,8 @@ suite("BusquedaCitasView (unitaria)", () => {
 
         expect(numeroDocumento.disabled).to.be.true;
         expect(clinica.disabled).to.be.true;
+        const buscador = asistente.shadowRoot.querySelector("buscador-tipo-documentos");
+        expect(buscador.value).to.equal("");
 
         seleccionarTipo();
 
@@ -201,5 +204,42 @@ suite("BusquedaCitasView (unitaria)", () => {
         expect(estado.textContent).to.equal("No se encontraron citas.");
         expect(resultados.hidden).to.be.true;
         expect(resultados.querySelectorAll("tarjeta-consulta")).to.have.length(0);
+    });
+
+    test("el botón de cada tarjeta descarga su consulta y bloquea clics repetidos", async () => {
+        let resolver;
+        const descargar = sinon.stub(consultaService, "descargarTicketPdf").returns(
+            new Promise((resolve) => { resolver = resolve; })
+        );
+        try {
+            await host.buscar({});
+            const tarjeta = host.shadowRoot.querySelector("tarjeta-consulta");
+            const boton = tarjeta.querySelector('button[slot="acciones"]');
+            expect(tarjeta.shadowRoot.querySelector('slot[name="acciones"]').assignedElements()).to.include(boton);
+            boton.click();
+            boton.click();
+            expect(descargar.calledOnceWithExactly(101)).to.be.true;
+            expect(boton.disabled).to.be.true;
+            resolver();
+            await esperar();
+            expect(boton.disabled).to.be.false;
+            expect(boton.textContent).to.equal("Descargar Ticket PDF");
+        } finally {
+            descargar.restore();
+        }
+    });
+
+    test("restaura el botón y muestra el error si falla la descarga", async () => {
+        const descargar = sinon.stub(consultaService, "descargarTicketPdf").rejects(new Error("Ticket no disponible"));
+        try {
+            await host.buscar({});
+            const boton = host.shadowRoot.querySelector("tarjeta-consulta button");
+            boton.click();
+            await esperar();
+            expect(boton.disabled).to.be.false;
+            expect(boton.hasAttribute("aria-busy")).to.be.false;
+        } finally {
+            descargar.restore();
+        }
     });
 });

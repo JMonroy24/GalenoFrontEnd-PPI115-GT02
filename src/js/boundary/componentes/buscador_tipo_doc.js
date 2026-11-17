@@ -89,6 +89,13 @@ export class BuscadorTipoDocumentos extends HTMLElement {
             return;
         }
 
+        if (this.hasAttribute("seleccion-explicita")) {
+            const placeholder = document.createElement("option");
+            placeholder.value = "";
+            placeholder.textContent = "Seleccione un tipo de documento";
+            select.appendChild(placeholder);
+        }
+
         this.items.forEach((tipoDocumento) => {
             const opcion = document.createElement("option");
             opcion.value = String(this._valorItem(tipoDocumento));

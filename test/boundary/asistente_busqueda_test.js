@@ -58,6 +58,39 @@ suite("AsistenteBusqueda (unitaria)", () => {
     });
 
     suite("Carga dinámica de clínicas del paciente", () => {
+        test("limpia las clínicas inmediatamente al editar un documento válido", async () => {
+            const input = ingresarDocumento("098765432");
+            await esperar();
+
+            input.value = "01234567-8";
+            input.dispatchEvent(new Event("input"));
+
+            const select = host.shadowRoot.querySelector("#clinica");
+            expect(select.disabled).to.be.true;
+            expect(select.options).to.have.length(0);
+            let emitido = false;
+            host.addEventListener("buscar-citas", () => { emitido = true; });
+            host.shadowRoot.querySelector("form").dispatchEvent(new Event("submit", { cancelable: true }));
+            expect(emitido).to.be.false;
+        });
+
+        test("ignora respuestas de clínicas de un documento anterior", async () => {
+            let resolverAnterior;
+            buscarClinicasPacienteStub.onFirstCall().returns(new Promise((resolve) => {
+                resolverAnterior = resolve;
+            }));
+            const input = ingresarDocumento("098765432");
+            input.value = "01234567-8";
+            input.dispatchEvent(new Event("input"));
+            input.dispatchEvent(new Event("blur"));
+            await esperar();
+
+            resolverAnterior([{ idClinica: 99, nombre: "Paciente anterior" }]);
+            await esperar();
+            const opciones = [...host.shadowRoot.querySelector("#clinica").options];
+            expect(opciones.map((opcion) => opcion.value)).to.deep.equal(["1", "2"]);
+        });
+
         test("consulta las clínicas asociadas al completar un documento válido", async () => {
             ingresarDocumento("098765432");
             await esperar();
@@ -145,7 +178,7 @@ suite("AsistenteBusqueda (unitaria)", () => {
     });
 
     test("mantiene deshabilitado el input #numero-documento hasta que se seleccione #tipo-documento", () => {
-        const inputDoc = host.shadowRoot.querySelector("#numero-documento");
+        const inputDoc = host.shadowRoot.querySelector("#numeroDocumento");
         const buscadorTipo = host.shadowRoot.querySelector("buscador-tipo-documentos");
 
         // Inicialmente deshabilitado
@@ -168,6 +201,7 @@ suite("AsistenteBusqueda (unitaria)", () => {
 
     suite("Validación regex de número de documento", () => {
         test("valida y formatea DUI correctamente con regex /^\d{8}-\d$/", () => {
+            ingresarDocumento("");
             const inputDoc = host.shadowRoot.querySelector("#numeroDocumento");
 
             // Simula ingreso sin guión
@@ -184,6 +218,7 @@ suite("AsistenteBusqueda (unitaria)", () => {
         });
 
         test("marca inválido DUI con caracteres incorrectos o longitud incompleta", () => {
+            ingresarDocumento("");
             const inputDoc = host.shadowRoot.querySelector("#numeroDocumento");
             const ayuda = host.shadowRoot.querySelector("#numero-documento-ayuda");
 

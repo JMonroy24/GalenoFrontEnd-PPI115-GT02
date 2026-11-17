@@ -12,6 +12,61 @@ suite("ConsultaService (unitaria)", () => {
 
     teardown(() => fetchStub?.restore());
 
+    test("descargarTicketPdf solicita PDF, descarga el blob y libera su URL después", async () => {
+        const blob = new Blob(["%PDF-1.4\nTicket de cita"], { type: "application/pdf" });
+        const leerBlob = sinon.stub().resolves(blob);
+        fetchStub = sinon.stub(window, "fetch").resolves({ ok: true, blob: leerBlob });
+        const crearUrl = sinon.stub(URL, "createObjectURL").returns("blob:ticket-prueba");
+        const revocarUrl = sinon.stub(URL, "revokeObjectURL");
+        let enlace;
+        const click = sinon.stub(HTMLAnchorElement.prototype, "click").callsFake(function () {
+            enlace = this;
+            expect(this.isConnected).to.be.true;
+        });
+        const reloj = sinon.useFakeTimers();
+
+        try {
+            expect(await servicio.descargarTicketPdf("cita/101")).to.equal(blob);
+            expect(fetchStub.firstCall.args[0]).to.contain("/consultas/cita%2F101/ticket");
+            expect(fetchStub.firstCall.args[1].headers.get("Accept")).to.equal("application/pdf");
+            expect(leerBlob.calledOnce).to.be.true;
+            expect(crearUrl.calledOnceWithExactly(blob)).to.be.true;
+            expect(enlace.download).to.equal("ticket-cita-cita/101.pdf");
+            expect(enlace.isConnected).to.be.false;
+            expect(revocarUrl.called).to.be.false;
+            reloj.tick(1000);
+            expect(revocarUrl.calledOnceWithExactly("blob:ticket-prueba")).to.be.true;
+        } finally {
+            reloj.restore();
+            click.restore();
+            crearUrl.restore();
+            revocarUrl.restore();
+        }
+    });
+
+    test("descargarTicketPdf rechaza errores HTTP sin iniciar una descarga", async () => {
+        fetchStub = sinon.stub(window, "fetch").resolves({ ok: false, status: 500 });
+        const crearUrl = sinon.spy(URL, "createObjectURL");
+        try {
+            let error;
+            try { await servicio.descargarTicketPdf(101); } catch (err) { error = err; }
+            expect(error).to.be.instanceOf(DefaultError);
+            expect(crearUrl.called).to.be.false;
+        } finally {
+            crearUrl.restore();
+        }
+    });
+
+    test("descargarTicketPdf rechaza consultas sin identificador antes de llamar a fetch", async () => {
+        fetchStub = sinon.stub(window, "fetch");
+        for (const id of [undefined, null, "", " "]) {
+            let error;
+            try { await servicio.descargarTicketPdf(id); } catch (err) { error = err; }
+            expect(error).to.be.instanceOf(Error);
+        }
+        expect(fetchStub.called).to.be.false;
+    });
+
     test("findRange lee la respuesta estructurada y envía paginación y filtro", async () => {
         fetchStub = sinon.stub(window, "fetch").resolves({
             ok: true,

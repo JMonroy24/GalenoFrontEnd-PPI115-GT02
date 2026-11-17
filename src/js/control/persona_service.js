@@ -22,9 +22,17 @@ export class PersonaService extends DefaultService {
         const personas = Array.isArray(respuesta?.items) ? respuesta.items : [];
         const documentoBuscado = this._normalizarDocumento(numero);
 
-        return personas.find((persona) => (
-            this._normalizarDocumento(this._numeroDocumento(persona)) === documentoBuscado
-        )) ?? personas[0] ?? null;
+        return personas.find((persona) => {
+            const tipo = persona?.idTipoDocumento ?? persona?.tipoDocumentoId
+                ?? persona?.tipoDocumento ?? persona?.persona?.idTipoDocumento;
+            const idTipo = typeof tipo === "object"
+                ? tipo?.idTipoDocumento ?? tipo?.id ?? tipo?.codigo
+                : tipo;
+
+            return this._estaActivo(persona)
+                && this._normalizarDocumento(this._numeroDocumento(persona)) === documentoBuscado
+                && (idTipo == null || String(idTipo) === String(tipoDocumento));
+        }) ?? null;
     }
 
     async buscarClinicasPaciente(tipoDocumento, numeroDocumento) {
@@ -36,7 +44,8 @@ export class PersonaService extends DefaultService {
 
         const clinicas = this._extraerClinicas(persona);
 
-        if (clinicas.length > 0) {
+        // Una lista vacía embebida también es una respuesta definitiva.
+        if (clinicas !== null) {
             return clinicas;
         }
 
@@ -49,21 +58,29 @@ export class PersonaService extends DefaultService {
             return [];
         }
 
-        try {
-            const response = await this._request(
-                `${this._urlBase}/${encodeURIComponent(idPersona)}/clinicas`,
-                { method: "GET" },
-                "Error al obtener las clínicas del paciente"
-            );
-            const payload = await this._parseBody(response);
+        const response = await this._request(
+            `${this._urlBase}/${encodeURIComponent(idPersona)}/clinicas`,
+            { method: "GET" },
+            "Error al obtener las clínicas del paciente"
+        );
+        const payload = await this._parseBody(response);
 
-            return this._normalizarClinicas(payload);
-        } catch {
-            return [];
-        }
+        return this._normalizarClinicas(payload);
     }
 
     _extraerClinicas(persona) {
+        const roles = persona.personasRoles
+            ?? persona.roles
+            ?? persona.paciente?.personasRoles
+            ?? persona.paciente?.roles;
+
+        // Los roles definen en qué clínicas la persona es paciente activo.
+        if (Array.isArray(roles)) {
+            return this._normalizarClinicas(
+                roles.filter((rol) => this._esRolPaciente(rol))
+            );
+        }
+
         const fuentes = [
             persona.clinicas,
             persona.clinicasPaciente,
@@ -76,25 +93,12 @@ export class PersonaService extends DefaultService {
         ];
 
         for (const fuente of fuentes) {
-            const clinicas = this._normalizarClinicas(fuente);
-
-            if (clinicas.length > 0) {
-                return clinicas;
+            if (fuente != null) {
+                return this._normalizarClinicas(fuente);
             }
         }
 
-        const roles = persona.personasRoles
-            ?? persona.roles
-            ?? persona.paciente?.personasRoles
-            ?? persona.paciente?.roles;
-
-        if (!Array.isArray(roles)) {
-            return [];
-        }
-
-        return this._normalizarClinicas(
-            roles.filter((rol) => this._esRolPaciente(rol))
-        );
+        return null;
     }
 
     _normalizarClinicas(valor) {
@@ -119,11 +123,18 @@ export class PersonaService extends DefaultService {
         const clinicas = new Map();
 
         lista.forEach((item) => {
-            if (!item) {
+            if (!item || !this._estaActivo(item)) {
                 return;
             }
 
             const fuente = item.clinica ?? item.idClinica ?? item;
+            const rol = item.rol ?? item.idRol ?? item.tipoRol ?? item.nombreRol ?? item.rolNombre;
+
+            if (!this._estaActivo(fuente)
+                || (rol != null && !this._esRolPaciente(item))) {
+                return;
+            }
+
             const id = typeof fuente === "object"
                 ? fuente.idClinica ?? fuente.id ?? fuente.codigo
                 : fuente;
@@ -149,12 +160,21 @@ export class PersonaService extends DefaultService {
     }
 
     _esRolPaciente(item) {
-        const rol = item?.rol ?? item?.tipoRol ?? item?.nombreRol ?? item?.rolNombre;
+        const rol = item?.rol ?? item?.idRol ?? item?.tipoRol ?? item?.nombreRol ?? item?.rolNombre;
         const nombre = typeof rol === "object"
-            ? rol.nombre ?? rol.name ?? rol.codigo ?? rol.descripcion
+            ? rol?.nombre ?? rol?.name ?? rol?.codigo ?? rol?.descripcion
             : rol;
 
-        return String(nombre ?? "").toUpperCase().includes("PACIENTE");
+        return this._estaActivo(item) && this._estaActivo(rol)
+            && String(nombre ?? "").trim().toUpperCase() === "PACIENTE";
+    }
+
+    _estaActivo(item) {
+        const estado = item?.estado ?? item?.estadoPersonaRol;
+        const indicadores = [item?.activo, item?.activa,
+            typeof estado === "object" ? estado?.nombre : estado];
+        return !indicadores.some((valor) => /^(false|0|inactiv[oa]|cancelad[oa]|eliminad[oa]|deshabilitad[oa]|suspendid[oa]|baja)$/i
+            .test(String(valor ?? "").trim()));
     }
 
     _numeroDocumento(persona) {

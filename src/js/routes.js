@@ -1,6 +1,7 @@
 export const ENDPOINTS = {
     CLINICAS: '/clinicas',
     TIPOS_DOCUMENTO: '/tipos-documento',
+    PERSONAS: '/personas',
     PERSONAS_ROLES: '/personas-roles',
     CONSULTAS: '/consultas',
     PROCEDIMIENTOS: '/procedimientos',
