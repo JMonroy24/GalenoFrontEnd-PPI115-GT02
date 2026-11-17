@@ -1,5 +1,5 @@
 import { Router } from "../../src/js/router.js";
-import store from "../../src/js/store.js";
+import store, { Store } from "../../src/js/store.js";
 import { expect } from "../lib/chai/index.js";
 
 mocha.setup("tdd");
@@ -38,10 +38,11 @@ suite("Router: rutas de empleados", () => {
         });
     }
 
-    test("exige usuarioActivo incluso cuando el store conserva un empleado", () => {
-        store.setState(empleado);
+    test("permite una sesión sin token, roles ni marcador auxiliar", () => {
+        store.setState({ usuario: empleado.usuario, clinica: empleado.clinicaActiva });
         sessionStorage.removeItem("usuarioActivo");
-        expect(router.navigate("#dashboard")).to.equal("login");
+        expect(store.isAuthenticated()).to.be.true;
+        expect(router.navigate("#dashboard")).to.equal("dashboard");
     });
 
     test("un marcador aislado y un token no autorizan el dashboard", () => {
@@ -50,10 +51,40 @@ suite("Router: rutas de empleados", () => {
         expect(router.navigate("#dashboard")).to.equal("login");
     });
 
-    test("una sesión Paciente no permite acceder aunque tenga marcador", () => {
-        store.setState({ ...empleado, roles: [{ rol: { nombre: "Paciente" } }] });
-        sessionStorage.setItem("usuarioActivo", JSON.stringify(empleado.usuario));
-        expect(router.navigate("#dashboard")).to.equal("login");
+    for (const campo of ["usuario", "clinicaActiva"]) {
+        test(`rechaza una sesión sin ${campo} aunque tenga token y marcador`, () => {
+            store.setState({ ...empleado, [campo]: null });
+            sessionStorage.setItem("usuarioActivo", JSON.stringify(empleado.usuario));
+            expect(router.navigate("#dashboard")).to.equal("login");
+        });
+    }
+
+    test("rehidrata usuario y clínica sin token tras una recarga", () => {
+        store.setState({ usuario: empleado.usuario, clinica: empleado.clinicaActiva });
+        const restaurado = new Store();
+        expect(restaurado.state.token).to.be.null;
+        expect(restaurado.state.usuario).to.deep.equal(empleado.usuario);
+        expect(restaurado.state.clinica).to.deep.equal(empleado.clinicaActiva);
+        expect(restaurado.hasActiveSession()).to.be.true;
+    });
+
+    for (const hash of ["#login", "", "#/"]) {
+        for (const metodo of ["resolve", "navigate"]) {
+            test(`${metodo} lleva ${hash || "la raíz"} al dashboard con sesión activa`, () => {
+                store.setState({ ...empleado, token: null });
+                window.history.replaceState(null, "", window.location.pathname + window.location.search + hash);
+                const ruta = metodo === "resolve" ? router.resolve() : router.navigate(hash);
+                expect(ruta).to.equal("dashboard");
+                expect(window.location.hash).to.equal("#dashboard");
+                expect(router.render.calledOnceWithExactly("dashboard")).to.be.true;
+            });
+        }
+    }
+
+    test("mantiene la ruta pública predeterminada al abrir la raíz sin sesión", () => {
+        window.history.replaceState(null, "", window.location.pathname + window.location.search);
+        expect(router.resolve()).to.equal("buscar-citas");
+        expect(window.location.hash).to.equal("#buscar-citas");
     });
 
     test("permite dashboard y atención a un empleado y conserva el ID de consulta", () => {

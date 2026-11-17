@@ -119,6 +119,7 @@ export class AuthService extends DefaultService {
                 window.dispatchEvent(new CustomEvent("sesion-iniciada", {
                     detail: { usuario: sesion.usuario }
                 }));
+                window.location.hash = "#dashboard";
             }
 
             return sesion;
