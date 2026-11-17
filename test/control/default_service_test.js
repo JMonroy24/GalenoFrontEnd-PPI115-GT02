@@ -49,7 +49,7 @@ suite("DefaultService (unitaria)", () => {
         expect(respuesta.max).to.equal(20);
         expect(fetchStub.calledOnce).to.be.true;
         expect(fetchStub.firstCall.args[0]).to.equal(
-            "https://localhost:9443/galenoSV/api/v1/pruebas?first=20&max=20&q=consulta+de+prueba"
+            "http://localhost:9080/galenoSV/api/v1/pruebas?first=20&max=20&q=consulta+de+prueba"
         );
         expect(fetchStub.firstCall.args[1].method).to.equal("GET");
     });
@@ -69,6 +69,46 @@ suite("DefaultService (unitaria)", () => {
         expect(respuesta.total).to.equal(0);
         expect(respuesta.first).to.equal(0);
         expect(respuesta.max).to.equal(20);
+    });
+
+    test("consulta el catálogo sin cabecera de autorización cuando no hay sesión", async () => {
+        const tokenAnterior = store.state.token;
+        store.setState({ token: null });
+        fetchStub.resolves({ ok: true, json: async () => ({ items: [] }) });
+
+        try {
+            await servicio.findRange();
+
+            expect(fetchStub.calledOnce).to.be.true;
+            expect(fetchStub.firstCall.args[1].headers.has("Authorization")).to.be.false;
+            expect(fetchStub.firstCall.args[1].credentials).to.equal("omit");
+        } finally {
+            store.setState({ token: tokenAnterior });
+        }
+    });
+
+    test("propaga el error 401 sin reintentar ni solicitar credenciales", async () => {
+        const estadoAnterior = { ...store.state };
+        const mostrarModal = sinon.stub(HTMLDialogElement.prototype, "showModal");
+        fetchStub.resolves({
+            ok: false,
+            status: 401,
+            json: async () => ({ message: "Acceso denegado" })
+        });
+
+        try {
+            let error;
+            try { await servicio.findRange(); } catch (err) { error = err; }
+
+            assert.instanceOf(error, DefaultError);
+            expect(error.status).to.equal(401);
+            expect(error.message).to.equal("Acceso denegado");
+            expect(fetchStub.calledOnce).to.be.true;
+            expect(mostrarModal.called).to.be.false;
+        } finally {
+            mostrarModal.restore();
+            store.setState(estadoAnterior);
+        }
     });
 
     test("bloquea POST, PUT, PATCH y DELETE cuando no hay conexión", async () => {
@@ -122,7 +162,7 @@ suite("DefaultService (unitaria)", () => {
         expect(mensajeStub.called).to.be.false;
     });
 
-    test("informa errores de red, HTTPS o CORS sin confundirlos con respuestas HTTP", async () => {
+    test("informa errores de red o CORS sin confundirlos con respuestas HTTP", async () => {
         fetchStub.rejects(new TypeError("Failed to fetch"));
 
         let error;
@@ -135,8 +175,8 @@ suite("DefaultService (unitaria)", () => {
         assert.instanceOf(error, DefaultError);
         expect(error.status).to.be.null;
         expect(error.error.code).to.equal("NETWORK_ERROR");
-        expect(error.message).to.contain("https://localhost:9443");
-        expect(error.message).to.contain("certificado HTTPS");
+        expect(error.message).to.contain("http://localhost:9080");
+        expect(error.message).to.contain("puerto HTTP configurado");
         expect(error.message).to.contain("CORS");
         expect(error.details.causa).to.equal("Failed to fetch");
         expect(fetchStub.calledOnce).to.be.true;

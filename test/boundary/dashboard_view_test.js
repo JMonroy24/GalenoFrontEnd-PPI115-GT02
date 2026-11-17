@@ -61,8 +61,10 @@ suite("DashboardView (unitaria)", () => {
                 { idClinica: 2, nombre: "Clínica Norte" }
             ],
             roles: [
-                { idRol: 10, nombre: "Médico General" },
-                { idRol: 20, nombre: "Especialista" }
+                { idRol: 10, nombre: "Médico General", idClinica: 1 },
+                { idRol: 20, nombre: "Especialista", idClinica: 1 },
+                { idRol: 10, nombre: "Médico General", idClinica: 2 },
+                { idRol: 20, nombre: "Especialista", idClinica: 2 }
             ],
             clinicaActiva: { idClinica: 1, nombre: "Clínica Central" },
             rolSeleccionado: { idRol: 10, nombre: "Médico General" }
@@ -149,7 +151,7 @@ suite("DashboardView (unitaria)", () => {
             [clinicaId, "Clínica Central"], [otraClinicaId, "Clínica Norte"]
         ]);
         expect(roles.map((opcion) => [opcion.value, opcion.textContent])).to.deep.equal([
-            [rolId, "Médico General"], [rolPlanoId, "Personal de apoyo"]
+            [rolId, "Médico General"]
         ]);
         expect(host.shadowRoot.querySelector("#clinica-activa").value).to.equal(clinicaId);
         expect(host.shadowRoot.querySelector("#rol-activo").value).to.equal(rolId);
@@ -171,6 +173,130 @@ suite("DashboardView (unitaria)", () => {
         expect(historialPrimera.pasos[0].nombre).to.equal("Triage inicial");
         expect(historialSegunda.pasos).to.have.length(1);
         expect(historialSegunda.pasos[0].nombre).to.equal("Limpieza bucal");
+    });
+
+    test("inicia desde el primer día del mes hasta hoy sin el filtro restrictivo de Hoy", () => {
+        const hoy = new Date();
+        const desde = host._formatearFechaISO(new Date(hoy.getFullYear(), hoy.getMonth(), 1));
+        const hasta = host._formatearFechaISO(hoy);
+        expect(host.shadowRoot.querySelector("#periodo-citas").value).to.equal("mes");
+        expect(host.shadowRoot.querySelector("#fechaDesde").value).to.equal(desde);
+        expect(host.shadowRoot.querySelector("#fechaHasta").value).to.equal(hasta);
+        expect(buscarCitasStub.firstCall.args[0]).to.include({ fechaDesde: desde, fechaHasta: hasta, clinicaId: "1" });
+        expect(buscarCitasStub.firstCall.args[0]).not.to.have.property("periodo");
+        expect(host._calcularRangoPeriodo("mes", new Date(2026, 0, 1)))
+            .to.deep.equal({ desde: "2026-01-01", hasta: "2026-01-01" });
+    });
+
+    test("fetch de consultas lleva el rango del mes y la clínica activa también después de cambiar el combo", async () => {
+        buscarCitasStub.restore();
+        buscarCitasStub = null;
+        const fetchStub = sinon.stub(window, "fetch").resolves({
+            ok: true, json: async () => ({ items: citasFicticias, total: 2 })
+        });
+        await host._cargarCitas();
+        let url = new URL(fetchStub.firstCall.args[0]);
+        expect(url.pathname).to.match(/\/consultas$/);
+        expect(url.searchParams.get("clinicaId")).to.equal("1");
+        expect(url.searchParams.get("fechaDesde")).to.equal(host.fechaDesde);
+        expect(url.searchParams.get("fechaHasta")).to.equal(host.fechaHasta);
+        expect(url.searchParams.has("periodo")).to.be.false;
+
+        const selectClinica = host.shadowRoot.querySelector("#clinica-activa");
+        selectClinica.value = "2";
+        selectClinica.dispatchEvent(new Event("change"));
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        url = new URL(fetchStub.lastCall.args[0]);
+        expect(url.searchParams.get("clinicaId")).to.equal("2");
+        expect(host.shadowRoot.querySelectorAll("tarjeta-consulta")).to.have.length(2);
+    });
+
+    test("limita roles por clínica y recarga tarjetas con un contexto válido al cambiar selectores", async () => {
+        const clinicaA = { idClinica: "clinica-a", nombre: "Central" };
+        const clinicaB = { idClinica: "clinica-b", nombre: "Norte" };
+        const asignaciones = [
+            { idPersonaRol: "a-medico", clinica: clinicaA, rol: { idRol: "medico", nombre: "Médico" } },
+            { idPersonaRol: "b-enfermero", clinica: clinicaB, rol: { idRol: "enfermero", nombre: "Enfermero" } },
+            { idPersonaRol: "b-apoyo", clinica: clinicaB, rol: { idRol: "apoyo", nombre: "Apoyo" } },
+            { idPersonaRol: "paciente", clinica: { idClinica: "clinica-paciente" },
+                rol: { idRol: "paciente", nombre: "Paciente" } }
+        ];
+        store.setState({ roles: asignaciones, clinicaActiva: clinicaA, rolSeleccionado: asignaciones[0] });
+        await Promise.resolve();
+        const selectClinica = host.shadowRoot.querySelector("#clinica-activa");
+        const selectRol = host.shadowRoot.querySelector("#rol-activo");
+        expect([...selectClinica.options].map((opcion) => opcion.value)).to.deep.equal(["clinica-a", "clinica-b"]);
+        expect([...selectRol.options].map((opcion) => opcion.value)).to.deep.equal(["medico"]);
+        buscarCitasStub.resetHistory();
+
+        selectClinica.value = "clinica-b";
+        selectClinica.dispatchEvent(new Event("change"));
+        await Promise.resolve();
+        expect([...selectRol.options].map((opcion) => opcion.value)).to.deep.equal(["enfermero", "apoyo"]);
+        expect(selectRol.value).to.equal("enfermero");
+        expect(store.state.rolSeleccionado.idPersonaRol).to.equal("b-enfermero");
+        expect(buscarCitasStub.callCount).to.equal(1);
+        expect(buscarCitasStub.lastCall.args[0]).to.include({ clinicaId: "clinica-b", idRol: "enfermero" });
+        expect(host.shadowRoot.querySelectorAll("tarjeta-consulta")).to.have.length(2);
+
+        selectRol.value = "apoyo";
+        selectRol.dispatchEvent(new Event("change"));
+        await Promise.resolve();
+        expect(buscarCitasStub.callCount).to.equal(2);
+        expect(buscarCitasStub.lastCall.args[0]).to.include({ clinicaId: "clinica-b", idRol: "apoyo" });
+        const sesion = JSON.parse(sessionStorage.getItem("galeno_session"));
+        expect(sesion.rolSeleccionado.idPersonaRol).to.equal("b-apoyo");
+        expect(sesion.roles).to.have.length(4);
+    });
+
+    test("normaliza un contexto restaurado inválido antes de la primera petición", async () => {
+        host.remove();
+        const asignacion = { idPersonaRol: "asignacion-b", idClinica: "b",
+            rol: { idRol: "rol-b", nombre: "Médico" } };
+        store.setState({ roles: [asignacion], clinicaActiva: { idClinica: "a" },
+            rolSeleccionado: { idRol: "rol-a", nombre: "Otro" } });
+        buscarCitasStub.resetHistory();
+        host = document.createElement("dashboard-view");
+        document.body.appendChild(host);
+        await Promise.resolve();
+        expect(buscarCitasStub.calledOnce).to.be.true;
+        expect(buscarCitasStub.firstCall.args[0]).to.include({ clinicaId: "b", idRol: "rol-b" });
+        expect(host.shadowRoot.querySelectorAll("tarjeta-consulta")).to.have.length(2);
+    });
+
+    test("actualiza la asignación al cambiar entre clínicas que comparten el mismo rol", () => {
+        const roles = ["a", "b"].map((idClinica) => ({
+            idPersonaRol: `asignacion-${idClinica}`, idClinica,
+            rol: { idRol: "medico", nombre: "Médico" }
+        }));
+        store.setState({ roles, clinicaActiva: { idClinica: "a" }, rolSeleccionado: roles[0] });
+        const selectClinica = host.shadowRoot.querySelector("#clinica-activa");
+        selectClinica.value = "b";
+        selectClinica.dispatchEvent(new Event("change"));
+        expect(store.state.rolSeleccionado.idPersonaRol).to.equal("asignacion-b");
+        expect(buscarCitasStub.lastCall.args[0]).to.include({ clinicaId: "b", idRol: "medico" });
+    });
+
+    test("conserva UUIDs en la raíz y nombres anidados sin repetir la normalización", () => {
+        const asignacion = { idPersonaRol: "asignacion", idClinica: "clinica-uuid", idRol: "rol-uuid",
+            clinica: { nombreClinica: "Central" }, rol: { descripcion: "Médico" } };
+        buscarCitasStub.resetHistory();
+        store.setState({ roles: [asignacion], clinicaActiva: { idClinica: "clinica-uuid" },
+            rolSeleccionado: asignacion });
+        expect(buscarCitasStub.calledOnce).to.be.true;
+        expect(buscarCitasStub.firstCall.args[0]).to.include({ clinicaId: "clinica-uuid", idRol: "rol-uuid" });
+        expect(host.shadowRoot.querySelector("#clinica-activa").selectedOptions[0].textContent).to.equal("Central");
+        expect(host.shadowRoot.querySelector("#rol-activo").selectedOptions[0].textContent).to.equal("Médico");
+        expect(host._normalizarContexto(store.getState())).to.be.false;
+    });
+
+    test("no consulta todas las clínicas cuando la sesión carece de asignaciones de empleado", () => {
+        buscarCitasStub.resetHistory();
+        store.setState({ roles: [{ idClinica: "a", rol: { idRol: "paciente", nombre: "Paciente" } }] });
+        expect(buscarCitasStub.called).to.be.false;
+        expect(host.shadowRoot.querySelector("#clinica-activa").options).to.have.length(0);
+        expect(host.shadowRoot.querySelector("#rol-activo").options).to.have.length(0);
+        expect(host.shadowRoot.querySelector("#estado-citas").textContent).to.contain("No tiene roles de empleado");
     });
 
     test("cada tarjeta conserva su propio historial al interactuar con ella", async () => {
@@ -239,7 +365,7 @@ suite("DashboardView (unitaria)", () => {
         // Debe haberse recargado
         expect(buscarCitasStub.callCount).to.equal(2);
         const argsUltimaLlamada = buscarCitasStub.secondCall.args[0];
-        expect(argsUltimaLlamada.idClinica).to.equal("2");
+        expect(argsUltimaLlamada.clinicaId).to.equal("2");
     });
 
     test("recarga automáticamente las citas al cambiar el rol activo en el store", async () => {
@@ -326,7 +452,7 @@ suite("DashboardView (unitaria)", () => {
         expect(inputDesde.value < inputHasta.value).to.be.true;
     });
 
-    test("al modificar manualmente las fechas consulta con fechaDesde, fechaHasta e idClinica", async () => {
+    test("al modificar manualmente las fechas consulta con fechaDesde, fechaHasta y clinicaId", async () => {
         await new Promise((r) => setTimeout(r, 50));
 
         const shadow = host.shadowRoot;
@@ -343,7 +469,7 @@ suite("DashboardView (unitaria)", () => {
         const filtros = buscarCitasStub.secondCall.args[0];
         expect(filtros.fechaDesde).to.equal("2026-01-01");
         expect(filtros.fechaHasta).to.equal("2026-01-31");
-        expect(filtros.idClinica).to.equal("1");
+        expect(filtros.clinicaId).to.equal("1");
         expect(filtros).not.to.have.property("periodo");
         expect(shadow.querySelector("#periodo-citas").value).to.equal("personalizado");
     });
@@ -376,7 +502,7 @@ suite("DashboardView (unitaria)", () => {
         input.dispatchEvent(new Event("input"));
         await new Promise((r) => setTimeout(r, 350));
         expect(buscarCitasStub.callCount).to.equal(2);
-        expect(buscarCitasStub.secondCall.args[0]).to.include({ q: "01234567-8", idClinica: "1", idRol: "10" });
+        expect(buscarCitasStub.secondCall.args[0]).to.include({ q: "01234567-8", clinicaId: "1", idRol: "10" });
         expect(evento.detail.filtros.fechaDesde).to.equal(host.fechaDesde);
         expect(evento.bubbles && evento.composed).to.be.true;
     });

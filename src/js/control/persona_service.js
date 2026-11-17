@@ -18,7 +18,15 @@ export class PersonaService extends DefaultService {
             return null;
         }
 
-        const respuesta = await this.findRange(0, 20, numero);
+        const params = new URLSearchParams({
+            first: "0", max: "20", tipoDocumentoId: String(tipoDocumento ?? "").trim(), valor: numero
+        });
+        const response = await this._request(
+            `${this._urlBase}?${params.toString()}`,
+            { method: "GET" },
+            "Error al buscar al paciente por documento"
+        );
+        const respuesta = await this._parseBody(response);
         const personas = Array.isArray(respuesta?.items) ? respuesta.items : [];
         const documentoBuscado = this._normalizarDocumento(numero);
 

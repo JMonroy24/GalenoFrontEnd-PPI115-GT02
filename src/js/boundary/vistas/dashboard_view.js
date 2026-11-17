@@ -3,6 +3,7 @@ import { consultaService } from "../../control/consulta_service.js";
 import "../componentes/tarjeta_consulta.js";
 import { navigate } from "../../router.js";
 import GeneradorMensajes from "../../control/generador_mensajes.js";
+import { esRolEmpleado } from "../../entity/rol_empleado.js";
 
 const DEBOUNCE_BUSQUEDA_MS = 300;
 const DIAS_RANGO_PERIODO = 30;
@@ -14,7 +15,7 @@ export class DashboardView extends HTMLElement {
 
         this.clinicas = [];
         this.roles = [];
-        this.periodo = "hoy";
+        this.periodo = "mes";
         this.busqueda = "";
         this.consultaSeleccionada = null;
         this.temporizadorBusqueda = null;
@@ -31,20 +32,24 @@ export class DashboardView extends HTMLElement {
             }
 
             const estado = evento?.detail ?? store.getState();
+            if (this._normalizarContexto(estado)) {
+                return;
+            }
             const contexto = this._claveContexto(estado);
 
+            this._sincronizarContexto(estado);
             if (contexto === this.contextoPrevio) {
                 return;
             }
 
             this.contextoPrevio = contexto;
             this._cancelarDebounce();
-            this._sincronizarContexto(estado);
             this._cargarCitas();
         };
     }
 
     connectedCallback() {
+        this._normalizarContexto(store.getState());
         const estado = store.getState();
         this.contextoPrevio = this._claveContexto(estado);
         this.render();
@@ -209,6 +214,7 @@ export class DashboardView extends HTMLElement {
                             class="form-control"
                             aria-label="Periodo de las citas"
                         >
+                            <option value="mes">Mes actual hasta hoy</option>
                             <option value="hoy">Hoy</option>
                             <option value="pasado">Pasado (30 días)</option>
                             <option value="futuro">Futuro (30 días)</option>
@@ -281,7 +287,7 @@ export class DashboardView extends HTMLElement {
         inputBusqueda.value = this.busqueda;
 
         selectPeriodo.addEventListener("change", () => {
-            this.periodo = selectPeriodo.value || "hoy";
+            this.periodo = selectPeriodo.value || "mes";
             if (this.periodo !== "personalizado") this._sincronizarFechasConPeriodo(this.periodo);
             this._cancelarDebounce();
             this._cargarCitas();
@@ -327,31 +333,49 @@ export class DashboardView extends HTMLElement {
             const idSeleccionado = selectClinica.value;
             const clinica = this.clinicas.find(
                 (item) => String(this._idClinica(item)) === idSeleccionado
-            ) ?? (idSeleccionado ? { idClinica: idSeleccionado } : null);
+            );
+            if (!clinica) return;
 
-            const rolActualVal = store.state?.rolSeleccionado ?? store.state?.selectedRole ?? null;
-            if (typeof store.setContextoTrabajo === "function") {
-                store.setContextoTrabajo(clinica, rolActualVal);
-            } else {
-                store.setState({ clinicaActiva: clinica });
-            }
+            const estadoActual = store.getState();
+            const roles = this._obtenerRoles({ ...estadoActual, clinicaActiva: clinica });
+            const rol = roles.find((item) => this._idRol(item) === this._idRol(estadoActual.rolSeleccionado))
+                ?? roles[0] ?? null;
+            store.setContextoTrabajo(clinica, rol);
             this._emitirContextoActualizado();
         });
 
         selectRol.addEventListener("change", () => {
             const idSeleccionado = selectRol.value;
-            const rol = this.roles.find(
+            const estadoActual = store.getState();
+            const rol = this._obtenerRoles(estadoActual).find(
                 (item) => String(this._idRol(item)) === idSeleccionado
-            ) ?? (idSeleccionado ? { idRol: idSeleccionado } : null);
+            );
+            if (!rol) return;
 
-            const clinicaActualVal = store.state?.clinicaActiva ?? store.state?.activeClinic ?? null;
-            if (typeof store.setContextoTrabajo === "function") {
-                store.setContextoTrabajo(clinicaActualVal, rol);
-            } else {
-                store.setState({ rolSeleccionado: rol });
-            }
+            store.setContextoTrabajo(estadoActual.clinicaActiva, rol);
             this._emitirContextoActualizado();
         });
+    }
+
+    _normalizarContexto(estado) {
+        const clinicas = this._obtenerClinicas(estado);
+        const idClinica = this._idClinica(estado?.clinicaActiva ?? estado?.activeClinic);
+        const clinica = clinicas.find((item) => this._idClinica(item) === idClinica)
+            ?? clinicas[0] ?? null;
+        const roles = this._obtenerRoles({ ...estado, clinicaActiva: clinica });
+        const seleccionado = estado?.rolSeleccionado ?? estado?.selectedRole;
+        const rol = roles.find((item) => this._idRol(item) === this._idRol(seleccionado))
+            ?? roles[0] ?? null;
+
+        if (this._idClinica(clinica) === idClinica
+            && this._idRol(rol) === this._idRol(seleccionado)
+            && this._idClinicaAsignacion(seleccionado) === this._idClinica(clinica)) {
+            return false;
+        }
+
+        // Actualizar clínica y asignación juntas evita consultar combinaciones inválidas.
+        store.setContextoTrabajo(clinica, rol);
+        return true;
     }
 
     _sincronizarContexto(estado) {
@@ -420,6 +444,13 @@ export class DashboardView extends HTMLElement {
     }
 
     _calcularRangoPeriodo(periodo, referencia = new Date()) {
+        if (periodo === "mes") {
+            return {
+                desde: this._formatearFechaISO(new Date(referencia.getFullYear(), referencia.getMonth(), 1)),
+                hasta: this._formatearFechaISO(referencia)
+            };
+        }
+
         if (periodo === "pasado") {
             return {
                 desde: this._formatearFechaISO(
@@ -474,7 +505,7 @@ export class DashboardView extends HTMLElement {
         const fechaHasta = String(this.fechaHasta ?? "").trim();
 
         if (idClinica !== "") {
-            filtros.idClinica = idClinica;
+            filtros.clinicaId = idClinica;
         }
 
         if (rolId !== "") {
@@ -527,6 +558,12 @@ export class DashboardView extends HTMLElement {
             return;
         }
         const filtros = this._construirFiltros();
+        const estado = store.getState();
+        const rolValido = this._obtenerRoles(estado).some((rol) => this._idRol(rol) === filtros.idRol);
+        if (!filtros.clinicaId || !rolValido) {
+            this._mostrarEstadoCitas("No tiene roles de empleado asignados en esta clínica.");
+            return;
+        }
         this.dispatchEvent(new CustomEvent("filtros-actualizados", {
             bubbles: true,
             composed: true,
@@ -541,15 +578,16 @@ export class DashboardView extends HTMLElement {
                 return;
             }
 
-            const citas = Array.isArray(respuesta?.items)
+            const listaConsultas = Array.isArray(respuesta?.items)
                 ? respuesta.items
                 : Array.isArray(respuesta?.datos)
                     ? respuesta.datos
                     : Array.isArray(respuesta)
                         ? respuesta
                         : [];
+            console.log('Consultas cargadas:', listaConsultas);
 
-            if (citas.length === 0) {
+            if (listaConsultas.length === 0) {
                 this._mostrarEstadoCitas("No se encontraron citas.");
                 return;
             }
@@ -557,7 +595,7 @@ export class DashboardView extends HTMLElement {
             estadoCitas.hidden = true;
             contenedor.hidden = false;
 
-            citas.forEach((cita) => {
+            listaConsultas.forEach((cita) => {
                 const tarjeta = this._crearTarjetaConsulta(cita);
                 contenedor.appendChild(tarjeta);
             });
@@ -665,34 +703,31 @@ export class DashboardView extends HTMLElement {
         }));
     }
 
+    _asignacionesEmpleado(estado) {
+        const roles = estado?.roles ?? estado?.usuario?.roles ?? [];
+        return Array.isArray(roles) ? roles.filter(esRolEmpleado) : [];
+    }
+
+    _clinicaAsignacion(rol) {
+        return rol?.clinica ?? rol?.clinicaActiva ?? rol?.rol?.clinica
+            ?? rol?.idClinica ?? rol?.idClinicaEmpleado;
+    }
+
+    _idClinicaAsignacion(rol) {
+        return this._idClinica(this._clinicaAsignacion(rol))
+            || this._idClinica(rol?.idClinica ?? rol?.idClinicaEmpleado);
+    }
+
     _obtenerClinicas(estado) {
-        const directas = estado?.clinicas
-            ?? estado?.clinicasAsignadas
-            ?? estado?.usuario?.clinicas
-            ?? estado?.usuario?.clinicasAsignadas
-            ?? estado?.usuario?.clinica
-            ?? [];
-
-        const lista = Array.isArray(directas) ? [...directas] : (directas ? [directas] : []);
-
-        if (estado?.clinicaActiva) {
-            lista.push(estado.clinicaActiva);
-        }
-
-        // Conservar todas las asignaciones: un mismo rol puede tener varias clínicas.
-        const asignaciones = estado?.roles ?? estado?.usuario?.roles ?? [];
-        [...asignaciones, estado?.rolSeleccionado].forEach((rol) => {
-            const clinica = rol?.clinica
-                ?? rol?.clinicaActiva
-                ?? rol?.rol?.clinica
-                ?? rol?.idClinica
-                ?? rol?.idClinicaEmpleado;
+        const lista = [];
+        this._asignacionesEmpleado(estado).forEach((rol) => {
+            const clinica = this._clinicaAsignacion(rol);
 
             if (clinica === undefined || clinica === null) {
                 return;
             }
 
-            if (typeof clinica !== "object" && (rol?.nombreClinica || rol?.clinicaNombre)) {
+            if (typeof clinica !== "object") {
                 lista.push({
                     idClinica: clinica,
                     nombre: rol.nombreClinica ?? rol.clinicaNombre
@@ -700,7 +735,10 @@ export class DashboardView extends HTMLElement {
                 return;
             }
 
-            lista.push(clinica);
+            lista.push({
+                ...clinica,
+                idClinica: this._idClinicaAsignacion(rol)
+            });
         });
 
         const unicas = new Map();
@@ -712,7 +750,8 @@ export class DashboardView extends HTMLElement {
 
             const id = String(this._idClinica(clinica));
             if (id !== "" && (!unicas.has(id)
-                || this._nombreClinica(unicas.get(id)) === "Clínica sin nombre")) {
+                || this._nombreClinica(unicas.get(id)) === "Clínica desconocida"
+                || String(this._nombreClinica(unicas.get(id))) === id)) {
                 unicas.set(id, clinica);
             }
         });
@@ -721,15 +760,10 @@ export class DashboardView extends HTMLElement {
     }
 
     _obtenerRoles(estado) {
-        const roles = Array.isArray(estado?.roles)
-            ? [...estado.roles]
-            : Array.isArray(estado?.usuario?.roles)
-                ? [...estado.usuario.roles]
-                : [];
-
-        if (estado?.rolSeleccionado) {
-            roles.push(estado.rolSeleccionado);
-        }
+        const idClinica = this._idClinica(estado?.clinicaActiva ?? estado?.activeClinic);
+        const roles = this._asignacionesEmpleado(estado).filter((rol) =>
+            idClinica !== "" && this._idClinicaAsignacion(rol) === idClinica
+        );
 
         const unicos = new Map();
 
@@ -740,7 +774,8 @@ export class DashboardView extends HTMLElement {
 
             const id = String(this._idRol(rol));
             if (id !== "" && (!unicos.has(id)
-                || this._nombreRol(unicos.get(id)) === "Rol sin nombre")) {
+                || this._nombreRol(unicos.get(id)) === "Rol desconocido"
+                || String(this._nombreRol(unicos.get(id))) === id)) {
                 unicos.set(id, rol);
             }
         });
@@ -754,7 +789,13 @@ export class DashboardView extends HTMLElement {
         }
 
         if (typeof clinica === "object") {
-            const id = clinica.idClinica ?? clinica.id ?? clinica.codigo ?? "";
+            const entidad = clinica.clinica
+                ?? (typeof clinica.idClinica === "object" ? clinica.idClinica : clinica);
+            const id = (typeof entidad === "object"
+                ? entidad?.idClinica ?? entidad?.id ?? entidad?.codigo
+                : entidad)
+                ?? (typeof clinica.idClinica !== "object" ? clinica.idClinica : null)
+                ?? clinica.idClinicaEmpleado ?? "";
             return id !== "" && id !== null && id !== undefined ? String(id) : "";
         }
 
@@ -762,9 +803,11 @@ export class DashboardView extends HTMLElement {
     }
 
     _nombreClinica(clinica) {
-        return [clinica?.nombre, clinica?.name, clinica?.nombreClinica, clinica?.descripcion]
-            .find((nombre) => typeof nombre === "string" && nombre.trim() !== "")
-            ?? "Clínica sin nombre";
+        const entidad = clinica?.clinica
+            ?? (typeof clinica?.idClinica === "object" ? clinica.idClinica : clinica);
+        const textoClinica = entidad?.nombre || entidad?.nombreClinica || entidad?.descripcion || entidad?.name
+            || clinica?.nombreClinica || clinica?.clinicaNombre || 'Clínica desconocida';
+        return textoClinica;
     }
 
     _idRol(rol) {
@@ -775,7 +818,9 @@ export class DashboardView extends HTMLElement {
         const entidad = rol.rol ?? rol.idRol ?? rol;
 
         if (entidad && typeof entidad === "object") {
-            const id = entidad.idRol ?? entidad.id ?? entidad.codigo ?? rol.idPersonaRol ?? rol.id ?? "";
+            const id = entidad.idRol ?? entidad.id ?? entidad.codigo
+                ?? (typeof rol.idRol !== "object" ? rol.idRol : null)
+                ?? rol.idPersonaRol ?? rol.id ?? "";
             return id !== "" && id !== null && id !== undefined ? String(id) : "";
         }
 
@@ -784,11 +829,10 @@ export class DashboardView extends HTMLElement {
     }
 
     _nombreRol(rol) {
-        const entidad = rol?.rol ?? rol?.idRol;
-        return [entidad?.nombre, entidad?.name, entidad?.descripcion,
-            rol?.nombreRol, rol?.nombre, rol?.name, rol?.descripcion]
-            .find((nombre) => typeof nombre === "string" && nombre.trim() !== "")
-            ?? "Rol sin nombre";
+        const entidad = rol?.rol ?? (typeof rol?.idRol === "object" ? rol.idRol : rol);
+        const textoRol = entidad?.nombre || entidad?.descripcion || entidad?.nombreRol || entidad?.name
+            || rol?.nombreRol || rol?.nombre || rol?.descripcion || rol?.name || 'Rol desconocido';
+        return textoRol;
     }
 }
 

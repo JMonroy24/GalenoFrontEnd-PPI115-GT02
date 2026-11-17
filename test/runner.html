@@ -15,10 +15,10 @@
     <script type="module">
         // Un único módulo garantiza que todas las suites se registren antes de ejecutar Mocha.
         import "./control/default_service_test.js";
-        import "./control/api_auth_service_test.js";
         import "./control/persona_service_test.js";
         import "./control/consulta_service_test.js";
         import "./control/auth_service_test.js";
+        import "./control/router_test.js";
         import "./control/orden_examen_service_test.js";
 
         // HU1, HU2 y componentes compartidos: importar cada suite una sola vez.
@@ -27,6 +27,7 @@
         import "./boundary/tarjeta_consulta_test.js";
         import "./boundary/historial_pasos_test.js";
         import "./boundary/asistente_busqueda_test.js";
+        import "./boundary/encabezado_app_test.js";
 
         import "./boundary/dashboard_view_test.js";
         import "./boundary/stepper_progreso_test.js";

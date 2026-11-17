@@ -31,13 +31,25 @@ suite("PersonaService (unitaria)", () => {
 
         const clinicas = await servicio.buscarClinicasPaciente("1", "01234567-8");
 
-        expect(fetchStub.firstCall.args[0].toString()).to.contain(
-            "personas?first=0&max=20&q=01234567-8"
-        );
+        const url = new URL(fetchStub.firstCall.args[0]);
+        expect(url.searchParams.get("valor")).to.equal("01234567-8");
+        expect(url.searchParams.get("tipoDocumentoId")).to.equal("1");
+        expect(url.searchParams.has("q")).to.be.false;
         expect(clinicas).to.deep.equal([
             { idClinica: 3, nombre: "Clínica Norte" },
             { idClinica: 5, nombre: "Clínica Sur" }
         ]);
+    });
+
+    test("codifica el documento como valor sin alterar caracteres reservados", async () => {
+        fetchStub = sinon.stub(window, "fetch").resolves({
+            ok: true, json: async () => ({ items: [{ idPersona: 7, numeroDocumento: "AB&12+3" }] })
+        });
+        expect((await servicio.buscarPorDocumento(" pasaporte ", " AB&12+3 ")).idPersona).to.equal(7);
+        const url = new URL(fetchStub.firstCall.args[0]);
+        expect(url.searchParams.get("valor")).to.equal("AB&12+3");
+        expect(url.searchParams.get("tipoDocumentoId")).to.equal("pasaporte");
+        expect(url.searchParams.has("q")).to.be.false;
     });
 
     test("buscarClinicasPaciente filtra roles y conserva solo los de paciente", async () => {

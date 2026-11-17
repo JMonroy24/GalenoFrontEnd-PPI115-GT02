@@ -4,7 +4,7 @@ import { ENDPOINTS } from "../routes.js";
 import GeneradorMensajes from "./generador_mensajes.js";
 import DefaultError from "../entity/default_error.js";
 import { store } from "../store.js";
-import { apiAuthService } from "./api_auth_service.js";
+import { esRolEmpleado } from "../entity/rol_empleado.js";
 
 export const SESSION_STORAGE_KEY = "galeno_session";
 
@@ -76,13 +76,14 @@ export class AuthService extends DefaultService {
                 throw new DefaultError("La persona no tiene un identificador válido.", { status: 422 });
             }
 
-            const roles = await this._obtenerRoles(idPersona);
+            const roles = await this._completarNombresRelaciones(await this._obtenerRoles(idPersona));
             const rolesEmpleado = roles.filter((personaRol) => (
-                this._perteneceAPersona(personaRol, idPersona)
+                this._perteneceAPersona(personaRol, idPersona) && esRolEmpleado(personaRol)
             ));
 
             if (rolesEmpleado.length === 0) {
-                const mensaje = "Acceso denegado: la persona no tiene roles asignados.";
+                this.logout();
+                const mensaje = "Acceso denegado: usuario no es empleado";
                 GeneradorMensajes.crearMensaje("Acceso denegado", mensaje, "error");
                 throw new DefaultError(mensaje, {
                     status: 403,
@@ -114,6 +115,11 @@ export class AuthService extends DefaultService {
             this._guardarSesion(sesion);
             this.sesion = sesion;
             this._sincronizarStore(sesion, { clinicaActiva, rolSeleccionado });
+            if (typeof window !== "undefined") {
+                window.dispatchEvent(new CustomEvent("sesion-iniciada", {
+                    detail: { usuario: sesion.usuario }
+                }));
+            }
 
             return sesion;
         } catch (error) {
@@ -143,9 +149,14 @@ export class AuthService extends DefaultService {
 
             const datos = JSON.parse(serializada);
             const perfil = datos?.perfil ?? datos?.usuario ?? null;
-            const roles = Array.isArray(datos?.roles) ? datos.roles : [];
+            const roles = Array.isArray(datos?.roles) ? datos.roles.filter(esRolEmpleado) : [];
+            if (roles.length === 0) {
+                this.logout();
+                return null;
+            }
             const clinicaActiva = datos?.clinicaActiva ?? datos?.clinica ?? null;
-            const rolSeleccionado = datos?.rolSeleccionado ?? roles[0] ?? null;
+            const rolSeleccionado = esRolEmpleado(datos?.rolSeleccionado)
+                ? datos.rolSeleccionado : roles[0];
             const sesion = {
                 perfil,
                 usuario: perfil,
@@ -162,11 +173,13 @@ export class AuthService extends DefaultService {
 
             this.sesion = sesion;
             this._sincronizarStore(sesion, { clinicaActiva, rolSeleccionado });
+            void this._actualizarNombresSesion(sesion);
 
             return sesion;
         } catch {
             try {
                 almacen.removeItem(SESSION_STORAGE_KEY);
+                almacen.removeItem("usuarioActivo");
             } catch {
             }
 
@@ -175,12 +188,12 @@ export class AuthService extends DefaultService {
     }
 
     logout() {
-        apiAuthService.logout();
         const almacen = this._obtenerAlmacen();
 
         if (almacen) {
             try {
                 almacen.removeItem(SESSION_STORAGE_KEY);
+                almacen.removeItem("usuarioActivo");
             } catch {
             }
         }
@@ -193,6 +206,9 @@ export class AuthService extends DefaultService {
             rolSeleccionado: null,
             clinicaActiva: null
         });
+        if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("sesion-cerrada"));
+        }
     }
 
     _guardarSesion(sesion) {
@@ -257,10 +273,91 @@ export class AuthService extends DefaultService {
             ? respuesta.items
             : Array.isArray(respuesta) ? respuesta : [];
 
-        // El backend decide qué asignaciones son válidas; no inferir permisos
-        // a partir del nombre de registro.rol ni de un atributo esEmpleado.
+        // Conservar las relaciones anidadas para validar el empleado y su contexto.
         return roles.filter((registro) => registro !== null
             && typeof registro === "object" && !Array.isArray(registro));
+    }
+
+    async _completarNombresRelaciones(asignaciones) {
+        // El DTO actual contiene UUIDs; otras versiones incluyen las entidades anidadas.
+        const solicitudes = new Map();
+        const resolver = async (registro, relacion, campoId, endpoint) => {
+            const referencia = registro[relacion] ?? registro[campoId];
+            const entidad = referencia && typeof referencia === "object" ? referencia : {};
+            const nombre = entidad.nombre || entidad.nombreClinica || entidad.nombreRol
+                || entidad.descripcion || entidad.name;
+            const nombrePlano = relacion === "clinica"
+                ? registro.nombreClinica || registro.clinicaNombre
+                : registro.nombreRol;
+            const id = entidad[campoId] ?? entidad.id ?? entidad.codigo
+                ?? (typeof registro[campoId] !== "object" ? registro[campoId] : null)
+                ?? (typeof referencia !== "object" ? referencia : null);
+            if (nombre || nombrePlano || id == null || id === "") {
+                if (id != null && id !== "" && entidad[campoId] == null
+                    && entidad.id == null && entidad.codigo == null && (nombre || nombrePlano)) {
+                    return { ...entidad, [campoId]: id, nombre: nombre || nombrePlano };
+                }
+                return nombrePlano && !nombre ? { ...entidad, [campoId]: id, nombre: nombrePlano } : referencia;
+            }
+            const url = `${API_BASE.replace(/\/+$/, "")}${endpoint}/${encodeURIComponent(id)}`;
+            if (!solicitudes.has(url)) {
+                solicitudes.set(url, (async () => {
+                    try {
+                        const response = await this._request(url, { method: "GET" }, "Error al obtener el nombre de la relación");
+                        const datos = await this._parseBody(response);
+                        // No reemplazar el identificador de la asignación con otro del catálogo.
+                        if (String(datos?.[campoId] ?? datos?.id) === String(id)) {
+                            return { ...entidad, ...datos, [campoId]: id };
+                        }
+                    } catch {
+                        // Una etiqueta no disponible no debe invalidar la sesión.
+                    }
+                    return { ...entidad, [campoId]: id };
+                })());
+            }
+            return solicitudes.get(url);
+        };
+        return Promise.all(asignaciones.map(async (registro) => {
+            const [clinica, rol] = await Promise.all([
+                resolver(registro, "clinica", "idClinica", ENDPOINTS.CLINICAS),
+                resolver(registro, "rol", "idRol", "/roles")
+            ]);
+            const cambios = {};
+            if (clinica !== undefined) cambios.clinica = clinica;
+            if (rol !== undefined) cambios.rol = rol;
+            return Object.keys(cambios).every((campo) => registro[campo] === cambios[campo])
+                ? registro : { ...registro, ...cambios };
+        }));
+    }
+
+    async _actualizarNombresSesion(sesion) {
+        const roles = (await this._completarNombresRelaciones(sesion.roles)).filter(esRolEmpleado);
+        if (this.sesion !== sesion) return;
+        if (roles.length === 0) {
+            this.logout();
+            return;
+        }
+        const indiceSeleccionado = sesion.roles.indexOf(sesion.rolSeleccionado);
+        const rolSeleccionado = roles[indiceSeleccionado >= 0 ? indiceSeleccionado : 0]
+            ?? sesion.rolSeleccionado;
+        const idClinicaActiva = sesion.clinicaActiva?.idClinica ?? sesion.clinicaActiva?.id
+            ?? sesion.clinicaActiva;
+        const clinicaActiva = roles.map((registro) => this._obtenerClinica(null, [], registro))
+            .find((clinica) => String(clinica?.idClinica ?? clinica?.id) === String(idClinicaActiva))
+            ?? sesion.clinicaActiva;
+        // Conservar el contexto que el usuario pudo cambiar mientras se consultaban nombres.
+        const estado = store.getState();
+        const seleccion = estado.rolSeleccionado;
+        const idSeleccion = seleccion?.idPersonaRol ?? seleccion?.id;
+        const rolActual = roles.find((registro) => idSeleccion != null
+            && String(registro.idPersonaRol ?? registro.id) === String(idSeleccion)) ?? seleccion ?? rolSeleccionado;
+        const clinicaActualId = estado.clinicaActiva?.idClinica ?? estado.clinicaActiva?.id ?? estado.clinicaActiva;
+        const clinicaActual = roles.map((registro) => this._obtenerClinica(null, [], registro))
+            .find((clinica) => String(clinica?.idClinica ?? clinica?.id) === String(clinicaActualId))
+            ?? estado.clinicaActiva ?? clinicaActiva;
+        Object.assign(sesion, { roles, rolSeleccionado: rolActual, clinica: clinicaActual, clinicaActiva: clinicaActual });
+        this._guardarSesion(sesion);
+        this._sincronizarStore(sesion);
     }
 
     _perteneceAPersona(personaRol, idPersona) {

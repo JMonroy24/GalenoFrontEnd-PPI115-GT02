@@ -178,7 +178,7 @@ suite("AuthService (unitaria)", () => {
                 fetchStub = sinon.stub(window, "fetch").resolves({
                     ok: true, json: async () => ({ items: [persona] })
                 });
-                responderRoles([{ persona: { id: 42 }, rol: { id: 7 } }]);
+                responderRoles([{ persona: { id: 42 }, rol: { id: 7, nombre: "Médico" } }]);
 
                 const sesion = await servicio.login(1, "01234567-8");
 
@@ -291,7 +291,7 @@ suite("AuthService (unitaria)", () => {
 
             assert.instanceOf(errorLanzado, DefaultError);
             expect(errorLanzado.status).to.equal(403);
-            expect(errorLanzado.message).to.contain("no tiene roles asignados");
+            expect(errorLanzado.message).to.equal("Acceso denegado: usuario no es empleado");
         });
 
         test("no usa un perfil alternativo si el backend devuelve items vacío", async () => {
@@ -353,10 +353,11 @@ suite("AuthService (unitaria)", () => {
             expect(store.isAuthenticated()).to.be.true;
         });
 
-        test("delega la validez del rol al backend sin clasificar nombres ni esEmpleado", async () => {
+        test("guarda únicamente asignaciones de empleado cuando también tiene rol Paciente", async () => {
             const registros = [
                 { idPersonaRol: 1, persona: { idPersona: 42 }, rol: { nombre: "PACIENTE", esEmpleado: false } },
-                { idPersonaRol: 2, persona: { idPersona: 42 }, activo: false, rol: { nombre: "INVITADO" } }
+                { idPersonaRol: 2, persona: { idPersona: 42 }, rol: { nombre: "Médico" },
+                    clinica: { idClinica: 3, nombre: "Central" } }
             ];
             fetchStub = sinon.stub(window, "fetch").resolves({
                 ok: true, json: async () => ({ items: [perfilPersonaFicticia] })
@@ -365,9 +366,30 @@ suite("AuthService (unitaria)", () => {
 
             const sesion = await servicio.login(1, "01234567-8");
 
-            expect(sesion.roles).to.deep.equal(registros);
+            expect(sesion.roles).to.deep.equal([registros[1]]);
+            expect(sesion.rolSeleccionado).to.deep.equal(registros[1]);
+            expect(JSON.parse(sessionStorage.getItem(SESSION_STORAGE_KEY)).roles).to.deep.equal([registros[1]]);
+            expect(JSON.parse(sessionStorage.getItem("usuarioActivo")).idPersona).to.equal(42);
             expect(store.isAuthenticated()).to.be.true;
         });
+
+        for (const rol of [{ nombre: " Paciente " }, { nombre: "PACIENTE", esEmpleado: true },
+            { descripcion: "paciente" }, { nombre: "Invitado", esEmpleado: false }, { idRol: "sin-nombre" }]) {
+            test(`deniega el login sin asignaciones de empleado: ${JSON.stringify(rol)}`, async () => {
+                fetchStub = sinon.stub(window, "fetch").resolves({
+                    ok: true, json: async () => ({ items: [perfilPersonaFicticia] })
+                });
+                responderRoles({ items: [{ idPersona: 42, rol }] });
+                let error;
+                try { await servicio.login(1, "01234567-8"); } catch (err) { error = err; }
+                expect(error?.status).to.equal(403);
+                expect(error?.message).to.equal("Acceso denegado: usuario no es empleado");
+                expect(servicio.sesion).to.be.null;
+                expect(sessionStorage.getItem("usuarioActivo")).to.be.null;
+                expect(sessionStorage.getItem(SESSION_STORAGE_KEY)).to.be.null;
+                expect(store.isAuthenticated()).to.be.false;
+            });
+        }
 
         test("prioriza items cuando existe aunque haya otras propiedades", async () => {
             fetchStub = sinon.stub(window, "fetch").resolves({
@@ -391,13 +413,16 @@ suite("AuthService (unitaria)", () => {
                         idPersona: 42, activo: true, rol: { nombre: "Médico general" }, idClinica: 8
                     }] }) };
                 }
+                if (recurso.pathname.endsWith("/clinicas/8")) {
+                    return { ok: true, json: async () => ({ idClinica: 8, nombre: "Clínica del empleado" }) };
+                }
                 expect(recurso.pathname).to.match(/\/personas$/);
                 return { ok: true, json: async () => ({ items: [perfilPersonaFicticia] }) };
             });
 
             const sesion = await servicio.login(1, "01234567-8");
 
-            expect(fetchStub.callCount).to.equal(2);
+            expect(fetchStub.callCount).to.equal(3);
             expect(sesion.token).to.be.null;
             expect(sesion.clinicaActiva.idClinica).to.equal(8);
             expect(store.isAuthenticated()).to.be.true;
@@ -422,6 +447,17 @@ suite("AuthService (unitaria)", () => {
     });
 
     suite("restaurarSesion", () => {
+        test("invalida una sesión antigua que solo contenía el rol Paciente", () => {
+            sessionStorage.setItem("usuarioActivo", JSON.stringify(perfilPersonaFicticia));
+            sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({
+                perfil: perfilPersonaFicticia, token: "token-antiguo",
+                roles: [{ rol: { nombre: "Paciente" } }], clinicaActiva: { idClinica: 3 }
+            }));
+            expect(servicio.restaurarSesion()).to.be.null;
+            expect(sessionStorage.getItem(SESSION_STORAGE_KEY)).to.be.null;
+            expect(sessionStorage.getItem("usuarioActivo")).to.be.null;
+            expect(store.isAuthenticated()).to.be.false;
+        });
         test("restaura sesión existente desde sessionStorage hacia la instancia y el store", () => {
             const sesionGuardada = {
                 token: "token-restaurado",
@@ -440,6 +476,7 @@ suite("AuthService (unitaria)", () => {
 
             expect(store.getState().token).to.equal("token-restaurado");
             expect(store.getState().clinicaActiva).to.deep.equal(sesionGuardada.clinicaActiva);
+            expect(sessionStorage.getItem("usuarioActivo")).not.to.be.null;
         });
 
         test("retorna null y limpia almacenamiento si el JSON es inválido", () => {
@@ -449,6 +486,7 @@ suite("AuthService (unitaria)", () => {
 
             expect(res).to.be.null;
             expect(sessionStorage.getItem(SESSION_STORAGE_KEY)).to.be.null;
+            expect(sessionStorage.getItem("usuarioActivo")).to.be.null;
         });
     });
 

@@ -7,6 +7,55 @@ import {
     serializarValorPaso
 } from "./consulta_procedimiento_service.js";
 
+function fuentesConsulta(consulta) {
+    return [consulta, consulta?.consulta, consulta?.cita, consulta?.consulta?.cita].filter(Boolean);
+}
+
+function candidatosPaciente(consulta) {
+    return fuentesConsulta(consulta).flatMap((datos) => [
+        datos?.paciente?.persona, datos?.paciente?.idPersona, datos?.paciente,
+        datos?.persona?.persona, datos?.persona, datos?.idPersona,
+        datos?.idPaciente?.persona, datos?.idPaciente?.idPersona, datos?.idPaciente,
+        ...(textoDato(datos?.nombrePaciente) || textoDato(datos?.nombresPaciente) ? [{
+            nombreCompleto: datos?.nombrePaciente, nombres: datos?.nombresPaciente,
+            apellidos: datos?.apellidosPaciente
+        }] : [])
+    ]);
+}
+
+function textoDato(valor) {
+    if (Array.isArray(valor)) return valor.map(textoDato).filter(Boolean).join(" ");
+    return typeof valor === "string" || typeof valor === "number" ? String(valor).trim() : "";
+}
+
+function documentoPaciente(paciente) {
+    return [paciente?.numeroDocumento, paciente?.documento, paciente?.dui, paciente?.identificacion]
+        .map((documento) => textoDato(documento?.numeroDocumento) || textoDato(documento?.numero)
+            || textoDato(documento?.valor) || textoDato(documento)).find(Boolean) || "";
+}
+
+export function obtenerDocumentoConsulta(consulta = {}) {
+    return candidatosPaciente(consulta).map(documentoPaciente).find(Boolean)
+        || fuentesConsulta(consulta).flatMap((datos) => [
+            { documento: datos?.documentoPaciente }, { documento: datos?.numeroDocumentoPaciente }, datos
+        ]).map(documentoPaciente).find(Boolean) || "";
+}
+
+export function obtenerPacienteConsulta(consulta = {}) {
+    const candidatos = candidatosPaciente(consulta);
+    // Una asociación vacía o un ID no debe ocultar otra que sí tenga el nombre.
+    const paciente = candidatos.find((paciente) => paciente && typeof paciente === "object"
+        && (textoDato(paciente.nombreCompleto) || textoDato(paciente.nombres) || textoDato(paciente.nombre)))
+        ?? candidatos.find((paciente) => typeof paciente === "string" && paciente.trim())
+        ?? candidatos.find((paciente) => paciente != null && Object.keys(Object(paciente)).length > 0);
+    const documento = obtenerDocumentoConsulta(consulta);
+    // El nombre y el documento pueden llegar en asociaciones diferentes.
+    if (paciente && typeof paciente === "object" && !documentoPaciente(paciente) && documento) {
+        return { ...paciente, numeroDocumento: documento };
+    }
+    return paciente;
+}
+
 export class ConsultaService extends DefaultService {
     constructor() {
         super(ENDPOINTS.CONSULTAS);
@@ -44,8 +93,8 @@ export class ConsultaService extends DefaultService {
     }
 
     _mapearConsulta(consulta) {
-        const datos = { ...consulta.cita, ...consulta };
-        const paciente = datos.paciente ?? datos.persona ?? datos.idPersona;
+        const datos = { ...consulta.consulta?.cita, ...consulta.consulta, ...consulta.cita, ...consulta };
+        const paciente = obtenerPacienteConsulta(datos);
         const procedimientos = datos.procedimientos
             ?? datos.consultaProcedimientos
             ?? datos.consultaProcedimientoList
@@ -56,10 +105,11 @@ export class ConsultaService extends DefaultService {
         // y exponer los nombres que comparten las vistas de búsqueda y dashboard.
         return {
             ...consulta,
-            idConsulta: consulta.idConsulta ?? consulta.id,
-            fecha: datos.fecha ?? datos.fechaConsulta ?? datos.fechaCita ?? datos.fechaHora,
-            clinica: datos.clinica ?? datos.idClinica,
-            paciente: paciente?.persona ?? paciente,
+            idConsulta: consulta.idConsulta ?? consulta.id ?? datos.idConsulta ?? datos.id,
+            fecha: datos.inicio || datos.fecha || datos.fechaConsulta || datos.fechaCita
+                || datos.fechaHora || datos.fechaInicio || datos.fechaCreacion,
+            clinica: datos.clinica || datos.idClinica,
+            paciente,
             procedimientos: Array.isArray(procedimientos)
                 ? procedimientos
                 : Array.isArray(procedimientos?.items) ? procedimientos.items : []
