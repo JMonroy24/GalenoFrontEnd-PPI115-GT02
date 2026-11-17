@@ -79,31 +79,35 @@ export class DefaultService {
             options.signal?.removeEventListener("abort", abortFromCaller);
         }
 
-        if (response.ok) {
-            return response;
-        }
+        if (!response.ok) {
+            const details = await this._readErrorDetails(response);
+            const backendMessage = details && typeof details === "object"
+                ? details.message ?? details.mensaje ?? details.detail ?? fallbackMessage
+                : details;
+            const message = `HTTP ${response.status}: ${
+                typeof backendMessage === "string" && backendMessage.trim()
+                    ? backendMessage.trim() : fallbackMessage
+            }`;
 
-        const details = await this._readErrorDetails(response);
-        const message = details && typeof details === "object"
-            ? details.message ?? details.mensaje ?? details.detail ?? fallbackMessage
-            : fallbackMessage;
-
-        if (INTERCEPTED_STATUSES.has(response.status)) {
-            this._notificarError(message, details);
-        }
-
-        if (response.status === 401) {
-            store.setState({ token: null, usuario: null, roles: [], rolSeleccionado: null, clinicaActiva: null });
-            if (typeof window !== "undefined") {
-                window.dispatchEvent(new CustomEvent("navegar", { detail: "login" }));
+            if (INTERCEPTED_STATUSES.has(response.status)) {
+                this._notificarError(message, details);
             }
+
+            if (response.status === 401) {
+                store.setState({ token: null, usuario: null, roles: [], rolSeleccionado: null, clinicaActiva: null });
+                if (typeof window !== "undefined") {
+                    window.dispatchEvent(new CustomEvent("navegar", { detail: "login" }));
+                }
+            }
+
+            throw new DefaultError(message, {
+                status: response.status,
+                message,
+                details
+            });
         }
 
-        throw new DefaultError(message, {
-            status: response.status,
-            message,
-            details
-        });
+        return response;
     }
 
     _esOperacionEscritura(method) {
@@ -132,9 +136,12 @@ export class DefaultService {
             }
         }
 
-        if (typeof source?.text === "function") {
+        // json() puede consumir el cuerpo incluso si falla el parseo.
+        const textSource = typeof response.clone === "function" ? response.clone() : response;
+
+        if (typeof textSource?.text === "function") {
             try {
-                return await source.text() || null;
+                return await textSource.text() || null;
             } catch {
                 return null;
             }
@@ -181,6 +188,10 @@ export class DefaultService {
         };
     }
 
+    _normalizePayload(payload) {
+        return Array.isArray(payload?.items) ? payload.items : payload;
+    }
+
     async findRange(first = 0, max = DEFAULT_PAGE_SIZE, query = "") {
         const params = new URLSearchParams();
         params.set("first", first);
@@ -195,44 +206,46 @@ export class DefaultService {
             { method: "GET" },
             "Error al listar los recursos"
         );
-        const payload = await response.json();
+        const payload = await this._parseBody(response);
+        const items = this._normalizePayload(payload);
 
+        // Las vistas existentes necesitan los metadatos para paginar.
         return new DefaultResponse(
-            payload?.items ?? [],
-            payload?.total ?? 0,
-            payload?.first ?? 0,
-            payload?.max ?? 0
+            items,
+            payload?.total ?? (Array.isArray(items) ? items.length : 0),
+            payload?.first ?? first,
+            payload?.max ?? max
         );
     }
 
-    async findById(id) {
+    async get(id) {
         const response = await this._request(
-            `${this._urlBase}/${encodeURIComponent(id)}`,
+            id === undefined ? this._urlBase : `${this._urlBase}/${encodeURIComponent(id)}`,
             { method: "GET" },
             "Error al obtener el recurso"
         );
 
-        return this._parseBody(response);
+        return this._normalizePayload(await this._parseBody(response));
     }
 
-    async create(payload) {
+    async post(payload) {
         const response = await this._request(
             this._urlBase,
             this._jsonOptions("POST", payload),
             "Error al crear el recurso"
         );
 
-        return this._parseBody(response);
+        return this._normalizePayload(await this._parseBody(response));
     }
 
-    async update(id, payload) {
+    async put(id, payload) {
         const response = await this._request(
             `${this._urlBase}/${encodeURIComponent(id)}`,
             this._jsonOptions("PUT", payload),
             "Error al actualizar el recurso"
         );
 
-        return this._parseBody(response);
+        return this._normalizePayload(await this._parseBody(response));
     }
 
     async delete(id) {
@@ -242,7 +255,19 @@ export class DefaultService {
             "Error al eliminar el recurso"
         );
 
-        return this._parseBody(response);
+        return this._normalizePayload(await this._parseBody(response));
+    }
+
+    async findById(id) {
+        return this.get(id);
+    }
+
+    async create(payload) {
+        return this.post(payload);
+    }
+
+    async update(id, payload) {
+        return this.put(id, payload);
     }
 }
 

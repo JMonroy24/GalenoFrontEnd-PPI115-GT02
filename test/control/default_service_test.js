@@ -102,7 +102,7 @@ suite("DefaultService (unitaria)", () => {
 
             assert.instanceOf(error, DefaultError);
             expect(error.status).to.equal(401);
-            expect(error.message).to.equal("Acceso denegado");
+            expect(error.message).to.equal("HTTP 401: Acceso denegado");
             expect(fetchStub.calledOnce).to.be.true;
             expect(mostrarModal.called).to.be.false;
         } finally {
@@ -110,6 +110,90 @@ suite("DefaultService (unitaria)", () => {
             store.setState(estadoAnterior);
         }
     });
+
+    test("findRange acepta arreglos y conserva los parámetros de paginación", async () => {
+        const items = [{ id: 21 }, { id: 22 }];
+        fetchStub.resolves(new Response(JSON.stringify(items)));
+
+        const respuesta = await servicio.findRange(20, 5);
+
+        assert.instanceOf(respuesta, DefaultResponse);
+        expect(respuesta.items).to.deep.equal(items);
+        expect(respuesta.datos).to.equal(respuesta.items);
+        expect(respuesta.total).to.equal(2);
+        expect(respuesta.first).to.equal(20);
+        expect(respuesta.max).to.equal(5);
+    });
+
+    for (const [method, ejecutar] of [
+        ["GET", () => servicio.get()],
+        ["POST", () => servicio.post({ nombre: "Prueba" })],
+        ["PUT", () => servicio.put("id/con espacio", { nombre: "Prueba" })],
+        ["DELETE", () => servicio.delete("id/con espacio")]
+    ]) {
+        for (const paginado of [false, true]) {
+            test(`${method} devuelve un arreglo para una respuesta ${paginado ? "paginada" : "directa"}`, async () => {
+                store.setState({ online: true });
+                const items = [{ id: 1 }, { id: 2 }];
+                const payload = paginado ? { items, total: 10, first: 0, max: 2 } : items;
+                fetchStub.resolves({ ok: true, status: 200, json: async () => payload });
+
+                const datos = await ejecutar();
+
+                expect(datos).to.equal(items);
+                expect(datos.map((item) => item.id)).to.deep.equal([1, 2]);
+                expect(fetchStub.firstCall.args[1].method).to.equal(method);
+                if (["PUT", "DELETE"].includes(method)) {
+                    expect(fetchStub.firstCall.args[0]).to.contain("/id%2Fcon%20espacio");
+                }
+            });
+        }
+
+        test(`${method} propaga el código HTTP y el mensaje del backend`, async () => {
+            store.setState({ online: true });
+            fetchStub.resolves(new Response(JSON.stringify({ mensaje: "Datos inválidos" }), { status: 400 }));
+
+            let error;
+            try { await ejecutar(); } catch (err) { error = err; }
+
+            assert.instanceOf(error, DefaultError);
+            expect(error.status).to.equal(400);
+            expect(error.message).to.equal("HTTP 400: Datos inválidos");
+            expect(error.details).to.deep.equal({ mensaje: "Datos inválidos" });
+        });
+    }
+
+    test("conserva entidades individuales y respuestas de escritura sin contenido", async () => {
+        store.setState({ online: true });
+        fetchStub.onCall(0).resolves(new Response(JSON.stringify({ id: 1, nombre: "Prueba" })));
+        fetchStub.onCall(1).resolves(new Response(null, { status: 204 }));
+        fetchStub.onCall(2).resolves(new Response(null, { status: 204 }));
+        fetchStub.onCall(3).resolves(new Response(null, { status: 204 }));
+
+        expect(await servicio.findById(1)).to.deep.equal({ id: 1, nombre: "Prueba" });
+        expect(await servicio.create({ nombre: "Prueba" })).to.be.null;
+        expect(await servicio.update(1, { nombre: "Prueba" })).to.be.null;
+        expect(await servicio.delete(1)).to.be.null;
+    });
+
+    for (const [status, body, mensaje] of [
+        [302, "Redirección inesperada", "Redirección inesperada"],
+        [404, JSON.stringify({ detail: "Recurso inexistente" }), "Recurso inexistente"],
+        [500, "Servicio no disponible", "Servicio no disponible"],
+        [502, "{JSON inválido", "{JSON inválido"],
+        [503, "", "Error al obtener el recurso"]
+    ]) {
+        test(`intercepta HTTP ${status} y conserva el detalle disponible`, async () => {
+            fetchStub.resolves(new Response(body, { status }));
+
+            let error;
+            try { await servicio.get(1); } catch (err) { error = err; }
+
+            assert.instanceOf(error, DefaultError);
+            expect(error.status).to.equal(status);
+            expect(error.message).to.equal(`HTTP ${status}: ${mensaje}`);
+        });
+    }
 
     test("bloquea POST, PUT, PATCH y DELETE cuando no hay conexión", async () => {
         for (const method of ["POST", "PUT", "PATCH", "DELETE"]) {

@@ -272,7 +272,7 @@ suite("ConsultaService (unitaria)", () => {
         expect(fetchStub.firstCall.args[1].headers.get("Authorization")).to.equal("Bearer test-token");
         expect(store.getState().session).to.equal(null);
         expect(error.status).to.equal(401);
-        expect(error.message).to.equal("Token expirado");
+        expect(error.message).to.equal("HTTP 401: Token expirado");
         expect(error.details.reason).to.equal("expired");
     });
 
@@ -294,7 +294,7 @@ suite("ConsultaService (unitaria)", () => {
 
         assert.instanceOf(error, DefaultError);
         expect(error.status).to.equal(422);
-        expect(error.mensaje).to.equal("Datos de consulta inválidos");
+        expect(error.mensaje).to.equal("HTTP 422: Datos de consulta inválidos");
     });
 
     test("buscarPorPacienteYFechas envía pacienteId e idClinica en los query params", async () => {

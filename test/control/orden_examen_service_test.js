@@ -75,7 +75,7 @@ suite("OrdenExamenService (unitaria)", () => {
         expect(fetchStub.callCount).to.equal(3);
         assert.instanceOf(error, DefaultError);
         expect(error.status).to.equal(422);
-        expect(error.mensaje).to.equal("Orden inválida");
+        expect(error.mensaje).to.equal("HTTP 422: Orden inválida");
     });
 
     test("un error de red se propaga sin ser tragado", async () => {
