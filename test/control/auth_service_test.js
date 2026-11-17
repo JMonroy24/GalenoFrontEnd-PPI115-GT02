@@ -86,7 +86,7 @@ suite("AuthService (unitaria)", () => {
                     const urlRoles = new URL(fetchStub.secondCall.args[0]);
                     expect(urlPersona.pathname).to.match(/\/personas$/);
                     expect(urlRoles.pathname).to.match(/\/personas-roles$/);
-                    expect(urlRoles.searchParams.get("q")).to.equal("42");
+                    expect(urlRoles.searchParams.get("personaId")).to.equal("42");
                     expect(urlRoles.searchParams.get("first")).to.equal("0");
                     expect(urlRoles.searchParams.get("max")).to.equal("10");
                     expect(sesion.perfil).to.equal(persona);
@@ -112,7 +112,7 @@ suite("AuthService (unitaria)", () => {
 
                 const sesion = await servicio.login(1, "01234567-8");
 
-                expect(new URL(fetchStub.secondCall.args[0]).searchParams.get("q")).to.equal("42");
+                expect(new URL(fetchStub.secondCall.args[0]).searchParams.get("personaId")).to.equal("42");
                 expect(sesion.roles).to.have.length(1);
                 expect(store.isAuthenticated()).to.be.true;
             });
@@ -276,7 +276,7 @@ suite("AuthService (unitaria)", () => {
             expect(fetchStub.callCount).to.equal(2);
             const urlRoles = new URL(fetchStub.secondCall.args[0]);
             expect(urlRoles.pathname).to.match(/\/personas-roles$/);
-            expect(urlRoles.searchParams.get("q")).to.equal("42");
+            expect(urlRoles.searchParams.get("personaId")).to.equal("42");
             expect(sesion.roles).to.deep.equal([registro]);
             expect(sesion.rolSeleccionado.rol.nombre).to.equal("Personal de apoyo");
             expect(sesion.clinicaActiva).to.deep.equal(registro.clinica);
@@ -316,7 +316,7 @@ suite("AuthService (unitaria)", () => {
             fetchStub = sinon.stub(window, "fetch").callsFake(async (url) => {
                 const recurso = new URL(url);
                 if (recurso.pathname.endsWith("/personas-roles")) {
-                    expect(recurso.searchParams.get("q")).to.equal("42");
+                    expect(recurso.searchParams.get("personaId")).to.equal("42");
                     return { ok: true, json: async () => ({ items: [{
                         idPersona: 42, activo: true, rol: { nombre: "Médico general" }, idClinica: 8
                     }] }) };

@@ -283,7 +283,7 @@ suite("ConsultaService (unitaria)", () => {
         expect(error.mensaje).to.equal("Datos de consulta inválidos");
     });
 
-    test("buscarPorPacienteYFechas envía idClinica en los query params", async () => {
+    test("buscarPorPacienteYFechas envía pacienteId e idClinica en los query params", async () => {
         fetchStub = sinon.stub(window, "fetch").resolves({
             ok: true,
             status: 200,
@@ -291,6 +291,7 @@ suite("ConsultaService (unitaria)", () => {
         });
 
         await servicio.buscarPorPacienteYFechas({
+            pacienteId: "a0b1c2d3-e4f5-4678-9abc-0123456789ab",
             tipoDocumento: "DUI",
             numeroDocumento: "01234567-8",
             idClinica: "uuid-clinica-123",
@@ -299,6 +300,8 @@ suite("ConsultaService (unitaria)", () => {
         });
 
         const url = fetchStub.firstCall.args[0].toString();
+        expect(new URL(url).searchParams.get("pacienteId")).to.equal("a0b1c2d3-e4f5-4678-9abc-0123456789ab");
+        expect(new URL(url).searchParams.has("q")).to.be.false;
         expect(url).to.contain("idClinica=uuid-clinica-123");
         expect(url).to.contain("tipoDocumento=DUI");
         expect(url).to.contain("numeroDocumento=01234567-8");

@@ -243,7 +243,7 @@ export class AuthService extends DefaultService {
     }
 
     async _obtenerRoles(idPersona) {
-        const params = new URLSearchParams({ first: "0", max: String(DEFAULT_PAGE_SIZE), q: String(idPersona) });
+        const params = new URLSearchParams({ first: "0", max: String(DEFAULT_PAGE_SIZE), personaId: String(idPersona) });
         const url = `${API_BASE.replace(/\/+$/, "")}${ENDPOINTS.PERSONAS_ROLES}?${params.toString()}`;
 
         console.log("Petición Roles URL:", url);

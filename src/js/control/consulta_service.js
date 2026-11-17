@@ -106,6 +106,8 @@ export class ConsultaService extends DefaultService {
      * compartido de paginación del servicio base.
      *
      * @param {object}  opciones
+     * @param {string|number} [opciones.pacienteId] - Identificador del paciente.
+     * @param {string|number} [opciones.idPaciente] - Alias identificador del paciente.
      * @param {string}  [opciones.tipoDocumento]   - Tipo de documento de identidad del paciente.
      * @param {string}  [opciones.numeroDocumento] - Número de documento de identidad del paciente.
      * @param {string|number} [opciones.idClinica] - Identificador de la clínica.
@@ -117,12 +119,14 @@ export class ConsultaService extends DefaultService {
      * @returns {Promise<DefaultResponse>}
      */
     async buscarPorPacienteYFechas(
-        { tipoDocumento, numeroDocumento, idClinica, clinicaId, fechaDesde, fechaHasta } = {},
+        { pacienteId, idPaciente, tipoDocumento, numeroDocumento, idClinica, clinicaId, fechaDesde, fechaHasta } = {},
         first = 0,
         max = DEFAULT_PAGE_SIZE
     ) {
         const clinica = idClinica ?? clinicaId;
+        const paciente = pacienteId ?? idPaciente;
         const filtros = {
+            ...(paciente != null ? { pacienteId: paciente }         : {}),
             ...(tipoDocumento   ? { tipoDocumento }                : {}),
             ...(numeroDocumento ? { numeroDocumento }              : {}),
             ...(clinica         ? { idClinica: clinica }           : {}),
