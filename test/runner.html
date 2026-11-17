@@ -11,24 +11,30 @@
     <div id="mocha"></div>
     <script src="lib/mocha/mocha.js"></script>
     <script src="lib/sinon/sinon.js"></script>
-    <!-- Dos runners separados porque Mocha no mezcla las interfaces TDD (suite/test) y BDD (describe/it) en una misma ejecución. Este runner usa TDD. -->
-    <script type="module" src="control/default_service_test.js"></script>
-    <script type="module" src="control/persona_service_test.js"></script>
-    <script type="module" src="control/consulta_service_test.js"></script>
-    <script type="module" src="control/auth_service_test.js"></script>
-    <script type="module" src="control/orden_examen_service_test.js"></script>
-    <script type="module" src="control/busqueda_citas_view_test.js"></script>
-    <script type="module" src="control/login_view_test.js"></script>
-    <script type="module" src="boundary/dashboard_view_test.js"></script>
-    <script type="module" src="boundary/tarjeta_consulta_test.js"></script>
-    <script type="module" src="boundary/historial_pasos_test.js"></script>
-    <script type="module" src="boundary/stepper_progreso_test.js"></script>
-    <script type="module" src="boundary/atencion_consulta_view_test.js"></script>
-    <script type="module" src="boundary/autocomplete_cie10_test.js"></script>
-    <script type="module" src="boundary/asistente_busqueda_test.js"></script>
-    <script type="module" src="boundary/lista_examenes_test.js"></script>
-    <script type="module" src="boundary/estado_red_test.js"></script>
+    <!-- Las unitarias TDD se aíslan del backend. La integración BDD vive en runner_it.html. -->
     <script type="module">
+        // Un único módulo garantiza que todas las suites se registren antes de ejecutar Mocha.
+        import "./control/default_service_test.js";
+        import "./control/api_auth_service_test.js";
+        import "./control/persona_service_test.js";
+        import "./control/consulta_service_test.js";
+        import "./control/auth_service_test.js";
+        import "./control/orden_examen_service_test.js";
+
+        // HU1, HU2 y componentes compartidos: importar cada suite una sola vez.
+        import "./control/busqueda_citas_view_test.js";
+        import "./control/login_view_test.js";
+        import "./boundary/tarjeta_consulta_test.js";
+        import "./boundary/historial_pasos_test.js";
+        import "./boundary/asistente_busqueda_test.js";
+
+        import "./boundary/dashboard_view_test.js";
+        import "./boundary/stepper_progreso_test.js";
+        import "./boundary/atencion_consulta_view_test.js";
+        import "./boundary/autocomplete_cie10_test.js";
+        import "./boundary/lista_examenes_test.js";
+        import "./boundary/estado_red_test.js";
+
         mocha.run();
     </script>
 </body>

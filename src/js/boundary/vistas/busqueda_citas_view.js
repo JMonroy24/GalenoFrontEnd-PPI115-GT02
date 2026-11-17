@@ -128,21 +128,39 @@ export class BusquedaCitasView extends HTMLElement {
         boton.slot = "acciones";
         boton.className = "btn";
         boton.textContent = "Descargar Ticket PDF";
-        boton.addEventListener("click", () => this._descargarTicket(cita));
+        const idConsulta = cita?.idConsulta ?? cita?.id;
+        boton.disabled = idConsulta == null || String(idConsulta).trim() === "";
+        boton.addEventListener("click", () => this._descargarTicket(cita, boton));
 
         tarjeta.appendChild(boton);
         return tarjeta;
     }
 
-    async _descargarTicket(cita) {
+    async _descargarTicket(cita, boton) {
+        if (boton?.disabled) {
+            return;
+        }
+
+        if (boton) {
+            boton.disabled = true;
+            boton.textContent = "Descargando ticket...";
+            boton.setAttribute("aria-busy", "true");
+        }
+
         try {
-            await consultaService.descargarTicketPdf(cita?.id ?? cita?.idConsulta);
+            await consultaService.descargarTicketPdf(cita?.idConsulta ?? cita?.id);
         } catch (error) {
             GeneradorMensajes.crearMensaje(
                 "Error al descargar el ticket",
                 error?.mensaje ?? error?.message ?? "",
                 "error"
             );
+        } finally {
+            if (boton) {
+                boton.disabled = false;
+                boton.textContent = "Descargar Ticket PDF";
+                boton.removeAttribute("aria-busy");
+            }
         }
     }
 

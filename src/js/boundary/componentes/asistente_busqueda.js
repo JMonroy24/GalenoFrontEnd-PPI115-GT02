@@ -22,7 +22,7 @@ export class AsistenteBusqueda extends HTMLElement {
     }
 
     disconnectedCallback() {
-        this._cancelarBusquedaClinicas();
+        this._invalidarBusquedaClinicas();
     }
 
     _renderEstructura() {
@@ -70,7 +70,7 @@ export class AsistenteBusqueda extends HTMLElement {
                 }
             </style>
             <form novalidate>
-                <buscador-tipo-documentos id="tipoDocumento"></buscador-tipo-documentos>
+                <buscador-tipo-documentos id="tipoDocumento" seleccion-explicita></buscador-tipo-documentos>
 
                 <div class="campo">
                     <label for="numeroDocumento">Número de documento</label>
@@ -125,7 +125,7 @@ export class AsistenteBusqueda extends HTMLElement {
         const numeroDocumento = this.shadowRoot.querySelector("#numeroDocumento");
 
         buscador.addEventListener("tipo-documento-change", (evento) => {
-            this.tipoDocumento = evento.detail?.value ?? "";
+            this.tipoDocumento = String(evento.detail?.value ?? "").trim();
             this.itemTipoDocumento = evento.detail?.item ?? null;
             this._invalidarBusquedaClinicas();
             this._sincronizarDocumento(Boolean(this.tipoDocumento));
@@ -205,6 +205,7 @@ export class AsistenteBusqueda extends HTMLElement {
         this._cancelarBusquedaClinicas();
         this.solicitudClinicas += 1;
         this.documentoConsultado = "";
+        this._reiniciarClinicas("Ingrese el número de documento para buscar sus clínicas.");
     }
 
     _programarBusquedaClinicas() {
@@ -398,7 +399,8 @@ export class AsistenteBusqueda extends HTMLElement {
         const input = this.shadowRoot.querySelector("#numeroDocumento");
         const ayuda = this.shadowRoot.querySelector("#numero-documento-ayuda");
         const valor = input.value.trim();
-        const valido = this._patronDocumento().test(valor);
+        const valido = this.tipoDocumento !== "" && !input.disabled
+            && this._patronDocumento().test(valor);
 
         input.classList.toggle("valido", valido);
         input.classList.toggle("invalido", mostrarError && !valido);

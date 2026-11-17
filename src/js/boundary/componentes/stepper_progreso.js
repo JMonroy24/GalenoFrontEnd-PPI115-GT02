@@ -218,7 +218,7 @@ export class StepperProgreso extends HTMLElement {
      * @returns {number|string}
      */
     get pasoActivo() {
-        return this._pasoActivo;
+        return this.obtenerIndiceActivo();
     }
 
     /**
@@ -347,18 +347,12 @@ export class StepperProgreso extends HTMLElement {
         const indiceActivo = this.obtenerIndiceActivo();
         const estadoExplicito = this._estados[indicePaso];
 
-        if (indicePaso === indiceActivo) {
-            return estadoExplicito === ESTADOS_PASO.COMPLETADO
-                ? "completado"
-                : "activo";
+        if (estadoExplicito) {
+            return CLASE_ESTADO[estadoExplicito] ?? "pendiente";
         }
 
-        if (estadoExplicito) {
-            if (estadoExplicito === ESTADOS_PASO.EN_CURSO) {
-                return indicePaso < indiceActivo ? "completado" : "pendiente";
-            }
-
-            return CLASE_ESTADO[estadoExplicito] ?? "pendiente";
+        if (indicePaso === indiceActivo) {
+            return "activo";
         }
 
         if (indicePaso < indiceActivo) {
@@ -419,10 +413,11 @@ export class StepperProgreso extends HTMLElement {
                     ? "Activo"
                     : "Pendiente";
 
-            const ariaCurrentAttr = esActivo ? 'aria-current="step"' : "";
+            const ariaCurrentAttr = i === this.obtenerIndiceActivo() ? 'aria-current="step"' : "";
 
             return `
                 <li class="stepper-paso stepper-paso--${estado}" role="listitem" ${ariaCurrentAttr} data-indice="${i}">
+                    <button type="button" class="stepper-seleccionar" aria-label="Paso ${numeroPaso}: ${escaparHtml(nombreEtapa)}. ${etiquetaEstado}">
                     <div class="stepper-indicador-fila">
                         <span class="${clasesIzq}" aria-hidden="true"></span>
                         <span class="stepper-circulo" aria-hidden="true">
@@ -436,6 +431,7 @@ export class StepperProgreso extends HTMLElement {
                         <span class="stepper-etiqueta">${escaparHtml(nombreEtapa)}</span>
                         <span class="stepper-estado-badge stepper-estado-badge--${estado}" aria-hidden="true">${etiquetaEstado}</span>
                     </div>
+                    </button>
                 </li>
             `;
         }).join("");
@@ -500,6 +496,28 @@ export class StepperProgreso extends HTMLElement {
                     align-items: center;
                     width: 100%;
                     margin-bottom: var(--space-2, 0.5rem);
+                }
+
+                .stepper-seleccionar {
+                    display: flex;
+                    flex-direction: column;
+                    align-items: center;
+                    width: 100%;
+                    padding: 0;
+                    border: 0;
+                    background: transparent;
+                    color: inherit;
+                    font: inherit;
+                    cursor: pointer;
+                }
+
+                .stepper-seleccionar:focus-visible {
+                    outline: 2px solid var(--color-primary, #1e3a8a);
+                    outline-offset: 3px;
+                }
+
+                .stepper-paso[aria-current="step"] .stepper-etiqueta {
+                    text-decoration: underline;
                 }
 
                 .stepper-conector {
@@ -673,7 +691,9 @@ export class StepperProgreso extends HTMLElement {
                     detail: {
                         indice: idx,
                         etapa: etapas[idx],
-                        estado: this.obtenerEstadoPaso(idx)
+                        estado: this._estados[idx] ?? Object.keys(CLASE_ESTADO).find(
+                            (estado) => CLASE_ESTADO[estado] === this.obtenerEstadoPaso(idx)
+                        )
                     }
                 }));
             });

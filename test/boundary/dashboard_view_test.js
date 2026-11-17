@@ -128,6 +128,33 @@ suite("DashboardView (unitaria)", () => {
         );
     });
 
+    test("muestra nombres anidados y descripciones, conservando UUID solo en value", () => {
+        const clinicaId = "fe837c00-0000-4000-8000-000000000001";
+        const otraClinicaId = "fe837c00-0000-4000-8000-000000000002";
+        const rolId = "ab837c00-0000-4000-8000-000000000001";
+        const rolPlanoId = "ab837c00-0000-4000-8000-000000000002";
+        const asignaciones = [
+            { id: "asignacion-1", clinica: { id: clinicaId, descripcion: "Clínica Central" },
+                rol: { id: rolId, nombre: "Médico General" } },
+            { id: "asignacion-2", clinica: { id: otraClinicaId, nombre: "Clínica Norte" },
+                rol: { id: rolId, nombre: "Médico General" } },
+            { idRol: rolPlanoId, descripcion: "Personal de apoyo" }
+        ];
+        store.setState({ clinicas: [clinicaId], roles: asignaciones,
+            clinicaActiva: { idClinica: clinicaId }, rolSeleccionado: asignaciones[0] });
+
+        const clinicas = [...host.shadowRoot.querySelector("#clinica-activa").options];
+        const roles = [...host.shadowRoot.querySelector("#rol-activo").options];
+        expect(clinicas.map((opcion) => [opcion.value, opcion.textContent])).to.deep.equal([
+            [clinicaId, "Clínica Central"], [otraClinicaId, "Clínica Norte"]
+        ]);
+        expect(roles.map((opcion) => [opcion.value, opcion.textContent])).to.deep.equal([
+            [rolId, "Médico General"], [rolPlanoId, "Personal de apoyo"]
+        ]);
+        expect(host.shadowRoot.querySelector("#clinica-activa").value).to.equal(clinicaId);
+        expect(host.shadowRoot.querySelector("#rol-activo").value).to.equal(rolId);
+    });
+
     test("carga citas al conectar y renderiza <tarjeta-consulta> para cada cita", async () => {
         await new Promise((r) => setTimeout(r, 50));
 
@@ -317,6 +344,87 @@ suite("DashboardView (unitaria)", () => {
         expect(filtros.fechaDesde).to.equal("2026-01-01");
         expect(filtros.fechaHasta).to.equal("2026-01-31");
         expect(filtros.idClinica).to.equal("1");
+        expect(filtros).not.to.have.property("periodo");
+        expect(shadow.querySelector("#periodo-citas").value).to.equal("personalizado");
+    });
+
+    test("un rango invertido no consulta al backend y se puede corregir", async () => {
+        await new Promise((r) => setTimeout(r, 20));
+        const desde = host.shadowRoot.querySelector("#fechaDesde");
+        const hasta = host.shadowRoot.querySelector("#fechaHasta");
+        desde.value = "2026-11-20";
+        hasta.value = "2026-11-10";
+        hasta.dispatchEvent(new Event("change"));
+        expect(buscarCitasStub.callCount).to.equal(1);
+        expect(host.shadowRoot.querySelector("#error-fechas").hidden).to.be.false;
+        expect(hasta.getAttribute("aria-invalid")).to.equal("true");
+        hasta.value = "2026-11-20";
+        hasta.dispatchEvent(new Event("change"));
+        await new Promise((r) => setTimeout(r, 20));
+        expect(buscarCitasStub.callCount).to.equal(2);
+        expect(host.shadowRoot.querySelector("#error-fechas").hidden).to.be.true;
+    });
+
+    test("la búsqueda agrupa la escritura y conserva el contexto de clínica, rol y fechas", async () => {
+        await new Promise((r) => setTimeout(r, 20));
+        const input = host.shadowRoot.querySelector("#busqueda-citas");
+        let evento;
+        host.addEventListener("filtros-actualizados", (e) => { evento = e; });
+        input.value = "012";
+        input.dispatchEvent(new Event("input"));
+        input.value = " 01234567-8 ";
+        input.dispatchEvent(new Event("input"));
+        await new Promise((r) => setTimeout(r, 350));
+        expect(buscarCitasStub.callCount).to.equal(2);
+        expect(buscarCitasStub.secondCall.args[0]).to.include({ q: "01234567-8", idClinica: "1", idRol: "10" });
+        expect(evento.detail.filtros.fechaDesde).to.equal(host.fechaDesde);
+        expect(evento.bubbles && evento.composed).to.be.true;
+    });
+
+    test("descarta una respuesta anterior mientras espera el debounce del nuevo texto", async () => {
+        await new Promise((r) => setTimeout(r, 20));
+        let resolver;
+        buscarCitasStub.onSecondCall().returns(new Promise((r) => { resolver = r; }));
+        const cargaAnterior = host._cargarCitas();
+        const input = host.shadowRoot.querySelector("#busqueda-citas");
+        input.value = "Otro paciente";
+        input.dispatchEvent(new Event("input"));
+        resolver({ items: citasFicticias });
+        await cargaAnterior;
+        expect(host.shadowRoot.querySelectorAll("tarjeta-consulta")).to.have.length(0);
+    });
+
+    test("cada modal muestra únicamente el valor de su consulta y emite su contexto", async () => {
+        buscarCitasStub.resolves({ items: [101, 102].map((idConsulta) => ({
+            idConsulta,
+            paciente: { nombres: `Paciente ${idConsulta}`, numeroDocumento: String(idConsulta) },
+            pasosClinicos: [{ idPaso: idConsulta, nombre: "Evaluación", estado: "COMPLETADO",
+                valor: { notas: `Registro ${idConsulta}`, diagnostico: ["J00"], plan: "Reposo" } }]
+        })) });
+        await host._cargarCitas();
+        const tarjetas = [...host.shadowRoot.querySelectorAll("tarjeta-consulta")];
+        let evento;
+        host.addEventListener("registro-consulta-abierto", (e) => { evento = e; });
+        const historial1 = tarjetas[0].shadowRoot.querySelector("historial-pasos");
+        const historial2 = tarjetas[1].shadowRoot.querySelector("historial-pasos");
+        historial1.shadowRoot.querySelector(".boton").click();
+        expect(historial1.shadowRoot.querySelector("#detalle-registro").textContent).to.include("Registro 101");
+        expect(historial2.shadowRoot.querySelector("dialog").open).to.be.false;
+        expect(evento.detail.consulta.idConsulta).to.equal(101);
+        expect(evento.detail.paso.idPaso).to.equal(101);
+        expect(host.consultaSeleccionada).to.be.null;
+        expect(navigateStub.called).to.be.false;
+    });
+
+    test("una respuesta recibida después de desconectar la vista no renderiza tarjetas", async () => {
+        await new Promise((r) => setTimeout(r, 20));
+        let resolver;
+        buscarCitasStub.onSecondCall().returns(new Promise((r) => { resolver = r; }));
+        const carga = host._cargarCitas();
+        host.remove();
+        resolver({ items: citasFicticias });
+        await carga;
+        expect(host.shadowRoot.querySelectorAll("tarjeta-consulta")).to.have.length(0);
     });
 
     test("al presionar Enter en búsqueda, recarga citas con filtro q", async () => {

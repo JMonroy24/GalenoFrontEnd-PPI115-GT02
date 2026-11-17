@@ -83,6 +83,55 @@ suite("PersonaService (unitaria)", () => {
         expect(clinicas).to.deep.equal([]);
     });
 
+    test("excluye roles inactivos aunque la persona tenga un catálogo de clínicas", async () => {
+        fetchStub = sinon.stub(window, "fetch").resolves({
+            ok: true,
+            json: async () => ({ items: [{
+                numeroDocumento: "01234567-8",
+                clinicas: [{ idClinica: 99, nombre: "Catálogo general" }],
+                roles: [
+                    { activo: true, idRol: { nombre: "PACIENTE" }, idClinica: { idClinica: 1, nombre: "Activa" } },
+                    { activo: false, rol: "PACIENTE", clinica: { idClinica: 2 } },
+                    { estado: "INACTIVO", rol: "PACIENTE", clinica: { idClinica: 3 } },
+                    { activo: "0", rol: "PACIENTE", clinica: { idClinica: 4 } },
+                    { rol: { nombre: "PACIENTE", activo: false }, clinica: { idClinica: 5 } },
+                    { rol: "PACIENTE", clinica: { idClinica: 6, activo: false } },
+                    { rol: "EMPLEADO", clinica: { idClinica: 7 } }
+                ]
+            }] })
+        });
+
+        expect(await servicio.buscarClinicasPaciente("1", "01234567-8"))
+            .to.deep.equal([{ idClinica: 1, nombre: "Activa" }]);
+        expect(fetchStub.calledOnce).to.be.true;
+    });
+
+    test("no recupera otras clínicas cuando todas las asociaciones están inactivas", async () => {
+        fetchStub = sinon.stub(window, "fetch").resolves({
+            ok: true,
+            json: async () => ({ items: [{
+                idPersona: 7, numeroDocumento: "01234567-8",
+                clinicas: [{ idClinica: 3, activo: false }]
+            }] })
+        });
+
+        expect(await servicio.buscarClinicasPaciente("1", "01234567-8")).to.deep.equal([]);
+        expect(fetchStub.calledOnce).to.be.true;
+    });
+
+    test("no usa coincidencias parciales ni otro tipo de documento", async () => {
+        fetchStub = sinon.stub(window, "fetch").resolves({
+            ok: true,
+            json: async () => ({ items: [
+                { idPersona: 1, numeroDocumento: "01234567-9", idTipoDocumento: 1 },
+                { idPersona: 2, numeroDocumento: "01234567-8", idTipoDocumento: { idTipoDocumento: 2 } }
+            ] })
+        });
+
+        expect(await servicio.buscarClinicasPaciente("1", "01234567-8")).to.deep.equal([]);
+        expect(fetchStub.calledOnce).to.be.true;
+    });
+
     test("buscarClinicasPaciente consulta el subrecurso de clínicas si no vienen embebidas", async () => {
         fetchStub = sinon.stub(window, "fetch");
 

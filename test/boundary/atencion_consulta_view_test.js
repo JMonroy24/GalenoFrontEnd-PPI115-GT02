@@ -12,9 +12,14 @@ suite("AtencionConsultaView (unitaria)", () => {
     let navigateStub;
     let registrarAtencionStub;
     let tipoExamenStub;
+    let estadoOriginal;
+
+    const seleccionarPaso = (indice) => host.shadowRoot.querySelector("stepper-progreso")
+        .shadowRoot.querySelector(`[data-indice="${indice}"] button`).click();
 
     const consultaFicticia = {
         idConsulta: 55,
+        pasoActivo: 1,
         fecha: "2026-11-12",
         hora: "10:00",
         clinica: "Clínica Central",
@@ -26,6 +31,7 @@ suite("AtencionConsultaView (unitaria)", () => {
     };
 
     setup(() => {
+        estadoOriginal = { ...store.getState() };
         navigateStub = sinon.stub(routerModule.router, "navigate");
 
         registrarAtencionStub = sinon
@@ -38,7 +44,7 @@ suite("AtencionConsultaView (unitaria)", () => {
 
         store.setState({
             token: "fake-jwt",
-            consultaActiva: consultaFicticia
+            consultaActiva: structuredClone(consultaFicticia)
         });
 
         host = document.createElement("atencion-consulta-view");
@@ -46,17 +52,12 @@ suite("AtencionConsultaView (unitaria)", () => {
     });
 
     teardown(() => {
+        host?.remove();
         navigateStub?.restore();
         registrarAtencionStub?.restore();
         tipoExamenStub?.restore();
-        if (host?.parentNode) {
-            host.parentNode.removeChild(host);
-        }
-        store.setState({
-            consultaActiva: null,
-            consultaSeleccionada: null,
-            consulta: null
-        });
+        store.setState({ ...estadoOriginal, consultaActiva: null,
+            consultaSeleccionada: null, consulta: null });
     });
 
     // ── Registro del componente ──────────────────────────────────────────────
@@ -237,35 +238,47 @@ suite("AtencionConsultaView (unitaria)", () => {
         expect(btnAnterior.disabled).to.be.false;
 
         // Cambiar al paso 0
-        host._irAlPaso(0);
-        expect(btnAnterior.disabled).to.be.true;
+        seleccionarPaso(0);
+        expect(host.shadowRoot.querySelector("#btn-anterior").disabled).to.be.true;
 
         // Retroceder al paso 1
-        host._irAlPaso(1);
-        expect(btnAnterior.disabled).to.be.false;
+        seleccionarPaso(1);
+        expect(host.shadowRoot.querySelector("#btn-anterior").disabled).to.be.false;
     });
 
-    test("botón #btn-anterior retrocede al paso anterior al hacer clic", () => {
-        const btnAnterior = host.shadowRoot.querySelector("#btn-anterior");
-        host._irAlPaso(2);
-        expect(host._pasoActivo).to.equal(2);
+    test("botón #btn-anterior retrocede al paso anterior al hacer clic", async () => {
+        seleccionarPaso(2);
+        expect(host.shadowRoot.querySelector("stepper-progreso").pasoActivo).to.equal(2);
 
-        btnAnterior.click();
-        expect(host._pasoActivo).to.equal(1);
+        const retroceder = sinon.spy(host, "_retrocederPaso");
+        try {
+            host.shadowRoot.querySelector("#btn-anterior").click();
+            expect(retroceder.calledOnce).to.be.true;
+            await retroceder.firstCall.returnValue;
+        } finally {
+            retroceder.restore();
+        }
+        expect(host.shadowRoot.querySelector("stepper-progreso").pasoActivo).to.equal(1);
+        expect(registrarAtencionStub.called).to.be.true;
     });
 
     test("en paso intermedio guarda y avanza al siguiente paso sin salir al dashboard", async () => {
-        host._irAlPaso(1); // paso 1 de 4 (intermedio)
+        seleccionarPaso(1); // paso 1 de 4 (intermedio)
         host.shadowRoot.querySelector("#notas-consulta").value = "Notas paso intermedio";
 
-        const btnGuardar = host.shadowRoot.querySelector("#btn-guardar");
+        const btnGuardar = host.shadowRoot.querySelector("#btn-siguiente");
         expect(btnGuardar.textContent).to.contain("Guardar y Avanzar");
 
-        host.shadowRoot.querySelector("form#form-clinico").dispatchEvent(
-            new Event("submit", { bubbles: true, cancelable: true })
-        );
-
-        await new Promise((r) => setTimeout(r, 60));
+        const enviar = sinon.spy(host, "_alEnviarFormulario");
+        try {
+            host.shadowRoot.querySelector("form#form-clinico").dispatchEvent(
+                new Event("submit", { bubbles: true, cancelable: true })
+            );
+            expect(enviar.calledOnce).to.be.true;
+            await enviar.firstCall.returnValue;
+        } finally {
+            enviar.restore();
+        }
 
         expect(registrarAtencionStub.called).to.be.true;
         expect(host._pasoActivo).to.equal(2);
@@ -273,7 +286,7 @@ suite("AtencionConsultaView (unitaria)", () => {
     });
 
     test("en el último paso muestra botón Finalizar Consulta y al enviar redirige a #dashboard", async () => {
-        host._irAlPaso(3); // paso 3 de 4 (último paso)
+        seleccionarPaso(3); // paso 3 de 4 (último paso)
 
         const btnFinalizar = host.shadowRoot.querySelector("#btn-finalizar");
         assert.isNotNull(btnFinalizar, "Debe existir botón Finalizar en el último paso");
@@ -334,7 +347,7 @@ suite("AtencionConsultaView (unitaria)", () => {
 
         await new Promise((r) => setTimeout(r, 100));
 
-        expect(registrarAtencionStub.calledOnce).to.be.true;
+        expect(registrarAtencionStub.callCount).to.equal(2);
         expect(registrarAtencionStub.firstCall.args[0]).to.equal(55);
         assert.isNotNull(eventoGuardado, "Debe despachar 'consulta-guardada'");
         expect(eventoGuardado.datos.notasConsulta).to.equal("Fiebre 38°C, tos seca");
@@ -376,9 +389,11 @@ suite("AtencionConsultaView (unitaria)", () => {
         host.shadowRoot.querySelector("#btn-anterior").click();
         await new Promise((r) => setTimeout(r, 50));
 
-        expect(registrarAtencionStub.calledOnce).to.be.true;
-        expect(registrarAtencionStub.firstCall.args[1].paso.indice).to.equal(1);
-        expect(registrarAtencionStub.firstCall.args[1].estadoPaso).to.equal("EN_CURSO");
+        expect(registrarAtencionStub.callCount).to.equal(2);
+        expect(registrarAtencionStub.firstCall.args[1].paso.indice).to.equal(2);
+        expect(registrarAtencionStub.firstCall.args[1].estadoPaso).to.equal("PENDIENTE");
+        expect(registrarAtencionStub.secondCall.args[1].paso.indice).to.equal(1);
+        expect(registrarAtencionStub.secondCall.args[1].estadoPaso).to.equal("EN_CURSO");
         expect(host.shadowRoot.querySelector("stepper-progreso").pasoActivo).to.equal(1);
     });
 
@@ -392,10 +407,11 @@ suite("AtencionConsultaView (unitaria)", () => {
         await new Promise((r) => setTimeout(r, 50));
 
         const payload = registrarAtencionStub.firstCall.args[1];
-        expect(registrarAtencionStub.calledOnce).to.be.true;
+        expect(registrarAtencionStub.callCount).to.equal(2);
         expect(payload.paso.indice).to.equal(1);
         expect(payload.estadoPaso).to.equal("COMPLETADO");
-        expect(payload.siguientePaso.estado).to.equal("EN_CURSO");
+        expect(registrarAtencionStub.secondCall.args[1].estadoPaso).to.equal("EN_CURSO");
+        expect(registrarAtencionStub.secondCall.args[1].indicePaso).to.equal(2);
         expect(payload.consulta_procedimiento_paso.valor).to.deep.equal({
             notas: "Paciente estable",
             diagnostico: ["J00"],
@@ -438,6 +454,135 @@ suite("AtencionConsultaView (unitaria)", () => {
         });
         expect(payload.fechaFin).to.be.a("string");
         expect(navigateStub.calledWith("#dashboard")).to.be.true;
+    });
+
+    test("inicia en el primer paso cuando el backend no indica uno activo", () => {
+        store.setState({ consultaActiva: { idConsulta: 55 } });
+        expect(host._pasoActivo).to.equal(0);
+        expect(host.shadowRoot.querySelector("#btn-anterior").disabled).to.be.true;
+    });
+
+    test("usa la secuencia y los identificadores del backend aunque sus nombres sean distintos", async () => {
+        store.setState({ consultaActiva: {
+            idConsulta: 55,
+            consultaProcedimientoPasos: [
+                { idConsultaProcedimientoPaso: 92, nombre: "Indicaciones", orden: 2, estado: "PENDIENTE" },
+                { idConsultaProcedimientoPaso: 91, nombre: "Exploración", orden: 1, estado: "EN_CURSO" }
+            ]
+        } });
+        expect(host.shadowRoot.querySelector("stepper-progreso").etapas)
+            .to.deep.equal(["Exploración", "Indicaciones"]);
+        host.cargarDatosFormulario({ notasConsulta: "Estable" });
+        await host._avanzarPaso();
+        expect(registrarAtencionStub.firstCall.args[1].idPaso).to.equal(91);
+        expect(registrarAtencionStub.secondCall.args[1].idPaso).to.equal(92);
+        expect(host.shadowRoot.querySelector("#btn-finalizar")).not.to.be.null;
+        expect(store.getState().consultaActiva.pasoActivo).to.equal(1);
+    });
+
+    test("seleccionar un paso recupera valor JSON sin copiar los datos de otro paso", () => {
+        const diagnostico = { codigo: "J00", nombre: "Rinofaringitis" };
+        store.setState({ consultaActiva: {
+            idConsulta: 55,
+            notasConsulta: "Estas notas globales no pertenecen al paso vacío",
+            pasos: [
+                { idPaso: 10, nombre: "Evaluación", estado: "EN_CURSO",
+                    consulta_procedimiento_paso: { valor: JSON.stringify({ notas: "Control", diagnostico: [diagnostico], plan: "Reposo" }) } },
+                { idPaso: 11, nombre: "Indicaciones", estado: "PENDIENTE" }
+            ]
+        } });
+        expect(host.obtenerDatosFormulario()).to.deep.equal({
+            notasConsulta: "Control", diagnosticos: [diagnostico], planTratamiento: "Reposo"
+        });
+        host.shadowRoot.querySelector("stepper-progreso").shadowRoot
+            .querySelector('[data-indice="1"] button').click();
+        expect(host.obtenerDatosFormulario()).to.deep.equal({
+            notasConsulta: "", diagnosticos: [], planTratamiento: ""
+        });
+        expect(host.shadowRoot.querySelector("#form-clinico").dataset.estadoPaso).to.equal("PENDIENTE");
+        expect(registrarAtencionStub.called).to.be.false;
+        host._seleccionarPaso(0);
+        expect(host.obtenerDatosFormulario().diagnosticos).to.deep.equal([diagnostico]);
+        expect(host.obtenerDatosFormulario().notasConsulta).to.equal("Control");
+    });
+
+    test("conserva los borradores y las eliminaciones al cambiar de paso", () => {
+        host.cargarDatosFormulario({ notasConsulta: "Borrador", planTratamiento: "" });
+        host.shadowRoot.querySelector("#cie10-busqueda").seleccionados = ["J00"];
+        host._seleccionarPaso(2);
+        host._seleccionarPaso(1);
+        expect(host.obtenerDatosFormulario().notasConsulta).to.equal("Borrador");
+        expect(host.obtenerDatosFormulario().diagnosticos).to.deep.equal(["J00"]);
+        host.shadowRoot.querySelector("#cie10-busqueda").seleccionados = [];
+        host.cargarDatosFormulario({ notasConsulta: "" });
+        host._seleccionarPaso(2);
+        host._seleccionarPaso(1);
+        expect(host.obtenerDatosFormulario().notasConsulta).to.equal("");
+        expect(host.obtenerDatosFormulario().diagnosticos).to.deep.equal([]);
+    });
+
+    test("un fallo de guardado conserva las notas y no activa el siguiente paso", async () => {
+        registrarAtencionStub.rejects(new Error("Sin conexión"));
+        host.cargarDatosFormulario({ notasConsulta: "No perder" });
+        await host._avanzarPaso();
+        expect(registrarAtencionStub.calledOnce).to.be.true;
+        expect(host._pasoActivo).to.equal(1);
+        expect(host.obtenerDatosFormulario().notasConsulta).to.equal("No perder");
+        expect(navigateStub.called).to.be.false;
+        expect(host.shadowRoot.querySelector("#btn-siguiente").disabled).to.be.false;
+    });
+
+    test("si falla la activación muestra el paso ya guardado y permite reintentar", async () => {
+        registrarAtencionStub.onSecondCall().rejects(new Error("No se pudo activar"));
+        host.cargarDatosFormulario({ notasConsulta: "Guardado" });
+        await host._avanzarPaso();
+        expect(host._pasoActivo).to.equal(1);
+        expect(host.shadowRoot.querySelector("stepper-progreso").estados[1]).to.equal("COMPLETADO");
+        expect(host.obtenerDatosFormulario().notasConsulta).to.equal("Guardado");
+        expect(navigateStub.called).to.be.false;
+    });
+
+    test("retroceder persiste también las notas del paso que se abandona", async () => {
+        host.cargarDatosFormulario({ notasConsulta: "Evolución", planTratamiento: "Reposo" });
+        await host._retrocederPaso();
+        expect(registrarAtencionStub.firstCall.args[1].consulta_procedimiento_paso.valor)
+            .to.deep.equal({ notas: "Evolución", diagnostico: [], plan: "Reposo" });
+        host._seleccionarPaso(1);
+        expect(host.obtenerDatosFormulario().notasConsulta).to.equal("Evolución");
+    });
+
+    test("permite guardar un paso que solamente contiene diagnóstico CIE-10", async () => {
+        host.shadowRoot.querySelector("#cie10-busqueda").seleccionados = ["J00"];
+        await host._avanzarPaso();
+        expect(registrarAtencionStub.callCount).to.equal(2);
+        expect(registrarAtencionStub.firstCall.args[1].consulta_procedimiento_paso.valor.diagnostico)
+            .to.deep.equal(["J00"]);
+    });
+
+    test("refresca la consulta del backend aunque ya exista en el store", async () => {
+        const obtener = sinon.stub(consultaService, "findById").resolves({
+            idConsulta: 55,
+            pasos: [{ idPaso: 100, nombre: "Revisión final", estado: "EN_CURSO", valor: { notas: "Desde backend" } }]
+        });
+        try {
+            await host._cargarConsultaPorId("55");
+            expect(obtener.calledOnceWith("55")).to.be.true;
+            expect(host.obtenerDatosFormulario().notasConsulta).to.equal("Desde backend");
+            expect(host.shadowRoot.querySelector("#lista-examenes").getAttribute("id-paso")).to.equal("100");
+        } finally {
+            obtener.restore();
+        }
+    });
+
+    test("no cierra ni redirige si falla el guardado del último paso", async () => {
+        store.setState({ consultaActiva: { idConsulta: 55, pasos: [
+            { idPaso: 100, nombre: "Cierre", estado: "EN_CURSO" }
+        ] } });
+        registrarAtencionStub.rejects(new Error("Error de servidor"));
+        host.cargarDatosFormulario({ notasConsulta: "Alta pendiente" });
+        await host._finalizarConsulta();
+        expect(host._consulta.fechaFin).to.be.undefined;
+        expect(navigateStub.called).to.be.false;
     });
 
     // ── Aviso sin consulta activa ────────────────────────────────────────────

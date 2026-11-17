@@ -29,14 +29,41 @@ export class ConsultaService extends DefaultService {
             "Error al consultar las citas"
         );
         const payload = await response.json();
-        const items = Array.isArray(payload) ? payload : payload?.items;
+        const items = Array.isArray(payload?.items)
+            ? payload.items.filter((consulta) => consulta !== null
+                && typeof consulta === "object" && !Array.isArray(consulta))
+                .map((consulta) => this._mapearConsulta(consulta))
+            : [];
 
         return new DefaultResponse(
-            Array.isArray(items) ? items : [],
+            items,
             payload?.total ?? 0,
             payload?.first ?? 0,
             payload?.max ?? 0
         );
+    }
+
+    _mapearConsulta(consulta) {
+        const datos = { ...consulta.cita, ...consulta };
+        const paciente = datos.paciente ?? datos.persona ?? datos.idPersona;
+        const procedimientos = datos.procedimientos
+            ?? datos.consultaProcedimientos
+            ?? datos.consultaProcedimientoList
+            ?? datos.procedimientosActivos
+            ?? datos.detalles ?? datos.detallesConsulta ?? datos.detalleConsulta;
+
+        // Conservar el JSON original (incluidos rol, clínica y pasos anidados)
+        // y exponer los nombres que comparten las vistas de búsqueda y dashboard.
+        return {
+            ...consulta,
+            idConsulta: consulta.idConsulta ?? consulta.id,
+            fecha: datos.fecha ?? datos.fechaConsulta ?? datos.fechaCita ?? datos.fechaHora,
+            clinica: datos.clinica ?? datos.idClinica,
+            paciente: paciente?.persona ?? paciente,
+            procedimientos: Array.isArray(procedimientos)
+                ? procedimientos
+                : Array.isArray(procedimientos?.items) ? procedimientos.items : []
+        };
     }
 
     buscarCitas(filtros = {}, first = 0, max = DEFAULT_PAGE_SIZE) {
@@ -79,6 +106,8 @@ export class ConsultaService extends DefaultService {
      * compartido de paginación del servicio base.
      *
      * @param {object}  opciones
+     * @param {string|number} [opciones.pacienteId] - Identificador del paciente.
+     * @param {string|number} [opciones.idPaciente] - Alias identificador del paciente.
      * @param {string}  [opciones.tipoDocumento]   - Tipo de documento de identidad del paciente.
      * @param {string}  [opciones.numeroDocumento] - Número de documento de identidad del paciente.
      * @param {string|number} [opciones.idClinica] - Identificador de la clínica.
@@ -90,12 +119,14 @@ export class ConsultaService extends DefaultService {
      * @returns {Promise<DefaultResponse>}
      */
     async buscarPorPacienteYFechas(
-        { tipoDocumento, numeroDocumento, idClinica, clinicaId, fechaDesde, fechaHasta } = {},
+        { pacienteId, idPaciente, tipoDocumento, numeroDocumento, idClinica, clinicaId, fechaDesde, fechaHasta } = {},
         first = 0,
         max = DEFAULT_PAGE_SIZE
     ) {
         const clinica = idClinica ?? clinicaId;
+        const paciente = pacienteId ?? idPaciente;
         const filtros = {
+            ...(paciente != null ? { pacienteId: paciente }         : {}),
             ...(tipoDocumento   ? { tipoDocumento }                : {}),
             ...(numeroDocumento ? { numeroDocumento }              : {}),
             ...(clinica         ? { idClinica: clinica }           : {}),
@@ -154,10 +185,14 @@ export class ConsultaService extends DefaultService {
     }
 
     async descargarTicketPdf(idConsulta) {
-        const url = `${ENDPOINTS.API_BASE}${ENDPOINTS.CONSULTAS}/${encodeURIComponent(idConsulta)}/ticket`;
+        if (idConsulta == null || String(idConsulta).trim() === "") {
+            throw new Error("La consulta no tiene un identificador válido para descargar el ticket.");
+        }
+
+        const url = `${this._urlBase}/${encodeURIComponent(idConsulta)}/ticket`;
         const response = await this._request(
             url,
-            { method: "GET" },
+            { method: "GET", headers: { Accept: "application/pdf" } },
             "Error al descargar el ticket de la consulta"
         );
         const blob = await response.blob();
@@ -173,7 +208,8 @@ export class ConsultaService extends DefaultService {
             enlace.click();
         } finally {
             enlace.remove?.();
-            URL.revokeObjectURL(objectUrl);
+            // Da tiempo al navegador para iniciar la descarga antes de liberar el blob.
+            setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
         }
 
         return blob;

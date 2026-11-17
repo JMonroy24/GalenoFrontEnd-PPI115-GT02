@@ -1,4 +1,4 @@
-const CACHE_NAME = "galenosv-app-shell-v15";
+const CACHE_NAME = "galenosv-app-shell-v17";
 
 const APP_SHELL = [
     "/index.html",
@@ -17,6 +17,7 @@ const APP_SHELL = [
     "/js/boundary/vistas/dashboard_view.js",
     "/js/boundary/vistas/atencion_consulta_view.js",
     "/js/boundary/componentes/asistente_busqueda.js",
+    "/js/boundary/componentes/acceso_api.js",
     "/js/boundary/componentes/autocomplete.js",
     "/js/boundary/componentes/autocomplete_cie10.js",
     "/js/boundary/componentes/buscador_tipo_doc.js",
@@ -32,6 +33,7 @@ const APP_SHELL = [
     "/js/boundary/componentes/tarjeta_consulta.js",
     "/js/boundary/componentes/tarjeta_simple.js",
     "/js/control/auth_service.js",
+    "/js/control/api_auth_service.js",
     "/js/control/cie10_service.js",
     "/js/control/clinica_service.js",
     "/js/control/consulta_procedimiento_service.js",
@@ -50,7 +52,7 @@ const APP_SHELL = [
     "/js/control/tipo_medio_contacto_service.js",
     "/js/entity/default_error.js",
     "/js/entity/default_response.js"
-];
+].map((path) => new URL(path.slice(1), self.registration.scope).href);
 
 const offlineFallback = () => new Response(
     JSON.stringify({
@@ -66,7 +68,7 @@ const networkFirst = async (request) => {
     const cache = await caches.open(CACHE_NAME);
 
     try {
-        const response = await fetch(request);
+        const response = await fetch(request, { cache: "no-cache" });
 
         if (response && response.ok) {
             await cache.put(request, response.clone());
@@ -81,7 +83,7 @@ const networkFirst = async (request) => {
         }
 
         if (request.mode === "navigate") {
-            const appShell = await cache.match("/index.html");
+            const appShell = await cache.match(new URL("index.html", self.registration.scope).href);
 
             if (appShell) {
                 return appShell;
@@ -95,7 +97,7 @@ const networkFirst = async (request) => {
 self.addEventListener("install", (event) => {
     event.waitUntil(
         caches.open(CACHE_NAME)
-            .then((cache) => cache.addAll(APP_SHELL))
+            .then((cache) => cache.addAll(APP_SHELL.map((url) => new Request(url, { cache: "reload" }))))
             .then(() => self.skipWaiting())
     );
 });
@@ -114,6 +116,12 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
     if (event.request.method !== "GET") {
+        return;
+    }
+
+    // Los datos y las credenciales de la API se consultan siempre al servidor.
+    if (event.request.headers.has("Authorization")
+        || new URL(event.request.url).pathname.startsWith("/galenoSV/api/")) {
         return;
     }
 

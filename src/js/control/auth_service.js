@@ -1,9 +1,10 @@
 import DefaultService from "./default_service.js";
-import { personaRolService } from "./persona_rol_service.js";
+import { API_BASE, DEFAULT_PAGE_SIZE } from "../config.js";
 import { ENDPOINTS } from "../routes.js";
 import GeneradorMensajes from "./generador_mensajes.js";
 import DefaultError from "../entity/default_error.js";
 import { store } from "../store.js";
+import { apiAuthService } from "./api_auth_service.js";
 
 export const SESSION_STORAGE_KEY = "galeno_session";
 
@@ -15,7 +16,12 @@ const ESTADOS_INACTIVOS = new Set([
     "eliminado",
     "eliminada",
     "deshabilitado",
-    "deshabilitada"
+    "deshabilitada",
+    "suspendido",
+    "suspendida",
+    "baja",
+    "false",
+    "0"
 ]);
 
 export class AuthService extends DefaultService {
@@ -26,23 +32,37 @@ export class AuthService extends DefaultService {
     }
 
     async login(tipoDocumentoId, numeroDocumento) {
-        const idTipoDocumento = tipoDocumentoId;
+        const idTipoDocumento = String(tipoDocumentoId ?? "").trim();
+        const documento = String(numeroDocumento ?? "").trim();
+
+        if (!idTipoDocumento || !documento) {
+            throw new DefaultError("Seleccione el tipo e ingrese el número de documento.", {
+                status: 422
+            });
+        }
+
         const params = new URLSearchParams();
-        params.set("tipoDocumentoId", String(idTipoDocumento ?? ""));
-        params.set("idTipoDocumento", String(idTipoDocumento ?? ""));
-        params.set("numeroDocumento", String(numeroDocumento ?? ""));
+        params.set("tipoDocumentoId", idTipoDocumento);
+        params.set("valor", documento);
+        const url = `${this._urlBase}?${params.toString()}`;
 
         try {
+            console.log("Petición Persona URL:", url);
             const response = await this._request(
-                `${this._urlBase}?${params.toString()}`,
+                url,
                 { method: "GET" },
                 "Error al autenticar al empleado"
             );
             const payload = await this._parseBody(response);
-            const perfil = this._extraerPerfil(payload);
+            console.log("Respuesta Backend Persona:", payload);
+            console.log("Personas encontradas:", payload?.items);
+            const perfil = Array.isArray(payload?.items) && payload.items.length > 0
+                ? payload.items[0]
+                : null;
+            console.log("Persona seleccionada:", perfil);
 
             if (!perfil) {
-                const mensaje = "No se encontró la persona indicada.";
+                const mensaje = "Usuario no encontrado";
                 GeneradorMensajes.crearMensaje("Usuario no encontrado", mensaje, "error");
                 throw new DefaultError(mensaje, {
                     status: 404,
@@ -50,12 +70,19 @@ export class AuthService extends DefaultService {
                 });
             }
 
-            const idPersona = this._obtenerIdPersona(perfil, numeroDocumento);
+            const idPersona = this._obtenerIdPersona(perfil);
+
+            if (idPersona === undefined || idPersona === null || idPersona === "") {
+                throw new DefaultError("La persona no tiene un identificador válido.", { status: 422 });
+            }
+
             const roles = await this._obtenerRoles(idPersona);
-            const rolesEmpleado = roles.filter((personaRol) => this._esRolEmpleado(personaRol));
+            const rolesEmpleado = roles.filter((personaRol) => (
+                this._perteneceAPersona(personaRol, idPersona)
+            ));
 
             if (rolesEmpleado.length === 0) {
-                const mensaje = "Acceso denegado: la persona no tiene roles de empleado activos.";
+                const mensaje = "Acceso denegado: la persona no tiene roles asignados.";
                 GeneradorMensajes.crearMensaje("Acceso denegado", mensaje, "error");
                 throw new DefaultError(mensaje, {
                     status: 403,
@@ -63,8 +90,17 @@ export class AuthService extends DefaultService {
                 });
             }
 
-            const rolSeleccionado = rolesEmpleado[0] ?? null;
-            const clinicaActiva = this._obtenerClinica(perfil, rolesEmpleado, rolSeleccionado);
+            const rolSeleccionado = rolesEmpleado.find((personaRol) => (
+                this._obtenerClinica(null, [], personaRol)
+            )) ?? rolesEmpleado[0];
+            const clinicaActiva = this._obtenerClinica(perfil, [], rolSeleccionado);
+
+            if (!clinicaActiva) {
+                throw new DefaultError("El empleado no tiene una clínica activa asignada.", {
+                    status: 403
+                });
+            }
+
             const sesion = {
                 perfil,
                 usuario: perfil,
@@ -76,6 +112,7 @@ export class AuthService extends DefaultService {
             };
 
             this._guardarSesion(sesion);
+            this.sesion = sesion;
             this._sincronizarStore(sesion, { clinicaActiva, rolSeleccionado });
 
             return sesion;
@@ -138,6 +175,7 @@ export class AuthService extends DefaultService {
     }
 
     logout() {
+        apiAuthService.logout();
         const almacen = this._obtenerAlmacen();
 
         if (almacen) {
@@ -208,23 +246,35 @@ export class AuthService extends DefaultService {
     }
 
     async _obtenerRoles(idPersona) {
-        const respuesta = await personaRolService.buscarRolesPorPersona(idPersona);
+        const params = new URLSearchParams({ first: "0", max: String(DEFAULT_PAGE_SIZE), personaId: String(idPersona) });
+        const url = `${API_BASE.replace(/\/+$/, "")}${ENDPOINTS.PERSONAS_ROLES}?${params.toString()}`;
 
-        if (Array.isArray(respuesta?.items)) {
-            return respuesta.items;
-        }
+        console.log("Petición Roles URL:", url);
+        const response = await this._request(url, { method: "GET" }, "Error al obtener los roles de la persona");
+        const respuesta = await this._parseBody(response);
+        console.log("Respuesta Backend Roles:", respuesta);
+        const roles = Array.isArray(respuesta?.items)
+            ? respuesta.items
+            : Array.isArray(respuesta) ? respuesta : [];
 
-        if (Array.isArray(respuesta?.datos)) {
-            return respuesta.datos;
-        }
+        // El backend decide qué asignaciones son válidas; no inferir permisos
+        // a partir del nombre de registro.rol ni de un atributo esEmpleado.
+        return roles.filter((registro) => registro !== null
+            && typeof registro === "object" && !Array.isArray(registro));
+    }
 
-        return Array.isArray(respuesta) ? respuesta : [];
+    _perteneceAPersona(personaRol, idPersona) {
+        const persona = personaRol?.persona ?? personaRol?.idPersona;
+        const id = typeof persona === "object" ? this._obtenerIdPersona(persona) : persona;
+
+        return id === undefined || id === null || String(id) === String(idPersona);
     }
 
     _obtenerClinica(perfil, roles = [], rolSeleccionado = null) {
         const fuentes = [
-            perfil,
             rolSeleccionado,
+            rolSeleccionado?.rol,
+            perfil,
             ...roles,
             ...roles.map((personaRol) => personaRol?.rol)
         ];
@@ -236,8 +286,12 @@ export class AuthService extends DefaultService {
 
             const clinicas = fuente.clinicas ?? fuente.clinicasAsignadas;
 
-            if (Array.isArray(clinicas) && clinicas.length > 0) {
-                return clinicas[0];
+            if (Array.isArray(clinicas)) {
+                const clinica = clinicas.find((item) => this._esClinicaValida(item));
+
+                if (clinica) {
+                    return clinica;
+                }
             }
 
             const clinica = fuente.clinicaActiva ?? fuente.clinica;
@@ -245,25 +299,19 @@ export class AuthService extends DefaultService {
             if (this._esClinicaValida(clinica)) {
                 return clinica;
             }
-        }
 
-        for (const fuente of fuentes) {
-            if (!fuente) {
+            const idClinica = fuente.idClinica ?? fuente.idClinicaEmpleado;
+
+            if (!this._esClinicaValida(idClinica)) {
                 continue;
             }
 
-            const clinica = fuente.idClinica ?? fuente.idClinicaEmpleado;
-
-            if (!this._esClinicaValida(clinica)) {
-                continue;
-            }
-
-            if (typeof clinica === "object") {
-                return clinica;
+            if (typeof idClinica === "object") {
+                return idClinica;
             }
 
             const nombre = fuente.nombreClinica ?? fuente.clinicaNombre;
-            return nombre ? { idClinica: clinica, nombre } : { idClinica: clinica };
+            return nombre ? { idClinica, nombre } : { idClinica };
         }
 
         return null;
@@ -273,44 +321,15 @@ export class AuthService extends DefaultService {
         return clinica !== undefined
             && clinica !== null
             && clinica !== ""
-            && !(typeof clinica === "object" && Object.keys(clinica).length === 0);
+            && !(typeof clinica === "object" && Object.keys(clinica).length === 0)
+            && this._estaActivo(clinica);
     }
 
-    _extraerPerfil(payload) {
-        if (Array.isArray(payload)) {
-            return payload[0] ?? null;
-        }
-
-        const perfil = payload?.perfil
-            ?? payload?.persona
-            ?? payload?.usuario
-            ?? payload?.items?.[0];
-
-        if (perfil) {
-            return perfil;
-        }
-
-        if (payload && typeof payload === "object") {
-            const tieneDatosPersona = payload.idPersona !== undefined
-                || payload.id !== undefined
-                || payload.numeroDocumento !== undefined
-                || payload.nombres !== undefined
-                || payload.dui !== undefined;
-
-            if (tieneDatosPersona) {
-                return payload;
-            }
-        }
-
-        return null;
-    }
-
-    _obtenerIdPersona(perfil, numeroDocumento) {
-        return perfil?.idPersona
-            ?? perfil?.id
-            ?? perfil?.persona?.idPersona
-            ?? perfil?.persona?.id
-            ?? numeroDocumento;
+    _obtenerIdPersona(perfil) {
+        return [perfil?.id, perfil?.idPersona, perfil?.persona?.id, perfil?.persona?.idPersona]
+            .map((id) => typeof id === "string" ? id.trim() : id)
+            .find((id) => (typeof id === "string" && id !== "")
+                || (typeof id === "number" && Number.isFinite(id)));
     }
 
     _obtenerToken(payload, perfil, response) {
@@ -329,62 +348,19 @@ export class AuthService extends DefaultService {
             ?? (tokenCabecera || null);
     }
 
-    _esRolEmpleado(personaRol) {
-        if (!this._estaActivo(personaRol)) {
-            return false;
-        }
-
-        const rol = personaRol?.rol ?? personaRol?.idRol ?? null;
-
-        if (rol?.esEmpleado === true || personaRol?.esEmpleado === true) {
-            return true;
-        }
-
-        if (rol?.esEmpleado === false || personaRol?.esEmpleado === false) {
-            return false;
-        }
-
-        const nombre = String(
-            rol?.nombre
-            ?? rol?.name
-            ?? rol?.descripcion
-            ?? personaRol?.nombreRol
-            ?? personaRol?.rolNombre
-            ?? (typeof rol === "string" ? rol : "")
-            ?? ""
-        ).toUpperCase();
-
-        const tipo = String(
-            rol?.tipo
-            ?? rol?.tipoRol
-            ?? personaRol?.tipoRol
-            ?? ""
-        ).toUpperCase();
-
-        if (nombre.includes("PACIENTE")) {
-            return false;
-        }
-
-        if (nombre.includes("EMPLEADO") || nombre.includes("EMPLEADA")) {
-            return true;
-        }
-
-        if (tipo.includes("EMPLEADO")) {
-            return true;
-        }
-
-        return true;
-    }
-
     _estaActivo(personaRol) {
-        if (personaRol?.activo === false || personaRol?.activa === false) {
+        const indicadores = [personaRol?.activo, personaRol?.activa];
+
+        if (indicadores.some((valor) => valor != null && ESTADOS_INACTIVOS.has(
+            String(valor).trim().toLowerCase()
+        ))) {
             return false;
         }
 
         const estado = personaRol?.estado ?? personaRol?.estadoPersonaRol;
         const nombreEstado = typeof estado === "object" ? estado?.nombre : estado;
 
-        return !ESTADOS_INACTIVOS.has(String(nombreEstado ?? "").toLowerCase());
+        return !ESTADOS_INACTIVOS.has(String(nombreEstado ?? "").trim().toLowerCase());
     }
 }
 

@@ -1,7 +1,9 @@
 import ConsultaService from "../../src/js/control/consulta_service.js";
 import DefaultResponse from "../../src/js/entity/default_response.js";
+import { API_BASE } from "../../src/js/config.js";
 import { ENDPOINTS } from "../../src/js/routes.js";
 import { expect } from "../lib/chai/index.js";
+import "../../src/js/boundary/componentes/acceso_api.js";
 
 mocha.setup("bdd");
 
@@ -9,8 +11,10 @@ mocha.setup("bdd");
 describe("ConsultaService (integración con Open Liberty)", function () {
     this.timeout(5000);
 
-    it("responde 200 sin errores de CORS", async () => {
-        const response = await fetch(`${ENDPOINTS.API_BASE}${ENDPOINTS.CONSULTAS}?first=0&max=10`);
+    it("responde 200 con HTTPS y BASIC, sin errores de CORS", async function () {
+        this.timeout(120000);
+        const servicio = new ConsultaService();
+        const response = await servicio._request(`${API_BASE}${ENDPOINTS.CONSULTAS}?first=0&max=10`);
         expect(response.status).to.equal(200);
     });
 
