@@ -20,8 +20,10 @@ export class DefaultService {
     async _request(url, options = {}, fallbackMessage = "Error al acceder al repositorio", reintentarAutenticacion = true) {
         const method = String(options.method ?? "GET").toUpperCase();
 
+        // Interceptar antes de preparar o enviar la petición, incluso si el store
+        // todavía no recibió el evento offline del navegador.
         if (this._esOperacionEscritura(method) && this._estaSinConexion()) {
-            const mensaje = "Operación no disponible sin conexión. Conéctese a internet para guardar los cambios";
+            const mensaje = "Operación no disponible sin conexión. Conéctese a internet para guardar, modificar o eliminar datos.";
 
             GeneradorMensajes.crearMensaje("Sin conexión", mensaje, "warning");
 
@@ -130,11 +132,7 @@ export class DefaultService {
     }
 
     _estaSinConexion() {
-        const navegadorOnline = typeof navigator === "undefined"
-            || navigator.onLine !== false;
-        const storeOnline = store.state?.online;
-
-        return !navegadorOnline || storeOnline === false;
+        return globalThis.navigator?.onLine === false || store.state?.online === false;
     }
 
     _notificarError(message, details) {

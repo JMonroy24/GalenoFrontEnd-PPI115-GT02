@@ -3,6 +3,7 @@ import GeneradorMensajes from "../../src/js/control/generador_mensajes.js";
 import DefaultResponse from "../../src/js/entity/default_response.js";
 import DefaultError from "../../src/js/entity/default_error.js";
 import store from "../../src/js/store.js";
+import "../../src/js/boundary/componentes/notificacion_emergente.js";
 import { assert, expect } from "../lib/chai/index.js";
 
 mocha.setup("tdd");
@@ -11,7 +12,7 @@ suite("DefaultService (unitaria)", () => {
     let fetchStub;
     let mensajeStub;
     const servicio = new DefaultService("/pruebas");
-    const detalleOffline = "Operación no disponible sin conexión. Conéctese a internet para guardar los cambios";
+    const detalleOffline = "Operación no disponible sin conexión. Conéctese a internet para guardar, modificar o eliminar datos.";
 
     setup(() => {
         store.setState({ online: false });
@@ -169,65 +170,43 @@ suite("DefaultService (unitaria)", () => {
         expect(mensajeStub.called).to.be.false;
     });
 
-    // ═══════════════════════════════════════════════════════════════════════
-    //  Resiliencia Offline — Intercepción de escrituras POST/PUT (Macro-tarea 6)
-    // ═══════════════════════════════════════════════════════════════════════
-
-    test("intercepta POST si navigator.onLine es false y lanza aviso offline", async () => {
-        const onLineOriginal = navigator.onLine;
-        try {
-            Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
-        } catch {
-        }
-        store.setState({ online: false });
-
-        let eventoMensaje = null;
-        const escuchador = (e) => { eventoMensaje = e.detail; };
-        window.addEventListener("mensaje-global", escuchador);
-
-        let error = null;
-        try {
-            await servicio.create({ nombre: "Prueba offline" });
-        } catch (e) {
-            error = e;
-        } finally {
-            window.removeEventListener("mensaje-global", escuchador);
+    for (const [metodo, ejecutar] of [
+        ["POST", () => servicio.create({ nombre: "Prueba offline" })],
+        ["PUT", () => servicio.update(1, { nombre: "Prueba offline" })],
+        ["DELETE", () => servicio.delete(1)]
+    ]) {
+        test(`${metodo} muestra una advertencia visual si navigator está offline aunque el store siga online`, async () => {
             store.setState({ online: true });
+            const conexion = sinon.stub(navigator, "onLine").value(false);
+            mensajeStub.restore();
+            mensajeStub = sinon.spy(GeneradorMensajes, "crearMensaje");
+            const notificacion = document.createElement("notificacion-emergente");
+            document.body.appendChild(notificacion);
+            const escuchar = sinon.spy();
+            window.addEventListener("notificacion", escuchar);
+
             try {
-                Object.defineProperty(navigator, "onLine", { value: onLineOriginal, configurable: true });
-            } catch {
+                let error;
+                try { await ejecutar(); } catch (err) { error = err; }
+
+                assert.instanceOf(error, DefaultError);
+                expect(error.details).to.deep.equal({ code: "OFFLINE", method: metodo });
+                expect(fetchStub.called).to.be.false;
+                expect(escuchar.calledOnce).to.be.true;
+                expect(escuchar.firstCall.args[0]).to.be.instanceOf(CustomEvent);
+                expect(escuchar.firstCall.args[0].detail).to.deep.equal({
+                    titulo: "Sin conexión", detalle: detalleOffline, tipo: "warning"
+                });
+                const aviso = notificacion.shadowRoot.querySelector(".banner.warning");
+                expect(aviso).to.exist;
+                expect(aviso.textContent).to.contain(detalleOffline);
+                expect(getComputedStyle(aviso).display).to.equal("flex");
+                expect(aviso.getBoundingClientRect().height).to.be.greaterThan(0);
+            } finally {
+                window.removeEventListener("notificacion", escuchar);
+                notificacion.remove();
+                conexion.restore();
             }
-        }
-
-        assert.instanceOf(error, DefaultError);
-        expect(error.message).to.contain("Operación no disponible en modo offline");
-        if (eventoMensaje) {
-            expect(eventoMensaje.mensaje).to.contain("Operación no disponible en modo offline");
-        }
-    });
-
-    test("intercepta PUT si navigator.onLine es false y lanza aviso offline", async () => {
-        const onLineOriginal = navigator.onLine;
-        try {
-            Object.defineProperty(navigator, "onLine", { value: false, configurable: true });
-        } catch {
-        }
-        store.setState({ online: false });
-
-        let error = null;
-        try {
-            await servicio.update(1, { nombre: "Prueba offline update" });
-        } catch (e) {
-            error = e;
-        } finally {
-            store.setState({ online: true });
-            try {
-                Object.defineProperty(navigator, "onLine", { value: onLineOriginal, configurable: true });
-            } catch {
-            }
-        }
-
-        assert.instanceOf(error, DefaultError);
-        expect(error.message).to.contain("Operación no disponible en modo offline");
-    });
+        });
+    }
 });
