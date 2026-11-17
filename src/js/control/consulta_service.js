@@ -239,7 +239,7 @@ export class ConsultaService extends DefaultService {
             throw new Error("La consulta no tiene un identificador válido para descargar el ticket.");
         }
 
-        const url = `${this._urlBase}/${encodeURIComponent(idConsulta)}/ticket`;
+        const url = `${ENDPOINTS.API_BASE}${ENDPOINTS.CONSULTAS}/${encodeURIComponent(idConsulta)}/ticket`;
         const response = await this._request(
             url,
             { method: "GET", headers: { Accept: "application/pdf" } },
