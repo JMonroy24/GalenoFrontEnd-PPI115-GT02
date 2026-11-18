@@ -64,6 +64,7 @@ export class AtencionConsultaView extends HTMLElement {
         this._soloLectura = false;
         this._etapasFlujo = [...ETAPAS_FLUJO];
         this._borradores = new Map();
+        this._conectado = this._enLinea();
 
         /** @type {object|null} Paso detectado en la secuencia clínica. */
         this._pasoDetectado = null;
@@ -78,6 +79,9 @@ export class AtencionConsultaView extends HTMLElement {
                 estado?.consultaSeleccionada ??
                 estado?.consulta ??
                 null;
+            const conectado = this._enLinea();
+            const cambioConexion = conectado !== this._conectado;
+            this._conectado = conectado;
 
             if (consultaDelStore !== this._consulta) {
                 this._consulta = consultaDelStore;
@@ -86,6 +90,13 @@ export class AtencionConsultaView extends HTMLElement {
                 this._sincronizarPasoActivo();
                 this.render();
                 this._cargarDatosPasoActivo();
+                return;
+            }
+
+            if (cambioConexion) {
+                this._sincronizarListaExamenes();
+                this._actualizarBotonera();
+                this._establecerEnviando(this._enviando);
             }
         };
     }
@@ -107,6 +118,7 @@ export class AtencionConsultaView extends HTMLElement {
             this._cargarConsultaPorId(params.id);
         }
 
+        this._conectado = this._enLinea();
         this._sincronizarPasoActivo();
         this.render();
         this._cargarDatosPasoActivo();
@@ -856,6 +868,17 @@ export class AtencionConsultaView extends HTMLElement {
                     border-top: var(--border-width, 1px) solid var(--color-surface-alt, #e2e8f0);
                 }
 
+                .aviso-offline {
+                    flex-basis: 100%;
+                    margin: 0;
+                    padding: var(--space-3, 0.75rem);
+                    border: var(--border-width, 1px) solid var(--color-warning, #b45309);
+                    border-radius: var(--radius, 0.5rem);
+                    background-color: var(--color-warning-soft, #fef3c7);
+                    color: var(--color-text, #0f172a);
+                    font-size: var(--text-sm, 0.875rem);
+                }
+
                 .btn {
                     display: inline-flex;
                     align-items: center;
@@ -901,6 +924,17 @@ export class AtencionConsultaView extends HTMLElement {
                 .btn-guardar:hover:not(:disabled) {
                     border-color: var(--color-primary-hover, #172554);
                     background-color: var(--color-primary-hover, #172554);
+                }
+
+                .btn-guardar-notas {
+                    border-color: var(--color-secondary, #0369a1);
+                    background-color: var(--color-secondary, #0369a1);
+                    color: #ffffff;
+                }
+
+                .btn-guardar-notas:hover:not(:disabled) {
+                    border-color: var(--color-secondary-hover, #075985);
+                    background-color: var(--color-secondary-hover, #075985);
                 }
 
                 /* ── Spinner de carga ── */
@@ -1014,6 +1048,58 @@ export class AtencionConsultaView extends HTMLElement {
 
     // ─── Fragmentos HTML ──────────────────────────────────────────────────────
 
+    /**
+     * Calcula la edad en años a partir de una fecha de nacimiento (string ISO "YYYY-MM-DD" o Date).
+     * Devuelve null si la fecha no es válida.
+     * @param {string|Date|null|undefined} fechaNacimiento
+     * @returns {number|null}
+     */
+    _calcularEdad(fechaNacimiento) {
+        if (!fechaNacimiento) return null;
+        try {
+            const nacimiento = new Date(String(fechaNacimiento).trim());
+            if (isNaN(nacimiento.getTime())) return null;
+            const hoy = new Date();
+            let edad = hoy.getFullYear() - nacimiento.getFullYear();
+            const cumplioMes = hoy.getMonth() > nacimiento.getMonth()
+                || (hoy.getMonth() === nacimiento.getMonth() && hoy.getDate() >= nacimiento.getDate());
+            if (!cumplioMes) edad--;
+            return edad >= 0 ? edad : null;
+        } catch {
+            return null;
+        }
+    }
+
+    /**
+     * Extrae el número de documento del paciente de múltiples estructuras posibles.
+     * @param {object|null} consulta
+     * @returns {string}
+     */
+    _documentoPaciente(consulta) {
+        if (!consulta) return "";
+        const p = consulta.paciente ?? consulta.persona ?? consulta.cita?.paciente ?? null;
+        if (!p) return "";
+        return String(
+            p.numeroDocumento ?? p.documento ?? p.dui ?? p.identificacion
+            ?? p.persona?.numeroDocumento ?? p.persona?.documento ?? ""
+        ).trim();
+    }
+
+    /**
+     * Extrae la fecha de nacimiento del paciente de múltiples estructuras posibles.
+     * @param {object|null} consulta
+     * @returns {string}
+     */
+    _fechaNacimientoPaciente(consulta) {
+        if (!consulta) return "";
+        const p = consulta.paciente ?? consulta.persona ?? consulta.cita?.paciente ?? null;
+        if (!p) return "";
+        return String(
+            p.fechaNacimiento ?? p.birthDate ?? p.birth_date ?? p.fecha_nacimiento
+            ?? p.persona?.fechaNacimiento ?? p.persona?.birthDate ?? ""
+        ).trim();
+    }
+
     _htmlCabecera() {
         const consulta = this._consulta;
         const idConsulta = consulta?.idConsulta ?? consulta?.id ?? "—";
@@ -1021,14 +1107,18 @@ export class AtencionConsultaView extends HTMLElement {
         const hora = consulta?.hora ?? consulta?.cita?.hora ?? "";
         const paciente = this._nombrePaciente(consulta);
         const clinica = consulta?.clinica ?? consulta?.cita?.clinica ?? "";
+        const documento = this._documentoPaciente(consulta);
+        const fechaNac = this._fechaNacimientoPaciente(consulta);
+        const edad = this._calcularEdad(fechaNac);
 
         return `
             <header class="cabecera">
                 <div>
                     <h1 class="cabecera-titulo">Atención de Consulta</h1>
-                    <ul class="cabecera-meta" aria-label="Datos de la consulta">
+                    <ul class="cabecera-meta" aria-label="Datos del paciente y la consulta">
                         ${idConsulta !== "—" ? `<li>Consulta #${this._escapar(String(idConsulta))}</li>` : ""}
-                        ${paciente ? `<li>Paciente: ${this._escapar(paciente)}</li>` : ""}
+                        ${paciente ? `<li><strong>${this._escapar(paciente)}</strong>${edad !== null ? ` · ${edad} años` : ""}</li>` : ""}
+                        ${documento ? `<li>Doc: ${this._escapar(documento)}</li>` : ""}
                         ${fecha ? `<li>Fecha: ${this._escapar(fecha)}${hora ? ` · ${this._escapar(hora)}` : ""}</li>` : ""}
                         ${clinica ? `<li>Clínica: ${this._escapar(String(clinica))}</li>` : ""}
                         ${!consulta ? `<li>Sin consulta activa</li>` : ""}
@@ -1172,6 +1262,11 @@ export class AtencionConsultaView extends HTMLElement {
         return `
                 <!-- ── Acciones ── -->
                 <div class="acciones">
+                    ${this._sinConexion() ? `
+                    <p id="aviso-offline" class="aviso-offline" role="status" aria-live="polite">
+                        Sin conexión: guardar, avanzar, cambiar de paso y asignar exámenes están deshabilitados.
+                        Lo escrito se conserva y las acciones se reactivarán al volver la red.
+                    </p>` : ""}
                     <button type="button" class="btn btn-cancelar" id="btn-cancelar">
                         Cancelar
                     </button>
@@ -1184,6 +1279,11 @@ export class AtencionConsultaView extends HTMLElement {
                     >
                         &lt; Anterior
                     </button>
+                    ${!this._soloLectura ? `
+                    <button type="button" class="btn btn-guardar-notas" id="btn-guardar-notas" aria-busy="false">
+                        <span class="spinner" aria-hidden="true"></span>
+                        <span class="btn-guardar-notas-texto">Guardar Notas</span>
+                    </button>` : ''}
                     ${this._esUltimoPaso()
                         ? `
                     <button type="submit" class="btn btn-guardar btn-finalizar" id="btn-finalizar" aria-busy="false">
@@ -1284,9 +1384,20 @@ export class AtencionConsultaView extends HTMLElement {
         this.shadowRoot.querySelector("#btn-retomar")?.addEventListener("click", () => {
             this._seleccionarPaso(this._indicePasoTrabajo);
         });
+        this.shadowRoot.querySelector("#btn-guardar-notas")?.addEventListener("click", () => {
+            this._guardarNotas();
+        });
     }
 
     // ─── Lógica de negocio ────────────────────────────────────────────────────
+
+    _enLinea() {
+        return store.getState()?.online !== false && globalThis.navigator?.onLine !== false;
+    }
+
+    _sinConexion() {
+        return !this._enLinea();
+    }
 
     _idConsulta() {
         return this._consulta?.idConsulta ?? this._consulta?.id ?? null;
@@ -1329,6 +1440,8 @@ export class AtencionConsultaView extends HTMLElement {
         } else {
             lista.setAttribute("id-paso", String(idPaso));
         }
+
+        lista.toggleAttribute("sin-conexion", this._sinConexion());
     }
 
     _alAsignarOrdenesExamen(detalle) {
@@ -1355,63 +1468,52 @@ export class AtencionConsultaView extends HTMLElement {
         }));
     }
 
-    _datosAtencion(datos = {}) {
-        const diagnosticos = Array.isArray(datos.diagnosticos)
-            ? datos.diagnosticos
-            : [];
+    _crearPayloadPaso(indice, estado, datos = {}) {
+        const pasoLocal = this._buscarPasoPorIndice(this._pasosFlujo, indice);
+        const datosPaso = datos && Object.keys(datos).length > 0
+            ? datos
+            : this._datosGuardadosPaso(pasoLocal);
 
         return {
-            notasConsulta: datos.notasConsulta || null,
-            planTratamiento: datos.planTratamiento || null,
-            diagnostico: datos.diagnostico ?? diagnosticos,
-            diagnosticos: diagnosticos.length > 0 ? diagnosticos : null
+            estadoPaso: estado,
+            valor: consultaProcedimientoService.serializarValorPaso(datosPaso)
         };
     }
 
-    _crearPayloadPaso(indice, estado, datos = {}, extra = {}) {
-        const nombre = this._etapasFlujo[indice] ?? "";
-        const pasoLocal = this._buscarPasoPorIndice(this._pasosFlujo, indice);
-        const idPaso = this._idPaso(pasoLocal);
-        const payload = {};
-
-        if (datos && Object.keys(datos).length > 0) {
-            Object.assign(payload, this._datosAtencion(datos), {
-                valor: consultaProcedimientoService.serializarValorPaso(datos),
-                consulta_procedimiento_paso: {
-                    ...(pasoLocal?.consulta_procedimiento_paso ?? {}),
-                    valor: consultaProcedimientoService.serializarValorPaso(datos)
-                }
-            });
+    _datosGuardadosPaso(paso) {
+        if (!paso || typeof paso !== "object") {
+            return {};
         }
 
-        Object.assign(payload, {
-            paso: { idPaso, indice, nombre, estado },
-            idPaso,
-            indicePaso: indice,
-            nombrePaso: nombre,
-            etapa: nombre,
-            estado,
-            estadoPaso: estado,
-            ...extra
-        });
+        const datos = {};
+        const fuentes = [
+            paso.consulta_procedimiento_paso?.valor,
+            paso.valor,
+            paso.datos
+        ];
 
-        return payload;
+        fuentes.forEach((fuente) => this._acumularDatosFormulario(datos, fuente));
+        return datos;
     }
 
-    async _persistirPaso(indice, estado, datos = {}, extra = {}) {
-        const idConsulta = this._idConsulta();
-
-        if (!idConsulta) {
+    async _persistirPaso(indice, estado, datos = {}) {
+        if (!this._consulta) {
             throw new Error("No hay una consulta activa para guardar el paso.");
         }
 
+        const pasoLocal = this._buscarPasoPorIndice(this._pasosFlujo, indice);
+        const idPaso = this._idPaso(pasoLocal ?? this._pasoDetectado);
+
+        if (!idPaso) {
+            throw new Error("El paso activo no tiene un identificador válido para guardar.");
+        }
+
         const respuesta = await consultaProcedimientoService.guardarPaso(
-            idConsulta,
-            this._crearPayloadPaso(indice, estado, datos, extra)
+            idPaso,
+            this._crearPayloadPaso(indice, estado, datos)
         );
         const pasoGuardado = respuesta?.paso ?? respuesta?.consulta_procedimiento_paso
             ?? (respuesta?.idConsultaProcedimientoPaso != null || respuesta?.idPaso != null ? respuesta : null);
-        const pasoLocal = this._buscarPasoPorIndice(this._pasosFlujo, indice);
         if (pasoLocal && pasoGuardado && typeof pasoGuardado === "object") {
             Object.assign(pasoLocal, pasoGuardado);
         }
@@ -1580,7 +1682,7 @@ export class AtencionConsultaView extends HTMLElement {
     }
 
     _alEnviarFormulario() {
-        if (this._cargandoConsulta || this._soloLectura) return;
+        if (this._cargandoConsulta || this._soloLectura || this._sinConexion()) return;
         if (this._esUltimoPaso()) {
             return this._finalizarConsulta();
         }
@@ -1588,8 +1690,58 @@ export class AtencionConsultaView extends HTMLElement {
         return this._avanzarPaso();
     }
 
+    /**
+     * Guarda las notas y datos del paso actual sin avanzar ni retroceder.
+     * Corresponde al botón "Guardar Notas" de la HU4.
+     */
+    async _guardarNotas() {
+        if (this._enviando || this._cargandoConsulta || this._soloLectura || this._sinConexion()) {
+            return;
+        }
+
+        const datos = this._obtenerDatosValidados();
+
+        if (!datos) {
+            return;
+        }
+
+        const pasoActual = this._pasoActivo;
+        this._establecerEnviando(true);
+
+        try {
+            await this._persistirPaso(pasoActual, ESTADO_EN_CURSO, datos);
+            this._actualizarEstadoPasoLocal(pasoActual, ESTADO_EN_CURSO, datos);
+            this._borradores.set(pasoActual, datos);
+
+            GeneradorMensajes.crearMensaje(
+                "Notas guardadas",
+                "Los datos del paso actual han sido guardados correctamente.",
+                "success"
+            );
+
+            this.dispatchEvent(new CustomEvent("consulta-guardada", {
+                bubbles: true,
+                composed: true,
+                detail: {
+                    datos,
+                    consulta: this._consulta,
+                    pasoActivo: pasoActual,
+                    soloNotas: true
+                }
+            }));
+        } catch (error) {
+            GeneradorMensajes.crearMensaje(
+                "Error al guardar",
+                error?.mensaje ?? error?.message ?? "No se pudieron guardar las notas.",
+                "error"
+            );
+        } finally {
+            this._establecerEnviando(false);
+        }
+    }
+
     async _retrocederPaso() {
-        if (this._enviando || this._cargandoConsulta || this._soloLectura || this._esPrimerPaso()) {
+        if (this._enviando || this._cargandoConsulta || this._soloLectura || this._esPrimerPaso() || this._sinConexion()) {
             return;
         }
 
@@ -1618,7 +1770,7 @@ export class AtencionConsultaView extends HTMLElement {
     }
 
     async _avanzarPaso() {
-        if (this._enviando || this._cargandoConsulta || this._soloLectura || this._esUltimoPaso()) {
+        if (this._enviando || this._cargandoConsulta || this._soloLectura || this._esUltimoPaso() || this._sinConexion()) {
             return;
         }
 
@@ -1678,7 +1830,7 @@ export class AtencionConsultaView extends HTMLElement {
     }
 
     async _finalizarConsulta() {
-        if (this._enviando || this._cargandoConsulta || this._soloLectura || !this._esUltimoPaso()) {
+        if (this._enviando || this._cargandoConsulta || this._soloLectura || !this._esUltimoPaso() || this._sinConexion()) {
             return;
         }
 
@@ -1694,12 +1846,7 @@ export class AtencionConsultaView extends HTMLElement {
         this._establecerEnviando(true);
 
         try {
-            await this._persistirPaso(pasoActual, ESTADO_COMPLETADO, datos, {
-                fechaFin,
-                fechaHoraFin: fechaFin,
-                finalizada: true,
-                estadoConsulta: "FINALIZADA"
-            });
+            await this._persistirPaso(pasoActual, ESTADO_COMPLETADO, datos);
 
             this._actualizarEstadoPasoLocal(pasoActual, ESTADO_COMPLETADO, datos);
 
@@ -1823,6 +1970,7 @@ export class AtencionConsultaView extends HTMLElement {
     _establecerEnviando(enviando) {
         this._enviando = enviando;
         enviando = enviando || this._cargandoConsulta;
+        const sinConexion = this._sinConexion();
         const btn = this.shadowRoot?.querySelector("#btn-siguiente, #btn-finalizar");
         const btnAnterior = this.shadowRoot?.querySelector("#btn-anterior");
         const btnCancelar = this.shadowRoot?.querySelector("#btn-cancelar");
@@ -1833,12 +1981,14 @@ export class AtencionConsultaView extends HTMLElement {
         if (avisoLectura) avisoLectura.hidden = !this._soloLectura;
 
         for (const selector of ["#stepper-flujo", "#cie10-busqueda", "#lista-examenes"]) {
-            const bloqueado = enviando || (selector !== "#stepper-flujo" && this._soloLectura);
+            const bloqueado = enviando
+                || (sinConexion && selector === "#stepper-flujo")
+                || (selector !== "#stepper-flujo" && this._soloLectura);
             this.shadowRoot?.querySelector(selector)?.toggleAttribute("inert", bloqueado);
         }
 
         if (btn) {
-            btn.disabled = enviando || this._soloLectura;
+            btn.disabled = enviando || this._soloLectura || sinConexion;
             btn.setAttribute("aria-busy", String(enviando));
             btn.classList.toggle("enviando", enviando);
             const textoBtn = btn.querySelector(".btn-guardar-texto");
@@ -1851,8 +2001,19 @@ export class AtencionConsultaView extends HTMLElement {
             }
         }
 
+        const btnGuardarNotas = this.shadowRoot?.querySelector("#btn-guardar-notas");
+        if (btnGuardarNotas) {
+            btnGuardarNotas.disabled = enviando || this._soloLectura || sinConexion;
+            btnGuardarNotas.setAttribute("aria-busy", String(enviando));
+            btnGuardarNotas.classList.toggle("enviando", enviando);
+            const textoNotasBtn = btnGuardarNotas.querySelector(".btn-guardar-notas-texto");
+            if (textoNotasBtn) {
+                textoNotasBtn.textContent = enviando ? "Guardando…" : "Guardar Notas";
+            }
+        }
+
         if (btnAnterior) {
-            btnAnterior.disabled = enviando || this._soloLectura || this._esPrimerPaso();
+            btnAnterior.disabled = enviando || this._soloLectura || this._esPrimerPaso() || sinConexion;
         }
         if (btnCancelar) btnCancelar.disabled = enviando;
         if (textareaNotas) textareaNotas.disabled = enviando;

@@ -1,4 +1,5 @@
 import ConsultaService from "../../src/js/control/consulta_service.js";
+import { consultaProcedimientoService } from "../../src/js/control/consulta_procedimiento_service.js";
 import DefaultResponse from "../../src/js/entity/default_response.js";
 import DefaultError from "../../src/js/entity/default_error.js";
 import store from "../../src/js/store.js";
@@ -412,50 +413,143 @@ suite("ConsultaService (unitaria)", () => {
         assert.instanceOf(error, DefaultError);
     });
 
-    test("construirPayloadPaso serializa los campos clínicos en consulta_procedimiento_paso.valor", () => {
+    const idPaso = "a0b1c2d3-e4f5-4678-9abc-0123456789ab";
+    const rutaPaso = `/galenoSV/api/v1/consultas-procedimientos-pasos/${idPaso}`;
+    const respuestaGet = (etag) => ({
+        ok: true,
+        status: 200,
+        headers: new Headers({ ETag: etag }),
+        text: async () => "{}"
+    });
+    const respuestaPatch = () => ({
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ idPaso })
+    });
+    const respuesta412 = () => ({
+        ok: false,
+        status: 412,
+        clone: () => ({ json: async () => ({ message: "Conflicto de versión" }) })
+    });
+
+    test("construirPayloadPaso devuelve únicamente estadoPaso y valor", () => {
         const payload = servicio.construirPayloadPaso({
             notasConsulta: "Dolor abdominal",
             diagnosticos: ["R10"],
             planTratamiento: "Observación",
-            paso: { indice: 1, estado: "COMPLETADO" }
+            estadoPaso: "COMPLETADO",
+            paso: { indice: 1, estado: "COMPLETADO" },
+            idPaso
         });
 
-        expect(JSON.parse(payload.consulta_procedimiento_paso.valor)).to.deep.equal({
+        expect(payload).to.have.all.keys(["estadoPaso", "valor"]);
+        expect(payload.estadoPaso).to.equal("COMPLETADO");
+        expect(JSON.parse(payload.valor)).to.deep.equal({
             notas: "Dolor abdominal",
             diagnostico: ["R10"],
             plan: "Observación"
         });
-        expect(payload.paso.indice).to.equal(1);
     });
 
-    test("guardarPaso envía el valor serializado al endpoint de atención", async () => {
-        fetchStub = sinon.stub(window, "fetch").resolves({
-            ok: true,
-            status: 200,
-            text: async () => JSON.stringify({ ok: true })
-        });
+    test("guardarPaso lee el ETag con GET y envía PATCH con If-Match", async () => {
+        fetchStub = sinon.stub(window, "fetch");
+        fetchStub.onCall(0).resolves(respuestaGet('"v-1"'));
+        fetchStub.onCall(1).resolves(respuestaPatch());
 
-        await servicio.guardarPaso(55, {
+        const resultado = await servicio.guardarPaso(idPaso, {
             notas: "Control",
             diagnostico: ["J00"],
             plan: "Reposo",
             estadoPaso: "COMPLETADO"
         });
 
-        const cuerpo = JSON.parse(fetchStub.firstCall.args[1].body);
-
-        expect(fetchStub.firstCall.args[1].method).to.equal("PATCH");
-        expect(cuerpo.valor).to.be.a("string");
-        expect(cuerpo.valor).to.equal(cuerpo.consulta_procedimiento_paso.valor);
-        expect(fetchStub.firstCall.args[0].toString()).to.contain(
-            "consultas/55/atencion"
-        );
-        expect(JSON.parse(cuerpo.consulta_procedimiento_paso.valor)).to.deep.equal({
-            notas: "Control",
-            diagnostico: ["J00"],
-            plan: "Reposo"
+        expect(fetchStub.callCount).to.equal(2);
+        expect(new URL(fetchStub.firstCall.args[0]).pathname).to.equal(rutaPaso);
+        expect(fetchStub.firstCall.args[1].method).to.equal("GET");
+        expect(new URL(fetchStub.secondCall.args[0]).pathname).to.equal(rutaPaso);
+        expect(fetchStub.secondCall.args[1].method).to.equal("PATCH");
+        expect(fetchStub.secondCall.args[1].headers.get("If-Match")).to.equal('"v-1"');
+        expect(JSON.parse(fetchStub.secondCall.args[1].body)).to.deep.equal({
+            estadoPaso: "COMPLETADO",
+            valor: JSON.stringify({ notas: "Control", diagnostico: ["J00"], plan: "Reposo" })
         });
-        expect(cuerpo.estadoPaso).to.equal("COMPLETADO");
+        expect(resultado).to.deep.equal({ idPaso });
+    });
+
+    test("guardarPaso vuelve a hacer GET y reintenta una vez tras un 412", async () => {
+        fetchStub = sinon.stub(window, "fetch");
+        fetchStub.onCall(0).resolves(respuestaGet('"v-1"'));
+        fetchStub.onCall(1).resolves(respuesta412());
+        fetchStub.onCall(2).resolves(respuestaGet('"v-2"'));
+        fetchStub.onCall(3).resolves(respuestaPatch());
+
+        await servicio.guardarPaso(idPaso, { notas: "Control", estadoPaso: "EN_CURSO" });
+
+        expect(fetchStub.callCount).to.equal(4);
+        expect(fetchStub.getCall(1).args[1].headers.get("If-Match")).to.equal('"v-1"');
+        expect(fetchStub.getCall(2).args[1].method).to.equal("GET");
+        expect(fetchStub.getCall(3).args[1].headers.get("If-Match")).to.equal('"v-2"');
+    });
+
+    test("guardarPaso no reintenta más de una vez", async () => {
+        fetchStub = sinon.stub(window, "fetch");
+        fetchStub.onCall(0).resolves(respuestaGet('"v-1"'));
+        fetchStub.onCall(1).resolves(respuesta412());
+        fetchStub.onCall(2).resolves(respuestaGet('"v-2"'));
+        fetchStub.onCall(3).resolves(respuesta412());
+
+        let error;
+        try {
+            await servicio.guardarPaso(idPaso, { estadoPaso: "PENDIENTE" });
+        } catch (err) {
+            error = err;
+        }
+
+        expect(error?.status).to.equal(412);
+        expect(fetchStub.callCount).to.equal(4);
+    });
+
+    test("guardarPaso exige que el GET devuelva el ETag", async () => {
+        fetchStub = sinon.stub(window, "fetch").resolves({
+            ok: true,
+            status: 200,
+            headers: new Headers(),
+            text: async () => "{}"
+        });
+
+        let error;
+        try {
+            await servicio.guardarPaso(idPaso, { estadoPaso: "COMPLETADO" });
+        } catch (err) {
+            error = err;
+        }
+
+        expect(error?.message).to.include("ETag");
+        expect(fetchStub.calledOnce).to.be.true;
+    });
+
+    test("consultaProcedimientoService.guardarPaso aplica el mismo bloqueo optimista", async () => {
+        const solicitudes = [];
+        const peticion = sinon.stub(consultaProcedimientoService, "_request")
+            .callsFake(async (url, options) => {
+                solicitudes.push({ url, options });
+                return options.method === "GET"
+                    ? { headers: new Headers({ ETag: '"paso-9"' }), text: async () => "{}" }
+                    : { text: async () => JSON.stringify({ ok: true }) };
+            });
+
+        try {
+            expect(await consultaProcedimientoService.guardarPaso(idPaso, {
+                notas: "Nota",
+                estadoPaso: "PENDIENTE"
+            })).to.deep.equal({ ok: true });
+            expect(solicitudes.map((s) => s.options.method)).to.deep.equal(["GET", "PATCH"]);
+            expect(new URL(solicitudes[0].url).pathname).to.equal(rutaPaso);
+            expect(new Headers(solicitudes[1].options.headers).get("If-Match")).to.equal('"paso-9"');
+            expect(JSON.parse(solicitudes[1].options.body)).to.have.all.keys(["estadoPaso", "valor"]);
+        } finally {
+            peticion.restore();
+        }
     });
 
     test("inyecta el token y cierra la sesión al recibir 401", async () => {

@@ -5,6 +5,7 @@ import { ENDPOINTS } from "../routes.js";
 import { personaService } from "./persona_service.js";
 import {
     construirPayloadPaso,
+    consultaProcedimientoService,
     serializarValorPaso
 } from "./consulta_procedimiento_service.js";
 
@@ -295,6 +296,28 @@ export class ConsultaService extends DefaultService {
                 persona = { ...persona, numeroDocumento: filtros.numeroDocumento };
             }
         }
+        if (persona && !documentoPaciente(persona)) {
+            const idPer = idRelacion(persona, "idPersona") ?? persona.id;
+            if (idPer != null) {
+                const urlDocs = `${ENDPOINTS.API_BASE}/documentos?first=0&max=100`;
+                if (!solicitudes.has("documentos:todos")) {
+                    solicitudes.set("documentos:todos", (async () => {
+                        try {
+                            const res = await this._request(urlDocs, { method: "GET" }, "Error al leer documentos");
+                            const body = await this._parseBody(res);
+                            return Array.isArray(body?.items) ? body.items : [];
+                        } catch {
+                            return [];
+                        }
+                    })());
+                }
+                const docs = await solicitudes.get("documentos:todos");
+                const doc = docs.find((d) => String(d.idPersona) === String(idPer));
+                if (doc && doc.valor) {
+                    persona = { ...persona, numeroDocumento: doc.valor, documento: doc.valor, valor: doc.valor };
+                }
+            }
+        }
         const referenciaClinica = [datos.clinica, datos.idClinica, datos.clinicaId,
             asignacion?.clinica, asignacion?.idClinica]
             .find((valor) => tieneNombre(valor) || idRelacion(valor, "idClinica") != null);
@@ -409,18 +432,15 @@ export class ConsultaService extends DefaultService {
         return this._buscarCitas(filtros, first, max);
     }
 
-    async registrarAtencion(idConsulta, atencion) {
-        const response = await this._request(
-            `${this._urlBase}/${encodeURIComponent(idConsulta)}/atencion`,
-            this._jsonOptions("PATCH", atencion),
-            "Error al registrar la atención médica"
-        );
-
-        return this._parseBody(response);
-    }
-
-    registrarAtencionMedica(idConsulta, atencion) {
-        return this.registrarAtencion(idConsulta, atencion);
+    /**
+     * Actualiza un paso clínico con bloqueo optimista (GET ETag + PATCH
+     * If-Match) en el endpoint de consultas-procedimientos-pasos.
+     *
+     * @param {string} idPaso - UUID de consulta_procedimiento_paso.
+     * @param {object} atencion - Datos clínicos y estado del paso.
+     */
+    actualizarPaso(idPaso, atencion = {}) {
+        return consultaProcedimientoService.actualizarPaso(idPaso, atencion);
     }
 
     /**
@@ -435,25 +455,36 @@ export class ConsultaService extends DefaultService {
     }
 
     /**
-     * Construye el payload de un paso clínico agregando el valor serializado
-     * al atributo `consulta_procedimiento_paso`.
+     * Construye el cuerpo del PATCH: sólo `estadoPaso` y `valor`.
      *
      * @param {object} atencion
-     * @returns {object}
+     * @returns {{ estadoPaso: string, valor: string }}
      */
     construirPayloadPaso(atencion = {}) {
         return construirPayloadPaso(atencion);
     }
 
-    async guardarPaso(idConsulta, atencion) {
-        return this.registrarAtencion(
-            idConsulta,
-            this.construirPayloadPaso(atencion)
-        );
+    guardarPaso(idPaso, atencion = {}) {
+        return this.actualizarPaso(idPaso, atencion);
     }
 
-    guardarConsultaProcedimientoPaso(idConsulta, atencion) {
-        return this.guardarPaso(idConsulta, atencion);
+    guardarConsultaProcedimientoPaso(idPaso, atencion = {}) {
+        return this.actualizarPaso(idPaso, atencion);
+    }
+
+    async findById(id) {
+        const respuesta = await super.findById(id);
+        const consulta = this._normalizePayload(respuesta) ?? respuesta;
+        if (!consulta || typeof consulta !== "object") return consulta;
+        const mapeada = this._mapearConsulta(consulta);
+        const completada = await this._completarConsulta(mapeada, new Map(), {});
+        return {
+            ...consulta,
+            ...completada,
+            pasos: consulta.pasos ?? completada.pasos,
+            paciente: completada.paciente ?? consulta.paciente,
+            clinica: completada.clinica ?? consulta.clinica
+        };
     }
 
     async descargarTicketPdf(idConsulta) {

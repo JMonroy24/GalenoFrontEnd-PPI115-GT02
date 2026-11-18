@@ -7,6 +7,7 @@ const APP_SHELL = [
     "/recursos/imagenes/galenosv-logo.png",
     "/recursos/imagenes/icono_192.png",
     "/recursos/imagenes/icono_512.png",
+    "/recursos/datos/cie10.json",
     "/js/app.js",
     "/js/config.js",
     "/js/routes.js",

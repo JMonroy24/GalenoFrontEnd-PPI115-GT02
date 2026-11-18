@@ -1,10 +1,8 @@
-import { tipoExamenService } from "../../control/tipo_examen_service.js";
 import { ordenExamenService } from "../../control/orden_examen_service.js";
 import GeneradorMensajes from "../../control/generador_mensajes.js";
 
 const CATEGORIA_POR_DEFECTO = "General";
 const TODAS = "__todas__";
-const MAX_EXAMENES = 200;
 
 const escapar = (texto) => String(texto ?? "")
     .replace(/&/g, "&amp;")
@@ -21,18 +19,17 @@ const escapar = (texto) => String(texto ?? "")
  * Eventos (bubbles + composed):
  *  - "ordenes-asignadas": detail { idConsulta, idPaso, ordenes, examenes }
  *
- * Los servicios pueden inyectarse (propiedades tipoExamenService y
- * ordenExamenService) para facilitar las pruebas unitarias.
+ * El servicio puede inyectarse (propiedad ordenExamenService) para facilitar
+ * las pruebas unitarias.
  */
 export class ListaExamenesAsignables extends HTMLElement {
     static get observedAttributes() {
-        return ["id-consulta", "id-paso", "id-paso-clinico"];
+        return ["id-consulta", "id-paso", "id-paso-clinico", "sin-conexion"];
     }
 
     constructor() {
         super();
         this.attachShadow({ mode: "open" });
-        this.tipoExamenService = tipoExamenService;
         this.ordenExamenService = ordenExamenService;
         this._idConsulta = null;
         this._idPaso = null;
@@ -42,6 +39,7 @@ export class ListaExamenesAsignables extends HTMLElement {
         this._categoria = TODAS;
         this._enviando = false;
         this._cargado = false;
+        this._cargaActual = 0;
     }
 
     get idConsulta() {
@@ -73,6 +71,14 @@ export class ListaExamenesAsignables extends HTMLElement {
         this._actualizarBoton();
     }
 
+    get sinConexion() {
+        return this.hasAttribute("sin-conexion");
+    }
+
+    set sinConexion(valor) {
+        this.toggleAttribute("sin-conexion", Boolean(valor));
+    }
+
     get paso() {
         return this._paso;
     }
@@ -88,14 +94,30 @@ export class ListaExamenesAsignables extends HTMLElement {
 
     attributeChangedCallback(nombre, valorViejo, valorNuevo) {
         if (valorViejo === valorNuevo) return;
+
+        if (nombre === "sin-conexion") {
+            this._actualizarBoton();
+            return;
+        }
+
+        const cambioPaso = nombre === "id-paso" || nombre === "id-paso-clinico";
+
         if (nombre === "id-consulta") {
             this._idConsulta = valorNuevo;
-        } else if (nombre === "id-paso" || nombre === "id-paso-clinico") {
+        } else if (cambioPaso) {
             this._idPaso = valorNuevo;
         }
 
         this._limpiarSeleccion();
         this._actualizarBoton();
+
+        if (cambioPaso && this.isConnected) {
+            this.cargarExamenes();
+        }
+    }
+
+    disconnectedCallback() {
+        this._cargaActual += 1;
     }
 
     _limpiarSeleccion() {
@@ -116,13 +138,33 @@ export class ListaExamenesAsignables extends HTMLElement {
     }
 
     async cargarExamenes() {
+        const idPaso = this.idPaso;
+        const carga = ++this._cargaActual;
+
+        this._limpiarSeleccion();
+
+        if (idPaso === null || idPaso === undefined || idPaso === "") {
+            this._examenes = [];
+            this._cargado = true;
+            this._estado("Seleccione un paso para ver los exámenes.");
+            this._pintarCategorias();
+            this._pintarLista();
+            return;
+        }
+
         this._estado("Cargando exámenes…");
 
         try {
-            const respuesta = await this.tipoExamenService.findRange(0, MAX_EXAMENES);
-            const items = Array.isArray(respuesta?.items)
-                ? respuesta.items
-                : Array.isArray(respuesta) ? respuesta : [];
+            const respuesta = await this.ordenExamenService.listarExamenesPorPaso(idPaso);
+
+            if (carga !== this._cargaActual) {
+                return;
+            }
+
+            this._limpiarSeleccion();
+            const items = Array.isArray(respuesta)
+                ? respuesta
+                : Array.isArray(respuesta?.items) ? respuesta.items : [];
 
             this._examenes = items
                 .filter((e) => e?.activo !== false)
@@ -132,7 +174,15 @@ export class ListaExamenesAsignables extends HTMLElement {
             this._pintarCategorias();
             this._pintarLista();
         } catch (error) {
+            if (carga !== this._cargaActual) {
+                return;
+            }
+
+            this._examenes = [];
+            this._cargado = true;
             this._estado("No se pudieron cargar los exámenes.");
+            this._pintarCategorias();
+            this._pintarLista();
             GeneradorMensajes.crearMensaje(
                 "Error al cargar exámenes",
                 error?.mensaje ?? error?.message ?? "",
@@ -142,33 +192,30 @@ export class ListaExamenesAsignables extends HTMLElement {
     }
 
     _normalizar(examen) {
-        const categoria = examen.categoria?.nombre
-            ?? examen.categoria
-            ?? examen.categoriaExamen?.nombre
-            ?? examen.tipoCategoria
-            ?? CATEGORIA_POR_DEFECTO;
-
         return {
-            id: String(examen.idTipoExamen ?? examen.id ?? ""),
-            nombre: examen.nombre ?? examen.descripcion ?? "Examen sin nombre",
-            categoria: String(categoria || CATEGORIA_POR_DEFECTO)
+            id: String(examen?.idExamen ?? examen?.id ?? ""),
+            idExamen: examen?.idExamen ?? examen?.id,
+            nombre: examen?.nombre ?? examen?.descripcion ?? "Examen sin nombre",
+            categoria: String(examen?.categoria || CATEGORIA_POR_DEFECTO),
+            indicaciones: examen?.indicaciones ?? ""
         };
     }
 
     _visibles() {
+        const examenes = Array.isArray(this._examenes) ? this._examenes : [];
         return this._categoria === TODAS
-            ? this._examenes
-            : this._examenes.filter((e) => e.categoria === this._categoria);
+            ? examenes
+            : examenes.filter((e) => e && e.categoria === this._categoria);
     }
 
     _contextoPaso() {
         const idPaso = this.idPaso;
 
         if (idPaso === null || idPaso === undefined || idPaso === "") {
-            return {};
+            return null;
         }
 
-        return { idPaso };
+        return { idPaso, idConsultaProcedimientoPaso: idPaso };
     }
 
     _estado(texto) {
@@ -181,7 +228,8 @@ export class ListaExamenesAsignables extends HTMLElement {
 
     _pintarCategorias() {
         const select = this.shadowRoot.querySelector("#filtro-categoria");
-        const categorias = [...new Set(this._examenes.map((e) => e.categoria))].sort();
+        const examenes = Array.isArray(this._examenes) ? this._examenes : [];
+        const categorias = [...new Set(examenes.map((e) => e?.categoria).filter(Boolean))].sort();
 
         select.innerHTML = [
             `<option value="${TODAS}">Todas las categorías</option>`,
@@ -219,8 +267,14 @@ export class ListaExamenesAsignables extends HTMLElement {
         }
 
         const cantidad = this._seleccion.size;
+        const aviso = this.shadowRoot?.querySelector("#aviso-offline");
 
-        boton.disabled = this._enviando || cantidad === 0 || !this.idConsulta;
+        if (aviso) aviso.hidden = !this.sinConexion;
+        boton.disabled = this.sinConexion
+            || this._enviando
+            || cantidad === 0
+            || !this.idConsulta
+            || !this.idPaso;
         boton.setAttribute("aria-busy", String(this._enviando));
         this.shadowRoot.querySelectorAll('input[type="checkbox"]').forEach((input) => {
             input.disabled = this._enviando;
@@ -246,12 +300,15 @@ export class ListaExamenesAsignables extends HTMLElement {
     }
 
     async asignarSeleccionados() {
-        if (this._enviando || this._seleccion.size === 0 || !this.idConsulta) {
+        const contexto = this._contextoPaso();
+
+        if (this.sinConexion || this._enviando || this._seleccion.size === 0 || !this.idConsulta || !contexto) {
             return;
         }
 
         const ids = this.obtenerSeleccionados();
-        const contexto = this._contextoPaso();
+        const seleccionados = ids.map((id) =>
+            this._examenes.find((examen) => examen.id === id) ?? { idExamen: id });
         const idConsulta = this.idConsulta;
 
         this._enviando = true;
@@ -259,12 +316,10 @@ export class ListaExamenesAsignables extends HTMLElement {
 
         try {
             const servicio = this.ordenExamenService;
-            const tieneContexto = Object.keys(contexto).length > 0;
+            const idPaso = contexto.idConsultaProcedimientoPaso;
             const ordenes = typeof servicio.crearOrdenes === "function"
-                ? tieneContexto
-                    ? await servicio.crearOrdenes(idConsulta, ids, contexto)
-                    : await servicio.crearOrdenes(idConsulta, ids)
-                : await servicio.asignarOrdenes(idConsulta, ids, contexto);
+                ? await servicio.crearOrdenes(idPaso, seleccionados)
+                : await servicio.asignarOrdenes(idPaso, seleccionados);
 
             GeneradorMensajes.crearMensaje(
                 "Exámenes asignados",
@@ -339,6 +394,14 @@ export class ListaExamenesAsignables extends HTMLElement {
                 .examen-nombre { flex: 1; font-size: var(--text-sm); }
                 .examen-cat { font-size: var(--text-xs); color: var(--color-text-muted); }
                 .vacio, #estado { margin: 0; color: var(--color-text-muted); font-size: var(--text-sm); }
+                .aviso-offline {
+                    margin: 0;
+                    padding: var(--space-2, 0.5rem);
+                    border: 1px solid var(--color-warning, #b45309);
+                    border-radius: var(--radius-sm, 0.375rem);
+                    background: var(--color-warning-soft, #fef3c7);
+                    font-size: var(--text-sm, 0.875rem);
+                }
                 .pie { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; justify-content: space-between; }
                 #contador { font-size: var(--text-sm); color: var(--color-text-muted); }
                 button {
@@ -363,6 +426,9 @@ export class ListaExamenesAsignables extends HTMLElement {
                     <div id="lista"></div>
                 </fieldset>
                 <p id="estado" role="status" aria-live="polite"></p>
+                <p id="aviso-offline" class="aviso-offline" role="status" aria-live="polite" hidden>
+                    Sin conexión: la asignación de exámenes está deshabilitada. La selección se conserva.
+                </p>
                 <div class="pie">
                     <span id="contador" aria-live="polite">0 exámenes seleccionados</span>
                     <button type="button" id="btn-asignar" disabled aria-busy="false">
