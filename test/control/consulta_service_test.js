@@ -58,6 +58,104 @@ suite("ConsultaService (unitaria)", () => {
         expect(respuesta.items).to.deep.equal([consulta]);
     });
 
+    test("completa paciente y clínica referenciados por el rol y reutiliza las lecturas", async () => {
+        const consulta = { id: "cita-1", inicio: "2026-09-17T20:28:00", idPaciente: "asignacion-1", activo: true };
+        const original = structuredClone(consulta);
+        const respuestas = {
+            "/consultas": { items: [consulta, { ...consulta, id: "cita-2" }], total: 2 },
+            "/personas-roles/asignacion-1": { id: "asignacion-1", idPersona: "persona-1", idClinica: "clinica-1" },
+            "/personas/persona-1": { id: "persona-1", nombres: ["Ana"], apellidos: ["López"], numeroDocumento: "12312378-0" },
+            "/clinicas/clinica-1": { id: "clinica-1", nombre: "Clínica Central de Santa Ana" }
+        };
+        fetchStub = sinon.stub(window, "fetch").callsFake(async (url) => {
+            const ruta = new URL(url).pathname.replace("/galenoSV/api/v1", "");
+            expect(respuestas, ruta).to.have.property(ruta);
+            return { ok: true, json: async () => respuestas[ruta] };
+        });
+        const respuesta = await servicio.buscarCitas();
+        expect(respuesta.items[0].paciente).to.deep.equal(respuestas["/personas/persona-1"]);
+        expect(respuesta.items[0].clinica.nombre).to.equal("Clínica Central de Santa Ana");
+        expect(respuesta.items[0].estado).to.equal("Activa");
+        expect(fetchStub.callCount).to.equal(4);
+        expect(consulta).to.deep.equal(original);
+    });
+
+    test("recupera el documento del filtro solo tras verificar la identidad del paciente", async () => {
+        const respuestas = {
+            "/consultas": { items: [
+                { id: 1, idPersona: "persona-1" }, { id: 2, idPersona: "persona-2" }
+            ] },
+            "/personas": { items: [{ id: "persona-1", nombres: "Ana" }] },
+            "/personas/persona-1": { id: "persona-1", nombres: "Ana" },
+            "/personas/persona-2": { id: "persona-2", nombres: "Luis" }
+        };
+        fetchStub = sinon.stub(window, "fetch").callsFake(async (url) => {
+            const ruta = new URL(url).pathname.replace("/galenoSV/api/v1", "");
+            expect(respuestas, ruta).to.have.property(ruta);
+            return { ok: true, json: async () => respuestas[ruta] };
+        });
+        const respuesta = await servicio.buscarCitas({ tipoDocumento: "tipo-1", numeroDocumento: "12312378-0" });
+        expect(respuesta.items[0].paciente.numeroDocumento).to.equal("12312378-0");
+        expect(respuesta.items[1].paciente).not.to.have.property("numeroDocumento");
+        expect(fetchStub.callCount).to.equal(4);
+    });
+
+    const citasFechas = [
+        { idConsulta: 1, inicio: "2026-09-01T20:28:00" },
+        { idConsulta: 2, inicio: "2026-09-17T00:00:00-06:00" },
+        { idConsulta: 3, inicio: "2026-10-29T23:59:59-06:00" },
+        { idConsulta: 4, inicio: "2026-10-30T20:26:00" }
+    ];
+
+    test("excluye las dos citas de las capturas aunque el backend ignore las fechas", async () => {
+        fetchStub = sinon.stub(window, "fetch").resolves({
+            ok: true, json: async () => ({ items: [citasFechas[0], citasFechas[3]], total: 2 })
+        });
+        const respuesta = await servicio.buscarCitas({ fechaDesde: "2026-09-17", fechaHasta: "2026-10-29" });
+        expect(respuesta.items).to.deep.equal([]);
+        expect(respuesta.total).to.equal(0);
+    });
+
+    for (const [filtros, ids] of [
+        [{ fechaDesde: "2026-09-17", fechaHasta: "2026-10-29" }, [2, 3]],
+        [{ fechaDesde: "2026-09-17" }, [2, 3, 4]],
+        [{ fechaHasta: "2026-10-29" }, [1, 2, 3]],
+        [{ fechaDesde: "2026-10-29", fechaHasta: "2026-10-29" }, [3]]
+    ]) {
+        test(`aplica límites inclusivos sin cambiar el día del timestamp: ${JSON.stringify(filtros)}`, async () => {
+            fetchStub = sinon.stub(window, "fetch").resolves({
+                ok: true, json: async () => ({ items: citasFechas, total: citasFechas.length })
+            });
+            const respuesta = await servicio.buscarCitas(filtros);
+            expect(respuesta.items.map((item) => item.idConsulta)).to.deep.equal(ids);
+            expect(respuesta.total).to.equal(ids.length);
+        });
+    }
+
+    test("busca coincidencias en páginas posteriores y pagina el total filtrado", async () => {
+        fetchStub = sinon.stub(window, "fetch").callsFake(async (url) => {
+            const params = new URL(url).searchParams;
+            const first = Number(params.get("first"));
+            const max = Number(params.get("max"));
+            return { ok: true, json: async () => ({
+                items: citasFechas.slice(first, first + max), total: 4, first, max
+            }) };
+        });
+        const respuesta = await servicio.buscarCitas({ fechaDesde: "2026-09-17", fechaHasta: "2026-10-29" }, 1, 1);
+        expect(respuesta.items.map((item) => item.idConsulta)).to.deep.equal([3]);
+        expect(respuesta).to.include({ total: 2, first: 1, max: 1 });
+        expect(fetchStub.callCount).to.equal(4);
+    });
+
+    test("termina la búsqueda si el backend repite una página ignorando first", async () => {
+        fetchStub = sinon.stub(window, "fetch").resolves({
+            ok: true, json: async () => ({ items: [citasFechas[1]], total: 40 })
+        });
+        const respuesta = await servicio.buscarCitas({ fechaDesde: "2026-09-17" });
+        expect(respuesta.total).to.equal(1);
+        expect(fetchStub.callCount).to.equal(2);
+    });
+
     test("normaliza el clinicaId del dashboard a idClinica y envía el rol al backend", async () => {
         fetchStub = sinon.stub(window, "fetch").resolves({
             ok: true, json: async () => ({ items: [{ idConsulta: 101 }], total: 1 })

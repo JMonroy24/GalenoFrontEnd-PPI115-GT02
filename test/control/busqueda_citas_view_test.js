@@ -127,6 +127,35 @@ suite("BusquedaCitasView (unitaria)", () => {
         expect(host.shadowRoot.querySelector("#resultados").hidden).to.be.true;
     });
 
+    test("muestra los datos de las relaciones de una cita con identificadores planos", async () => {
+        citasRespuesta = [{ id: "cita-1", inicio: "2026-09-17T20:28:00", idPaciente: "paciente-1", activo: true }];
+        const relaciones = {
+            "/personas-roles/paciente-1": { id: "paciente-1", idPersona: "persona-1", idClinica: "clinica-1" },
+            "/personas/persona-1": { id: "persona-1", nombres: "Ana", apellidos: "López", numeroDocumento: "12312378-0" },
+            "/clinicas/clinica-1": { id: "clinica-1", nombre: "Clínica Central de Santa Ana" }
+        };
+        for (const [ruta, datos] of Object.entries(relaciones)) {
+            fetchStub.withArgs(sinon.match((url) => new URL(url).pathname.endsWith(ruta))).resolves(responder(datos));
+        }
+        await host.buscar({ fechaDesde: "2026-09-17", fechaHasta: "2026-10-29" });
+        const tarjeta = host.shadowRoot.querySelector("tarjeta-consulta").shadowRoot;
+        expect(tarjeta.querySelector("#paciente").textContent).to.equal("Ana López");
+        expect(tarjeta.querySelector("#documento-paciente").textContent).to.equal("12312378-0");
+        expect(tarjeta.querySelector("#clinica").textContent).to.equal("Clínica Central de Santa Ana");
+        expect(tarjeta.querySelector("#estado").textContent).to.equal("Activa");
+    });
+
+    test("el rango de las capturas oculta las citas de septiembre 1 y octubre 30", async () => {
+        citasRespuesta = [
+            { idConsulta: 1, inicio: "2026-09-01T20:28:00" },
+            { idConsulta: 2, inicio: "2026-10-30T20:26:00" }
+        ];
+        await host.buscar({ fechaDesde: "2026-09-17", fechaHasta: "2026-10-29" });
+        expect(host.shadowRoot.querySelectorAll("tarjeta-consulta")).to.have.length(0);
+        expect(host.shadowRoot.querySelector("#estado").textContent).to.equal("No se encontraron citas.");
+        expect(host.shadowRoot.querySelector("#paginacion").hidden).to.be.true;
+    });
+
     test("renderiza las consultas de items con asociaciones anidadas del backend Java", async () => {
         citasRespuesta = [{
             idConsulta: 501,

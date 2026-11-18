@@ -2,6 +2,7 @@ import DefaultService from "./default_service.js";
 import { DEFAULT_PAGE_SIZE } from "../config.js";
 import DefaultResponse from "../entity/default_response.js";
 import { ENDPOINTS } from "../routes.js";
+import { personaService } from "./persona_service.js";
 import {
     construirPayloadPaso,
     serializarValorPaso
@@ -9,6 +10,21 @@ import {
 
 function fuentesConsulta(consulta) {
     return [consulta, consulta?.consulta, consulta?.cita, consulta?.consulta?.cita].filter(Boolean);
+}
+
+function idRelacion(valor, campo) {
+    return valor && typeof valor === "object" ? valor[campo] ?? valor.id : valor;
+}
+
+function tieneNombre(valor) {
+    return Boolean(valor && typeof valor === "object"
+        && (textoDato(valor.nombreCompleto) || textoDato(valor.nombres) || textoDato(valor.nombre)
+            || textoDato(valor.nombreClinica) || textoDato(valor.descripcion)));
+}
+
+function esIdentificador(valor) {
+    return typeof valor === "number" || (typeof valor === "string"
+        && /^(?:\d+|[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12})$/i.test(valor));
 }
 
 function candidatosPaciente(consulta) {
@@ -61,7 +77,7 @@ export class ConsultaService extends DefaultService {
         super(ENDPOINTS.CONSULTAS);
     }
 
-    async _buscarCitas(filtros, first, max) {
+    async _solicitarCitas(filtros, first, max) {
         const params = new URLSearchParams();
         params.set("first", first);
         params.set("max", max);
@@ -77,19 +93,114 @@ export class ConsultaService extends DefaultService {
             { method: "GET" },
             "Error al consultar las citas"
         );
-        const payload = await response.json();
-        const items = Array.isArray(payload?.items)
-            ? payload.items.filter((consulta) => consulta !== null
-                && typeof consulta === "object" && !Array.isArray(consulta))
-                .map((consulta) => this._mapearConsulta(consulta))
-            : [];
+        return response.json();
+    }
+
+    async _buscarCitas(filtros, first, max) {
+        const conFechas = Boolean(filtros.fechaDesde || filtros.fechaHasta);
+        const solicitudes = new Map();
+        const mapearItems = (payload) => (Array.isArray(payload?.items) ? payload.items : [])
+            .filter((consulta) => consulta !== null && typeof consulta === "object" && !Array.isArray(consulta))
+            .map((consulta) => this._mapearConsulta(consulta));
+        const payload = await this._solicitarCitas(filtros, conFechas ? 0 : first, max);
+        let items = mapearItems(payload);
+
+        if (conFechas) {
+            // Filtrar antes de paginar: una página vacía no significa que no haya
+            // coincidencias en las siguientes páginas de un backend que omite el rango.
+            let offset = Array.isArray(payload?.items) ? payload.items.length : 0;
+            const total = Number(payload?.total ?? offset);
+            const vistos = new Set(items.map((item) => item.idConsulta).filter((id) => id != null));
+            while (offset > 0 && offset < total) {
+                const pagina = await this._solicitarCitas(filtros, offset, max);
+                const cantidad = Array.isArray(pagina?.items) ? pagina.items.length : 0;
+                if (cantidad === 0) break;
+                const siguientes = mapearItems(pagina).filter((item) => {
+                    if (item.idConsulta == null) return true;
+                    if (vistos.has(item.idConsulta)) return false;
+                    vistos.add(item.idConsulta);
+                    return true;
+                });
+                // Evitar repetir indefinidamente una página si el servidor ignora first.
+                if (siguientes.length === 0) break;
+                items.push(...siguientes);
+                offset += cantidad;
+            }
+            items = items.filter((consulta) => {
+                const fecha = String(consulta.fecha ?? "").match(/^(\d{4}-\d{2}-\d{2})(?:[T ]|$)/)?.[1];
+                return fecha && (!filtros.fechaDesde || fecha >= filtros.fechaDesde)
+                    && (!filtros.fechaHasta || fecha <= filtros.fechaHasta);
+            });
+            const totalFiltrado = items.length;
+            const pagina = items.slice(first, first + max);
+            return new DefaultResponse(
+                await Promise.all(pagina.map((consulta) => this._completarConsulta(consulta, solicitudes, filtros))),
+                totalFiltrado, first, max
+            );
+        }
 
         return new DefaultResponse(
-            items,
+            await Promise.all(items.map((consulta) => this._completarConsulta(consulta, solicitudes, filtros))),
             payload?.total ?? 0,
             payload?.first ?? 0,
             payload?.max ?? 0
         );
+    }
+
+    async _completarConsulta(consulta, solicitudes, filtros) {
+        const datos = { ...consulta.consulta?.cita, ...consulta.consulta, ...consulta.cita, ...consulta };
+        const resolver = async (referencia, campo, endpoint, completa) => {
+            const id = idRelacion(referencia, campo);
+            if (id == null || id === "" || completa(referencia)) return referencia;
+            const url = `${ENDPOINTS.API_BASE}${endpoint}/${encodeURIComponent(id)}`;
+            if (!solicitudes.has(url)) {
+                solicitudes.set(url, (async () => {
+                    try {
+                        const response = await this._request(url, { method: "GET" }, "Error al completar los datos de la cita");
+                        const entidad = await this._parseBody(response);
+                        return entidad && typeof entidad === "object" && !Array.isArray(entidad)
+                            && !Object.hasOwn(entidad, "items")
+                            ? { ...(typeof referencia === "object" ? referencia : {}), ...entidad } : referencia;
+                    } catch (error) {
+                        if (error?.status === 404) return referencia;
+                        throw error;
+                    }
+                })());
+            }
+            return solicitudes.get(url);
+        };
+
+        const referenciaPaciente = datos.personaRolPaciente ?? datos.idPersonaRolPaciente
+            ?? datos.personaRol ?? datos.idPersonaRol ?? datos.idPaciente ?? datos.pacienteId
+            ?? (esIdentificador(datos.paciente) || typeof datos.paciente === "object" ? datos.paciente : null);
+        const asignacion = referenciaPaciente == null || tieneNombre(referenciaPaciente) ? referenciaPaciente
+            : await resolver(referenciaPaciente, "idPersonaRol", ENDPOINTS.PERSONAS_ROLES,
+                (valor) => valor && typeof valor === "object" && (valor.persona != null || valor.idPersona != null));
+        const referenciaPersona = tieneNombre(asignacion) ? asignacion
+            : asignacion?.persona ?? asignacion?.idPersona ?? datos.persona ?? datos.idPersona;
+        let persona = referenciaPersona == null ? null
+            : await resolver(referenciaPersona, "idPersona", ENDPOINTS.PERSONAS, tieneNombre);
+        if (persona && idRelacion(persona, "idPersona") != null && !documentoPaciente(persona)
+            && filtros.numeroDocumento && filtros.tipoDocumento) {
+            const clave = `documento:${filtros.tipoDocumento}:${filtros.numeroDocumento}`;
+            if (!solicitudes.has(clave)) {
+                solicitudes.set(clave, personaService.buscarPorDocumento(filtros.tipoDocumento, filtros.numeroDocumento));
+            }
+            const buscada = await solicitudes.get(clave);
+            const idPersona = idRelacion(persona, "idPersona");
+            if (idPersona != null && String(idPersona) === String(idRelacion(buscada, "idPersona"))) {
+                persona = { ...persona, numeroDocumento: filtros.numeroDocumento };
+            }
+        }
+        const referenciaClinica = [datos.clinica, datos.idClinica, datos.clinicaId,
+            asignacion?.clinica, asignacion?.idClinica]
+            .find((valor) => tieneNombre(valor) || idRelacion(valor, "idClinica") != null);
+        const clinica = referenciaClinica == null ? null
+            : await resolver(referenciaClinica, "idClinica", ENDPOINTS.CLINICAS,
+                (valor) => tieneNombre(valor) || (typeof valor === "string" && !esIdentificador(valor)
+                    && !datos.idClinica && !datos.clinicaId && !asignacion?.idClinica));
+
+        return { ...consulta, ...(persona ? { paciente: persona } : {}), ...(clinica ? { clinica } : {}) };
     }
 
     _mapearConsulta(consulta) {
@@ -103,8 +214,11 @@ export class ConsultaService extends DefaultService {
 
         // Conservar el JSON original (incluidos rol, clínica y pasos anidados)
         // y exponer los nombres que comparten las vistas de búsqueda y dashboard.
+        const estado = datos.estado ?? datos.estadoConsulta ?? datos.estadoCita
+            ?? (typeof datos.activo === "boolean" ? (datos.activo ? "Activa" : "Inactiva") : undefined);
         return {
             ...consulta,
+            ...(estado != null ? { estado } : {}),
             idConsulta: consulta.idConsulta ?? consulta.id ?? datos.idConsulta ?? datos.id,
             fecha: datos.inicio || datos.fecha || datos.fechaConsulta || datos.fechaCita
                 || datos.fechaHora || datos.fechaInicio || datos.fechaCreacion,
