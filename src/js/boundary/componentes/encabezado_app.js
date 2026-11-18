@@ -131,16 +131,19 @@ export default class EncabezadoApp extends HTMLElement {
         const btnCerrarSesion = this.shadowRoot.querySelector("#btnCerrarSesion");
         btnCambiarRol.addEventListener("click", navegarALogin);
         btnCerrarSesion.addEventListener("click", () => {
-            authService.logout();
+            if (store.hasActiveSession()) {
+                authService.logout();
+            }
             navegarALogin();
         });
     }
 
     _actualizarSesion() {
-        let usuario = null;
+        const estado = store.getState();
+        let usuario = estado.usuario;
         let contexto = null;
         try {
-            usuario = JSON.parse(sessionStorage.getItem("usuarioActivo") ?? "null");
+            usuario ??= JSON.parse(sessionStorage.getItem("usuarioActivo") ?? "null");
             contexto = JSON.parse(sessionStorage.getItem("contexto") ?? "null");
         } catch {
             // El encabezado también debe funcionar sin almacenamiento disponible.
@@ -148,6 +151,8 @@ export default class EncabezadoApp extends HTMLElement {
 
         const textoContexto = this.shadowRoot.querySelector("#textoContexto");
         if (!textoContexto) return;
+        this.shadowRoot.querySelector("#btnCerrarSesion").textContent = store.hasActiveSession()
+            ? "Cerrar sesión" : "Iniciar sesión";
         if (!usuario) {
             textoContexto.textContent = "Sin sesión";
             return;
@@ -158,7 +163,6 @@ export default class EncabezadoApp extends HTMLElement {
         const nombre = texto(perfil.nombreCompleto)
             || [texto(perfil.nombres ?? perfil.nombre), texto(perfil.apellidos ?? perfil.apellido)]
                 .filter(Boolean).join(" ") || "Usuario";
-        const estado = store.getState();
         const clinica = estado.clinicaActiva;
         const rol = estado.rolSeleccionado?.rol
             ?? (typeof estado.rolSeleccionado?.idRol === "object"

@@ -67,6 +67,39 @@ suite("AsistenteBusqueda (unitaria)", () => {
     });
 
     suite("Carga dinámica de clínicas del paciente", () => {
+        test("permite seleccionar clínica y buscar con el DTO de persona sin documento", async () => {
+            buscarClinicasPacienteStub.restore();
+            fetchStub.callsFake(async (url) => {
+                const ruta = new URL(url).pathname.replace("/galenoSV/api/v1", "");
+                const respuestas = {
+                    "/personas": { items: [{ id: "persona-1", nombres: "Ana" }] },
+                    "/personas-roles": { items: [
+                        { idPersona: "persona-1", idRol: "rol-1", idClinica: "clinica-1" },
+                        { idPersona: "persona-1", idRol: "rol-1", idClinica: "clinica-2" }
+                    ] },
+                    "/roles/rol-1": { id: "rol-1", nombre: "PACIENTE" },
+                    "/clinicas/clinica-1": { id: "clinica-1", nombre: "Central" },
+                    "/clinicas/clinica-2": { id: "clinica-2", nombre: "Norte" }
+                };
+                expect(respuestas, ruta).to.have.property(ruta);
+                return { ok: true, json: async () => respuestas[ruta] };
+            });
+            ingresarDocumento("123123780");
+            await esperar();
+
+            const select = host.shadowRoot.querySelector("#clinica");
+            expect(select.disabled).to.be.false;
+            expect([...select.options].map((opcion) => opcion.textContent)).to.deep.equal(["Central", "Norte"]);
+            select.value = "clinica-2";
+            const buscar = sinon.spy();
+            host.addEventListener("buscar-citas", buscar);
+            host.shadowRoot.querySelector("form").dispatchEvent(new Event("submit", { cancelable: true }));
+            expect(buscar.calledOnce).to.be.true;
+            expect(buscar.firstCall.args[0].detail).to.include({
+                tipoDocumento: "1", numeroDocumento: "12312378-0", idClinica: "clinica-2"
+            });
+        });
+
         test("limpia las clínicas inmediatamente al editar un documento válido", async () => {
             const input = ingresarDocumento("098765432");
             await esperar();

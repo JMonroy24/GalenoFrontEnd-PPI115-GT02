@@ -32,6 +32,17 @@ suite("EncabezadoApp: sesión y contexto", () => {
     test("muestra Sin sesión cuando no existe usuario activo", () => {
         expect(host).to.be.instanceOf(EncabezadoApp);
         expect(texto()).to.equal("Sin sesión");
+        expect(host.shadowRoot.querySelector("#btnCerrarSesion").textContent).to.equal("Iniciar sesión");
+    });
+
+    test("el botón sin sesión navega al login sin ejecutar logout", () => {
+        const logout = sinon.spy(authService, "logout");
+        const navegar = sinon.spy();
+        host.addEventListener("navegar", navegar);
+        host.shadowRoot.querySelector("#btnCerrarSesion").click();
+        expect(logout.called).to.be.false;
+        expect(navegar.calledOnce).to.be.true;
+        expect(navegar.firstCall.args[0].detail).to.equal("login");
     });
 
     test("lee el usuario guardado al montar el encabezado después de una recarga", () => {
@@ -56,6 +67,7 @@ suite("EncabezadoApp: sesión y contexto", () => {
             expect(alIniciar.calledOnce).to.be.true;
             expect(alIniciar.firstCall.args[0].detail.usuario).to.deep.equal(usuario);
             expect(texto()).to.equal("Ana María López Pérez / Central / Médico");
+            expect(host.shadowRoot.querySelector("#btnCerrarSesion").textContent).to.equal("Cerrar sesión");
             expect(host.shadowRoot.querySelector("instalador-app")).to.equal(instalador);
         } finally {
             window.removeEventListener("sesion-iniciada", alIniciar);
@@ -79,6 +91,7 @@ suite("EncabezadoApp: sesión y contexto", () => {
         host.shadowRoot.querySelector("#btnCerrarSesion").click();
         expect(sessionStorage.getItem("usuarioActivo")).to.be.null;
         expect(texto()).to.equal("Sin sesión");
+        expect(host.shadowRoot.querySelector("#btnCerrarSesion").textContent).to.equal("Iniciar sesión");
     });
 
     test("retira los listeners al desconectarse", () => {

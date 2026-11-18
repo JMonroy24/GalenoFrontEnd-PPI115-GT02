@@ -1,3 +1,5 @@
+import { parseRouteParams } from "../../router.js";
+
 const MENU = {
     "Atención clínica": [
         { id: "buscar-citas", texto: "Buscar Citas" },
@@ -13,15 +15,33 @@ export class MenuLateral extends HTMLElement {
     constructor() {
         super();
         this.attachShadow({ mode: "open" });
+        this.alCambiarRuta = () => this._actualizarRutaActiva();
     }
 
     connectedCallback() {
         this.render();
+        window.addEventListener("hashchange", this.alCambiarRuta);
+    }
+
+    disconnectedCallback() {
+        window.removeEventListener("hashchange", this.alCambiarRuta);
+    }
+
+    _actualizarRutaActiva() {
+        const { route } = parseRouteParams(window.location.hash);
+        const rutaActual = route || "buscar-citas";
+        this.shadowRoot.querySelectorAll("a").forEach((enlace) => {
+            const activo = enlace.hash === `#${rutaActual}`;
+            enlace.classList.toggle("activo", activo);
+            if (activo) {
+                enlace.setAttribute("aria-current", "page");
+            } else {
+                enlace.removeAttribute("aria-current");
+            }
+        });
     }
 
     render() {
-        const hashActual = (window.location.hash || "#buscar-citas").replace(/^#/, "");
-
         this.shadowRoot.innerHTML = `
             <link rel="stylesheet" href="recursos/estilos/principal.css">
             <style>
@@ -82,8 +102,6 @@ export class MenuLateral extends HTMLElement {
                                 <li>
                                     <a
                                         href="#${item.id}"
-                                        class="${hashActual === item.id ? "activo" : ""}"
-                                        aria-current="${hashActual === item.id ? "page" : "false"}"
                                     >
                                         ${item.texto}
                                     </a>
@@ -94,6 +112,7 @@ export class MenuLateral extends HTMLElement {
                 `).join("")}
             </nav>
         `;
+        this._actualizarRutaActiva();
     }
 }
 

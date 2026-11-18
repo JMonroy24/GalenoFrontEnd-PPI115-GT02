@@ -144,7 +144,7 @@ suite("PersonaService (unitaria)", () => {
         expect(fetchStub.calledOnce).to.be.true;
     });
 
-    test("buscarClinicasPaciente consulta el subrecurso de clínicas si no vienen embebidas", async () => {
+    test("buscarClinicasPaciente consulta personas-roles si no vienen clínicas embebidas", async () => {
         fetchStub = sinon.stub(window, "fetch");
 
         fetchStub.onFirstCall().resolves({
@@ -158,18 +158,64 @@ suite("PersonaService (unitaria)", () => {
             ok: true,
             status: 200,
             text: async () => JSON.stringify({
-                items: [{ idClinica: 4, nombre: "Clínica Oriente" }]
+                items: [{ rol: { nombre: "PACIENTE" }, clinica: { idClinica: 4, nombre: "Clínica Oriente" } }]
             })
         });
 
         const clinicas = await servicio.buscarClinicasPaciente("1", "11111111-1");
 
         expect(fetchStub.callCount).to.equal(2);
-        expect(fetchStub.secondCall.args[0].toString()).to.contain(
-            "personas/11/clinicas"
-        );
+        const url = new URL(fetchStub.secondCall.args[0]);
+        expect(url.pathname).to.match(/\/personas-roles$/);
+        expect(url.searchParams.get("personaId")).to.equal("11");
         expect(clinicas).to.deep.equal([
             { idClinica: 4, nombre: "Clínica Oriente" }
         ]);
+    });
+
+    test("acepta el DTO filtrado sin documento y resuelve UUIDs de rol y clínica", async () => {
+        fetchStub = sinon.stub(window, "fetch").callsFake(async (url) => {
+            const recurso = new URL(url);
+            const respuestas = {
+                "/personas": { items: [{ id: "persona-1", nombres: "Ana" }] },
+                "/personas-roles": { items: [
+                    { idPersona: "persona-1", idRol: "rol-1", idClinica: "clinica-1", activo: true },
+                    { idPersona: "persona-1", idRol: "rol-1", idClinica: "clinica-1", activo: true },
+                    { idPersona: "persona-1", idRol: "rol-1", idClinica: "inactiva", activo: false },
+                    { idPersona: "otra-persona", idRol: "rol-1", idClinica: "ajena" },
+                    { idPersona: "persona-1", idRol: "rol-2", idClinica: "empleado" }
+                ] },
+                "/roles/rol-1": { id: "rol-1", nombre: "PACIENTE" },
+                "/roles/rol-2": { id: "rol-2", nombre: "EMPLEADO" },
+                "/clinicas/clinica-1": { id: "clinica-1", nombre: "Clínica Central" }
+            };
+            const ruta = recurso.pathname.replace("/galenoSV/api/v1", "");
+            expect(respuestas, ruta).to.have.property(ruta);
+            return { ok: true, json: async () => respuestas[ruta] };
+        });
+
+        expect(await servicio.buscarClinicasPaciente("tipo-1", "12312378-0"))
+            .to.deep.equal([{ idClinica: "clinica-1", nombre: "Clínica Central" }]);
+        expect(fetchStub.callCount).to.equal(5);
+        const url = new URL(fetchStub.firstCall.args[0]);
+        expect(url.searchParams.get("tipoDocumentoId")).to.equal("tipo-1");
+        expect(url.searchParams.get("valor")).to.equal("12312378-0");
+    });
+
+    test("recupera las siguientes páginas de asociaciones del paciente", async () => {
+        fetchStub = sinon.stub(window, "fetch").callsFake(async (url) => {
+            const recurso = new URL(url);
+            if (recurso.pathname.endsWith("/personas")) {
+                return { ok: true, json: async () => ({ items: [{ id: "persona-1" }] }) };
+            }
+            const first = Number(recurso.searchParams.get("first"));
+            const items = first === 0
+                ? Array.from({ length: 10 }, () => ({ rol: { nombre: "EMPLEADO" } }))
+                : [{ rol: { nombre: "PACIENTE" }, clinica: { id: 4, nombre: "Oriente" } }];
+            return { ok: true, json: async () => ({ items, total: 11 }) };
+        });
+        expect(await servicio.buscarClinicasPaciente("1", "12312378-0"))
+            .to.deep.equal([{ idClinica: 4, nombre: "Oriente" }]);
+        expect(new URL(fetchStub.thirdCall.args[0]).searchParams.get("first")).to.equal("10");
     });
 });

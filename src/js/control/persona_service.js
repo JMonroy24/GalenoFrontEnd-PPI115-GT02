@@ -1,5 +1,6 @@
 import DefaultService from "./default_service.js";
 import { ENDPOINTS } from "../routes.js";
+import { API_BASE, DEFAULT_PAGE_SIZE } from "../config.js";
 
 export class PersonaService extends DefaultService {
     constructor() {
@@ -37,8 +38,11 @@ export class PersonaService extends DefaultService {
                 ? tipo?.idTipoDocumento ?? tipo?.id ?? tipo?.codigo
                 : tipo;
 
+            const documento = this._numeroDocumento(persona);
+
+            // El DTO de /personas puede omitir el documento que el servidor ya filtró.
             return this._estaActivo(persona)
-                && this._normalizarDocumento(this._numeroDocumento(persona)) === documentoBuscado
+                && (!documento || this._normalizarDocumento(documento) === documentoBuscado)
                 && (idTipo == null || String(idTipo) === String(tipoDocumento));
         }) ?? null;
     }
@@ -50,7 +54,7 @@ export class PersonaService extends DefaultService {
             return [];
         }
 
-        const clinicas = this._extraerClinicas(persona);
+        const clinicas = await this._extraerClinicas(persona);
 
         // Una lista vacía embebida también es una respuesta definitiva.
         if (clinicas !== null) {
@@ -62,18 +66,76 @@ export class PersonaService extends DefaultService {
             ?? persona.persona?.idPersona
             ?? persona.paciente?.idPersona;
 
-        if (!idPersona) {
+        if (idPersona == null || idPersona === "") {
             return [];
         }
 
-        const response = await this._request(
-            `${this._urlBase}/${encodeURIComponent(idPersona)}/clinicas`,
-            { method: "GET" },
-            "Error al obtener las clínicas del paciente"
-        );
-        const payload = await this._parseBody(response);
+        const asignaciones = [];
+        let first = 0;
+        let total;
 
-        return this._normalizarClinicas(payload);
+        do {
+            const params = new URLSearchParams({
+                personaId: String(idPersona), first: String(first), max: String(DEFAULT_PAGE_SIZE)
+            });
+            const response = await this._request(
+                `${API_BASE}${ENDPOINTS.PERSONAS_ROLES}?${params}`,
+                { method: "GET" },
+                "Error al obtener las clínicas del paciente"
+            );
+            const payload = await this._parseBody(response);
+            const items = Array.isArray(payload?.items) ? payload.items
+                : Array.isArray(payload) ? payload : [];
+            total = Number(payload?.total ?? items.length);
+            if (items.length === 0) break;
+            asignaciones.push(...items);
+            first += items.length;
+        } while (first < total);
+
+        const propias = asignaciones.filter((item) => {
+            if (!item || typeof item !== "object") return false;
+            const personaRol = item?.persona ?? item?.idPersona;
+            const id = typeof personaRol === "object"
+                ? personaRol?.idPersona ?? personaRol?.id : personaRol;
+            return this._estaActivo(item) && (id == null || String(id) === String(idPersona));
+        });
+        return this._resolverClinicasPaciente(propias);
+    }
+
+    async _resolverClinicasPaciente(asignaciones) {
+        const solicitudes = new Map();
+        const resolver = async (referencia, campoId, endpoint, nombrePlano) => {
+            const entidad = referencia && typeof referencia === "object" ? referencia : {};
+            const id = entidad[campoId] ?? entidad.id ?? entidad.codigo
+                ?? (typeof referencia !== "object" ? referencia : null);
+            const nombre = entidad.nombre ?? entidad.name ?? entidad.descripcion ?? nombrePlano;
+
+            if (nombre || id == null || !this._estaActivo(entidad)) {
+                return nombre ? { ...entidad, [campoId]: id, nombre } : entidad;
+            }
+            const url = `${API_BASE}${endpoint}/${encodeURIComponent(id)}`;
+            if (!solicitudes.has(url)) {
+                solicitudes.set(url, (async () => {
+                    const response = await this._request(url, { method: "GET" }, "Error al obtener la relación del paciente");
+                    const datos = await this._parseBody(response);
+                    return { ...datos, [campoId]: id };
+                })());
+            }
+            return solicitudes.get(url);
+        };
+
+        const clinicas = await Promise.all(asignaciones.map(async (item) => {
+            const referenciaRol = item.rol ?? item.idRol ?? item.tipoRol;
+            const nombreRol = item.nombreRol ?? item.rolNombre
+                ?? (typeof item.rol === "string" && /^[a-záéíóúñ _]+$/i.test(item.rol) ? item.rol : null);
+            const rol = await resolver(referenciaRol, "idRol", ENDPOINTS.ROLES, nombreRol);
+            if (!this._esRolPaciente({ ...item, rol })) return null;
+
+            const clinica = await resolver(item.clinica ?? item.idClinica,
+                "idClinica", ENDPOINTS.CLINICAS, item.nombreClinica ?? item.clinicaNombre);
+            return { ...item, rol, clinica };
+        }));
+        return this._normalizarClinicas(clinicas);
     }
 
     _extraerClinicas(persona) {
@@ -84,9 +146,7 @@ export class PersonaService extends DefaultService {
 
         // Los roles definen en qué clínicas la persona es paciente activo.
         if (Array.isArray(roles)) {
-            return this._normalizarClinicas(
-                roles.filter((rol) => this._esRolPaciente(rol))
-            );
+            return this._resolverClinicasPaciente(roles.filter((rol) => rol && this._estaActivo(rol)));
         }
 
         const fuentes = [
