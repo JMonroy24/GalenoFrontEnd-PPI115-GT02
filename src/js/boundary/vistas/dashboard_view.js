@@ -498,7 +498,7 @@ export class DashboardView extends HTMLElement {
         const estado = store.getState();
         const filtros = {};
         if (["hoy", "pasado", "futuro"].includes(this.periodo)) filtros.periodo = this.periodo;
-        const idClinica = this._idClinica(estado?.clinicaActiva ?? estado?.activeClinic);
+        const idClinica = this.shadowRoot.querySelector("#clinica-activa")?.value?.trim() ?? "";
         const rolId = this._idRol(estado?.rolSeleccionado ?? estado?.selectedRole ?? estado?.rolActivo);
         const busqueda = (this.busqueda ?? "").trim();
         const fechaDesde = String(this.fechaDesde ?? "").trim();
@@ -559,7 +559,9 @@ export class DashboardView extends HTMLElement {
         }
         const filtros = this._construirFiltros();
         const estado = store.getState();
-        const rolValido = this._obtenerRoles(estado).some((rol) => this._idRol(rol) === filtros.idRol);
+        const clinica = this.clinicas.find((item) => this._idClinica(item) === filtros.clinicaId);
+        const rolValido = clinica && this._obtenerRoles({ ...estado, clinicaActiva: clinica })
+            .some((rol) => this._idRol(rol) === filtros.idRol);
         if (!filtros.clinicaId || !rolValido) {
             this._mostrarEstadoCitas("No tiene roles de empleado asignados en esta clínica.");
             return;

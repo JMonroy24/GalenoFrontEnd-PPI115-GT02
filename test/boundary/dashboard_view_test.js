@@ -198,6 +198,7 @@ suite("DashboardView (unitaria)", () => {
         let url = new URL(fetchStub.firstCall.args[0]);
         expect(url.pathname).to.match(/\/consultas$/);
         expect(url.searchParams.get("idClinica")).to.equal("1");
+        expect(url.searchParams.get("clinicaId")).to.equal("1");
         expect(url.searchParams.get("fechaDesde")).to.equal(host.fechaDesde);
         expect(url.searchParams.get("fechaHasta")).to.equal(host.fechaHasta);
         expect(url.searchParams.has("periodo")).to.be.false;
@@ -208,7 +209,46 @@ suite("DashboardView (unitaria)", () => {
         await new Promise((resolve) => setTimeout(resolve, 20));
         url = new URL(fetchStub.lastCall.args[0]);
         expect(url.searchParams.get("idClinica")).to.equal("2");
-        expect(host.shadowRoot.querySelectorAll("tarjeta-consulta")).to.have.length(2);
+        expect(url.searchParams.get("clinicaId")).to.equal("2");
+        expect(host.shadowRoot.querySelectorAll("tarjeta-consulta")).to.have.length(0);
+    });
+
+    test("lee la clínica directamente del combo y no consulta si no hay una seleccionada", async () => {
+        const selectClinica = host.shadowRoot.querySelector("#clinica-activa");
+        selectClinica.value = "2";
+        await host._cargarCitas();
+        expect(buscarCitasStub.lastCall.args[0].clinicaId).to.equal("2");
+        selectClinica.selectedIndex = -1;
+        buscarCitasStub.resetHistory();
+        await host._cargarCitas();
+        expect(buscarCitasStub.called).to.be.false;
+        expect(host.shadowRoot.querySelectorAll("tarjeta-consulta")).to.have.length(0);
+    });
+
+    test("el Dashboard descarta citas ajenas devueltas por el backend al cambiar de clínica", async () => {
+        buscarCitasStub.restore();
+        buscarCitasStub = null;
+        const consultas = [
+            { idConsulta: 101, clinica: { id: "1", nombre: "Central" }, procedimientos: [{ nombre: "Control" }] },
+            { idConsulta: 102, clinica: { id: "2", nombre: "Norte" }, procedimientos: [{ nombre: "Control" }] },
+            { idConsulta: 103 }
+        ];
+        host.fechaDesde = "";
+        host.fechaHasta = "";
+        const fetchStub = sinon.stub(window, "fetch").resolves({
+            ok: true, json: async () => ({ items: consultas, total: 3 })
+        });
+        await host._cargarCitas();
+        expect([...host.shadowRoot.querySelectorAll("tarjeta-consulta")].map((card) => card.consulta.idConsulta))
+            .to.deep.equal([101]);
+        const selectClinica = host.shadowRoot.querySelector("#clinica-activa");
+        selectClinica.value = "2";
+        selectClinica.dispatchEvent(new Event("change"));
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        expect([...host.shadowRoot.querySelectorAll("tarjeta-consulta")].map((card) => card.consulta.idConsulta))
+            .to.deep.equal([102]);
+        const url = new URL(fetchStub.lastCall.args[0]);
+        expect(url.searchParams.get("clinicaId")).to.equal("2");
     });
 
     test("limita roles por clínica y recarga tarjetas con un contexto válido al cambiar selectores", async () => {

@@ -370,7 +370,7 @@ suite("BusquedaCitasView (unitaria)", () => {
         expect(host.shadowRoot.querySelector("#estado").hidden).to.be.false;
         expect(host.shadowRoot.querySelector("#resultados").hidden).to.be.true;
         expect(host.shadowRoot.querySelectorAll("tarjeta-consulta")).to.have.length(0);
-        expect(mensajeSpy.calledOnceWithExactly("Error al buscar citas", "Consultas no disponibles", "error")).to.be.true;
+        expect(mensajeSpy.calledOnceWithExactly("Error al buscar citas", "HTTP 500: Consultas no disponibles", "error")).to.be.true;
     });
 
     for (const fallaAnterior of [false, true]) {

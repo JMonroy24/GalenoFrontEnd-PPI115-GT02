@@ -12,6 +12,47 @@ suite("ConsultaService (unitaria)", () => {
 
     teardown(() => fetchStub?.restore());
 
+    test("completa los DTO de consulta con asignaciones paginadas y comparte los nombres del catálogo", async () => {
+        const consultas = [{ id: "cita-1" }, { id: "cita-2" }, { id: "sin-procedimiento" }];
+        const asignaciones = [
+            { id: "asignacion-ajena", idConsulta: "otra-cita", idProcedimiento: "otro" },
+            { id: "asignacion-1", idConsulta: "cita-1", idProcedimiento: "triage" },
+            { id: "asignacion-2", idConsulta: "cita-2", idProcedimiento: "triage" }
+        ];
+        const original = structuredClone(asignaciones);
+        fetchStub = sinon.stub(window, "fetch").callsFake(async (url) => {
+            const { pathname, searchParams } = new URL(url);
+            if (pathname.endsWith("/consultas")) {
+                return { ok: true, json: async () => ({ items: consultas, total: 3 }) };
+            }
+            if (pathname.endsWith("/consultas-procedimientos")) {
+                const first = Number(searchParams.get("first"));
+                return { ok: true, json: async () => ({ items: asignaciones.slice(first, first + 1), total: 3 }) };
+            }
+            expect(pathname).to.equal("/galenoSV/api/v1/procedimientos/triage");
+            return { ok: true, json: async () => ({ id: "triage", nombre: "Triage emergencias", activo: true }) };
+        });
+
+        const respuesta = await servicio.buscarCitas();
+        expect(respuesta.items.slice(0, 2).map((consulta) => consulta.procedimientos[0].procedimiento.nombre))
+            .to.deep.equal(["Triage emergencias", "Triage emergencias"]);
+        expect(respuesta.items[0].procedimientos[0].idConsulta).to.equal("cita-1");
+        expect(respuesta.items[1].procedimientos[0].idConsulta).to.equal("cita-2");
+        expect(respuesta.items[2].procedimientos).to.deep.equal([]);
+        expect(fetchStub.callCount).to.equal(5);
+        expect(asignaciones).to.deep.equal(original);
+    });
+
+    test("propaga el error al cargar asignaciones para no informar una lista vacía falsa", async () => {
+        fetchStub = sinon.stub(window, "fetch");
+        fetchStub.onFirstCall().resolves({ ok: true, json: async () => ({ items: [{ id: "cita-1" }] }) });
+        fetchStub.onSecondCall().resolves({ ok: false, status: 500 });
+        let error;
+        try { await servicio.buscarCitas(); } catch (err) { error = err; }
+        expect(error).to.be.instanceOf(DefaultError);
+        expect(error.status).to.equal(500);
+    });
+
     test("buscarCitas mapea items con asociaciones Java y conserva los metadatos", async () => {
         const clinica = { idClinica: 3, nombre: "Clínica Norte" };
         const persona = { idPersona: 42, nombres: "Ana", numeroDocumento: "01234567-8" };
@@ -28,7 +69,7 @@ suite("ConsultaService (unitaria)", () => {
             json: async () => ({ items: [consulta], total: 12, first: 5, max: 5 })
         });
 
-        const respuesta = await servicio.buscarCitas({ idClinica: 3 }, 5, 5);
+        const respuesta = await servicio.buscarCitas({}, 5, 5);
 
         expect(respuesta).to.be.instanceOf(DefaultResponse);
         expect(respuesta.items).to.have.length(1);
@@ -62,6 +103,7 @@ suite("ConsultaService (unitaria)", () => {
         const consulta = { id: "cita-1", inicio: "2026-09-17T20:28:00", idPaciente: "asignacion-1", activo: true };
         const original = structuredClone(consulta);
         const respuestas = {
+            "/consultas-procedimientos": { items: [], total: 0 },
             "/consultas": { items: [consulta, { ...consulta, id: "cita-2" }], total: 2 },
             "/personas-roles/asignacion-1": { id: "asignacion-1", idPersona: "persona-1", idClinica: "clinica-1" },
             "/personas/persona-1": { id: "persona-1", nombres: ["Ana"], apellidos: ["López"], numeroDocumento: "12312378-0" },
@@ -76,12 +118,13 @@ suite("ConsultaService (unitaria)", () => {
         expect(respuesta.items[0].paciente).to.deep.equal(respuestas["/personas/persona-1"]);
         expect(respuesta.items[0].clinica.nombre).to.equal("Clínica Central de Santa Ana");
         expect(respuesta.items[0].estado).to.equal("Activa");
-        expect(fetchStub.callCount).to.equal(4);
+        expect(fetchStub.callCount).to.equal(5);
         expect(consulta).to.deep.equal(original);
     });
 
     test("recupera el documento del filtro solo tras verificar la identidad del paciente", async () => {
         const respuestas = {
+            "/consultas-procedimientos": { items: [], total: 0 },
             "/consultas": { items: [
                 { id: 1, idPersona: "persona-1" }, { id: 2, idPersona: "persona-2" }
             ] },
@@ -98,7 +141,7 @@ suite("ConsultaService (unitaria)", () => {
         expect(respuesta.items[0].paciente.numeroDocumento).to.equal("12312378-0");
         expect(respuesta.items).to.have.length(1);
         expect(respuesta.total).to.equal(1);
-        expect(fetchStub.callCount).to.equal(4);
+        expect(fetchStub.callCount).to.equal(5);
     });
 
     test("filtra por documento, tipo y clínica antes de paginar aunque el backend ignore los filtros", async () => {
@@ -122,7 +165,7 @@ suite("ConsultaService (unitaria)", () => {
         }, 1, 1);
         expect(respuesta.items.map((item) => item.idConsulta)).to.deep.equal([5]);
         expect(respuesta).to.include({ first: 1, max: 1, total: 2 });
-        expect(fetchStub.callCount).to.equal(5);
+        expect(fetchStub.callCount).to.equal(6);
     });
 
     test("excluye citas sin identidad verificable en la búsqueda pública", async () => {
@@ -178,7 +221,7 @@ suite("ConsultaService (unitaria)", () => {
         const respuesta = await servicio.buscarCitas({ fechaDesde: "2026-09-17", fechaHasta: "2026-10-29" }, 1, 1);
         expect(respuesta.items.map((item) => item.idConsulta)).to.deep.equal([3]);
         expect(respuesta).to.include({ total: 2, first: 1, max: 1 });
-        expect(fetchStub.callCount).to.equal(4);
+        expect(fetchStub.callCount).to.equal(5);
     });
 
     test("termina la búsqueda si el backend repite una página ignorando first", async () => {
@@ -187,18 +230,52 @@ suite("ConsultaService (unitaria)", () => {
         });
         const respuesta = await servicio.buscarCitas({ fechaDesde: "2026-09-17" });
         expect(respuesta.total).to.equal(1);
-        expect(fetchStub.callCount).to.equal(2);
+        expect(fetchStub.callCount).to.equal(3);
     });
 
-    test("normaliza el clinicaId del dashboard a idClinica y envía el rol al backend", async () => {
+    test("envía clinicaId e idClinica con la clínica del Dashboard y conserva el rol", async () => {
         fetchStub = sinon.stub(window, "fetch").resolves({
-            ok: true, json: async () => ({ items: [{ idConsulta: 101 }], total: 1 })
+            ok: true, json: async () => ({ items: [{ idConsulta: 101, idClinica: "clinica-uuid",
+                clinica: { id: "clinica-uuid", nombre: "Central" } }], total: 1 })
         });
         const respuesta = await servicio.buscarCitas({ clinicaId: "clinica-uuid", idRol: "rol-uuid" });
         const url = new URL(fetchStub.firstCall.args[0]);
         expect(url.searchParams.get("idClinica")).to.equal("clinica-uuid");
+        expect(url.searchParams.get("clinicaId")).to.equal("clinica-uuid");
         expect(url.searchParams.get("idRol")).to.equal("rol-uuid");
         expect(respuesta.items[0].idConsulta).to.equal(101);
+    });
+
+    test("aísla clínicas antes de paginar aunque el servidor ignore el filtro y resuelve el rol del DTO", async () => {
+        const consultas = [
+            { id: "ajena", clinica: { id: "otra", nombre: "Otra" } },
+            { id: "propia-1", idPersonaRol: "rol-paciente" },
+            { id: "sin-clinica" },
+            { id: "solo-nombre", clinica: "Central" },
+            { id: "propia-2", clinica: { id: "activa", nombre: "Central" } }
+        ];
+        fetchStub = sinon.stub(window, "fetch").callsFake(async (url) => {
+            const { pathname, searchParams } = new URL(url);
+            if (pathname.endsWith("/consultas")) {
+                expect(searchParams.get("clinicaId")).to.equal("activa");
+                expect(searchParams.get("idClinica")).to.equal("activa");
+                const first = Number(searchParams.get("first"));
+                return { ok: true, json: async () => ({ items: consultas.slice(first, first + 1), total: 5 }) };
+            }
+            const respuestas = {
+                "/galenoSV/api/v1/personas-roles/rol-paciente": { id: "rol-paciente", idClinica: "activa" },
+                "/galenoSV/api/v1/clinicas/activa": { id: "activa", nombre: "Central" },
+                "/galenoSV/api/v1/consultas-procedimientos": { items: [], total: 0 }
+            };
+            expect(respuestas).to.have.property(pathname);
+            return { ok: true, json: async () => respuestas[pathname] };
+        });
+
+        const respuesta = await servicio.buscarCitas({ clinicaId: "activa", idClinica: "obsoleta" }, 1, 1);
+        expect(respuesta.items.map((consulta) => consulta.idConsulta)).to.deep.equal(["propia-2"]);
+        expect(respuesta).to.include({ total: 2, first: 1, max: 1 });
+        expect(fetchStub.getCalls().filter((call) => new URL(call.args[0]).pathname.endsWith("/consultas")))
+            .to.have.length(5);
     });
 
     test("buscarCitas usa exclusivamente items sin confundir el envoltorio con una consulta", async () => {

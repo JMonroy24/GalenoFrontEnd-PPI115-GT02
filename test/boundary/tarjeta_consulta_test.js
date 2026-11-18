@@ -64,6 +64,27 @@ suite("TarjetaConsulta (unitaria)", () => {
         fetchStub?.restore();
     });
 
+    test("renderiza el procedimiento del ticket aunque ConsultaDTO solo envíe identificadores", async () => {
+        const consulta = { id: "93407ec0-b20f-43d3-a04f-da232be5a2ed", fechaInicio: "2026-11-18T03:35:00Z[UTC]" };
+        fetchStub.callsFake(async (url) => {
+            const ruta = new URL(url).pathname;
+            const respuestas = {
+                "/galenoSV/api/v1/consultas": { items: [consulta], total: 1 },
+                "/galenoSV/api/v1/consultas-procedimientos": { items: [{
+                    id: "asignacion", idConsulta: consulta.id, idProcedimiento: "triage"
+                }], total: 1 },
+                "/galenoSV/api/v1/procedimientos/triage": { id: "triage", nombre: "Triage emergencias", activo: true }
+            };
+            expect(respuestas).to.have.property(ruta);
+            return { ok: true, json: async () => respuestas[ruta] };
+        });
+        const respuesta = await new ConsultaService().buscarCitas();
+        host.consulta = respuesta.items[0];
+        expect(host.shadowRoot.querySelector("#lista-procedimientos li").textContent).to.equal("Triage emergencias");
+        expect(host.shadowRoot.querySelector("#procedimientos-vacio").hidden).to.be.true;
+        expect(fetchStub.callCount).to.equal(3);
+    });
+
     test("muestra paciente y documento sin realizar peticiones HTTP", () => {
         host.consulta = crearConsulta({ paciente: {
             nombres: "Ana", apellidos: ["López", "Pérez"], numeroDocumento: "01234567-8"
@@ -173,7 +194,7 @@ suite("TarjetaConsulta (unitaria)", () => {
             host.consulta = new ConsultaService()._mapearConsulta(consulta);
             expect([...host.shadowRoot.querySelectorAll("#lista-procedimientos li")]
                 .map((item) => item.textContent)).to.deep.equal([
-                "Consulta General", "Laboratorio", "Procedimiento sin nombre"
+                "Consulta General", "Laboratorio", "Procedimiento clínico"
             ]);
             expect(host.shadowRoot.querySelector("#procedimientos-vacio").hidden).to.be.true;
             expect(consulta).to.deep.equal(original);

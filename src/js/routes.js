@@ -10,6 +10,7 @@ export const ENDPOINTS = Object.freeze({
     PERSONAS_ROLES: "/personas-roles",
     ROLES: "/roles",
     CONSULTAS: "/consultas",
+    CONSULTAS_PROCEDIMIENTOS: "/consultas-procedimientos",
     PROCEDIMIENTOS: "/procedimientos",
     ORDENES_EXAMEN: "/ordenes-examen",
     ORDEN_EXAMEN: "/ordenes-examen",

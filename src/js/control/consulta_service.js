@@ -88,8 +88,15 @@ export class ConsultaService extends DefaultService {
             }
         });
 
+        const idClinicaActiva = filtros.clinicaId ?? filtros.idClinica;
+        if (idClinicaActiva != null && String(idClinicaActiva).trim() !== "") {
+            params.set("clinicaId", String(idClinicaActiva).trim());
+            params.set("idClinica", String(idClinicaActiva).trim());
+        }
+        const url = `${this._urlBase}?${params.toString()}`;
+        console.log('URL de fetch consultas:', url);
         const response = await this._request(
-            `${this._urlBase}?${params.toString()}`,
+            url,
             { method: "GET" },
             "Error al consultar las citas"
         );
@@ -99,7 +106,8 @@ export class ConsultaService extends DefaultService {
     async _buscarCitas(filtros, first, max) {
         const conFechas = Boolean(filtros.fechaDesde || filtros.fechaHasta);
         const conPaciente = Boolean(filtros.tipoDocumento && filtros.numeroDocumento);
-        const filtrarAntesDePaginar = conFechas || conPaciente;
+        const conClinica = filtros.idClinica != null && String(filtros.idClinica).trim() !== "";
+        const filtrarAntesDePaginar = conFechas || conPaciente || conClinica;
         const solicitudes = new Map();
         const mapearItems = (payload) => (Array.isArray(payload?.items) ? payload.items : [])
             .filter((consulta) => consulta !== null && typeof consulta === "object" && !Array.isArray(consulta))
@@ -134,22 +142,27 @@ export class ConsultaService extends DefaultService {
                 return fecha && (!filtros.fechaDesde || fecha >= filtros.fechaDesde)
                     && (!filtros.fechaHasta || fecha <= filtros.fechaHasta);
             });
-            if (conPaciente) {
+            if (conPaciente || conClinica) {
                 items = (await Promise.all(items.map((consulta) =>
                     this._completarConsulta(consulta, solicitudes, filtros)
-                ))).filter((consulta) => this._coincidePacienteYClinica(consulta, filtros));
+                ))).filter((consulta) => (!conPaciente || this._coincidePacienteYClinica(consulta, filtros))
+                    && (!conClinica || this._coincideClinica(consulta, filtros.idClinica)));
             }
             const totalFiltrado = items.length;
             const pagina = items.slice(first, first + max);
+            const completas = conPaciente || conClinica ? pagina
+                : await Promise.all(pagina.map((consulta) => this._completarConsulta(consulta, solicitudes, filtros)));
             return new DefaultResponse(
-                conPaciente ? pagina
-                    : await Promise.all(pagina.map((consulta) => this._completarConsulta(consulta, solicitudes, filtros))),
+                await this._completarProcedimientos(completas, solicitudes),
                 totalFiltrado, first, max
             );
         }
 
         return new DefaultResponse(
-            await Promise.all(items.map((consulta) => this._completarConsulta(consulta, solicitudes, filtros))),
+            await this._completarProcedimientos(
+                await Promise.all(items.map((consulta) => this._completarConsulta(consulta, solicitudes, filtros))),
+                solicitudes
+            ),
             payload?.total ?? 0,
             payload?.first ?? 0,
             payload?.max ?? 0
@@ -166,9 +179,75 @@ export class ConsultaService extends DefaultService {
         const idTipo = idRelacion(tipo, "idTipoDocumento");
         if (idTipo != null && String(idTipo) !== String(filtros.tipoDocumento)) return false;
 
-        const idClinica = idRelacion(consulta.clinica, "idClinica")
-            ?? idRelacion(consulta.idClinica ?? consulta.clinicaId, "idClinica");
-        return !filtros.idClinica || (idClinica != null && String(idClinica) === String(filtros.idClinica));
+        return filtros.idClinica == null || this._coincideClinica(consulta, filtros.idClinica);
+    }
+
+    _coincideClinica(consulta, idClinicaActiva) {
+        const datos = { ...consulta.consulta?.cita, ...consulta.consulta, ...consulta.cita, ...consulta };
+        const idClinica = idRelacion(datos.idClinica ?? datos.clinicaId, "idClinica")
+            ?? idRelacion(datos.clinica, "idClinica");
+        // Una clínica ausente o solo un nombre no demuestra pertenencia.
+        return idClinica != null && String(idClinica) === String(idClinicaActiva).trim();
+    }
+
+    async _completarProcedimientos(consultas, solicitudes) {
+        // ConsultaDTO contiene IDs, no las relaciones que sí consulta el ticket.
+        // Leer las asignaciones una sola vez por búsqueda y unirlas por idConsulta.
+        const faltantes = consultas.some((consulta) => consulta.idConsulta != null
+            && consulta.procedimientos.length === 0);
+        let asignaciones = [];
+        if (faltantes) {
+            const urlBase = `${ENDPOINTS.API_BASE}${ENDPOINTS.CONSULTAS_PROCEDIMIENTOS}`;
+            if (!solicitudes.has(urlBase)) {
+                solicitudes.set(urlBase, (async () => {
+                    const registros = [];
+                    const vistos = new Set();
+                    let first = 0;
+                    while (true) {
+                        const response = await this._request(`${urlBase}?first=${first}&max=100`,
+                            { method: "GET" }, "Error al consultar los procedimientos de las citas");
+                        const pagina = await response.json();
+                        const items = Array.isArray(pagina?.items) ? pagina.items : [];
+                        const nuevos = items.filter((item) => {
+                            if (!item || item.idConsulta == null
+                                || (item.idProcedimiento == null && item.procedimiento == null)) return false;
+                            const id = item.id ?? item.idConsultaProcedimiento;
+                            if (id != null && vistos.has(String(id))) return false;
+                            if (id != null) vistos.add(String(id));
+                            return true;
+                        });
+                        registros.push(...nuevos);
+                        first += items.length;
+                        if (nuevos.length === 0 || first >= Number(pagina?.total ?? first)) break;
+                    }
+                    return registros;
+                })());
+            }
+            asignaciones = await solicitudes.get(urlBase);
+        }
+
+        return Promise.all(consultas.map(async (consulta) => {
+            const lista = consulta.procedimientos.length > 0 ? consulta.procedimientos
+                : asignaciones.filter((item) => String(idRelacion(item.idConsulta, "idConsulta"))
+                    === String(consulta.idConsulta));
+            const procedimientos = await Promise.all(lista.map(async (asignacion) => {
+                if (!asignacion || typeof asignacion !== "object") return asignacion;
+                if (asignacion.procedimiento?.nombre || asignacion.nombre
+                    || asignacion.idProcedimiento?.nombre) return asignacion;
+                const id = idRelacion(asignacion.idProcedimiento ?? asignacion.procedimiento, "idProcedimiento");
+                if (id == null || id === "") return asignacion;
+                const url = `${ENDPOINTS.API_BASE}${ENDPOINTS.PROCEDIMIENTOS}/${encodeURIComponent(id)}`;
+                if (!solicitudes.has(url)) {
+                    solicitudes.set(url, (async () => {
+                        const response = await this._request(url, { method: "GET" },
+                            "Error al consultar el nombre del procedimiento");
+                        return response.json();
+                    })());
+                }
+                return { ...asignacion, procedimiento: await solicitudes.get(url) };
+            }));
+            return { ...consulta, procedimientos };
+        }));
     }
 
     async _completarConsulta(consulta, solicitudes, filtros) {
@@ -257,7 +336,7 @@ export class ConsultaService extends DefaultService {
     buscarCitas(filtros = {}, first = 0, max = DEFAULT_PAGE_SIZE) {
         const { clinicaId, ...resto } = filtros;
         const normalizados = clinicaId !== undefined && clinicaId !== null && String(clinicaId).trim() !== ""
-            ? { ...resto, idClinica: filtros.idClinica ?? clinicaId }
+            ? { ...resto, idClinica: String(clinicaId).trim() }
             : filtros;
 
         return this._buscarCitas(normalizados, first, max);
