@@ -1,5 +1,7 @@
 # GalenoSV — Frontend
 
+Para iniciar **esta copia** del proyecto desde PowerShell, ejecute `./iniciar.ps1` y abra `http://localhost:3000/src/`. El script fija la carpeta del servidor explícitamente. Si el puerto 3000 ya está ocupado por otra copia, cierre ese servidor con Ctrl+C antes de ejecutar el script.
+
 PWA médica para la gestión de consultas y atención clínica, construida íntegramente con **Vanilla JS + Web Components** (sin frameworks) siguiendo el patrón ECB (Entity–Control–Boundary).
 
 ---

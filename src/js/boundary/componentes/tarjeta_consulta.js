@@ -349,24 +349,14 @@ export class TarjetaConsulta extends HTMLElement {
     }
 
     _obtenerProcedimientos(datos) {
-        let procedimientos = datos.procedimientos
-            ?? datos.consultaProcedimientos
-            ?? datos.consultaProcedimientoList
-            ?? datos.procedimientosActivos
-            ?? datos.detalles
-            ?? datos.detallesConsulta
-            ?? datos.detalleConsulta
-            ?? [];
+        const procedimientos = this._buscarListaProcedimientos(datos);
+        const lista = procedimientos.length > 0 ? procedimientos : this._obtenerPasos(datos);
 
-        if (!Array.isArray(procedimientos) && Array.isArray(procedimientos?.items)) {
-            procedimientos = procedimientos.items;
-        }
-
-        if (!Array.isArray(procedimientos)) {
-            return [];
-        }
-
-        return procedimientos.filter((procedimiento) => {
+        return lista.filter((procedimiento) => {
+            if (procedimiento == null || (typeof procedimiento !== "object"
+                && typeof procedimiento !== "string") || Array.isArray(procedimiento)) {
+                return false;
+            }
             if (procedimiento?.activo === false) {
                 return false;
             }
@@ -374,6 +364,23 @@ export class TarjetaConsulta extends HTMLElement {
             const estado = String(procedimiento?.estado ?? "").toLowerCase();
             return estado !== "inactivo" && estado !== "cancelado" && estado !== "eliminado";
         });
+    }
+
+    _buscarListaProcedimientos(datos) {
+        const campos = [
+            "procedimientos", "consultaProcedimientos", "consultaProcedimientoList",
+            "consulta_procedimientos", "consulta_procedimiento", "procedimientosActivos",
+            "detalles", "detallesConsulta", "detalleConsulta"
+        ];
+        // El servicio puede añadir procedimientos: [] sin quitar la lista original.
+        // Buscar una lista con elementos también en la consulta o cita anidada.
+        for (const fuente of this._fuentesDatos(datos)) {
+            for (const campo of campos) {
+                const lista = this._normalizarPasos(fuente[campo]);
+                if (lista.length > 0) return lista;
+            }
+        }
+        return [];
     }
 
     _obtenerPasos(datos) {
@@ -407,7 +414,7 @@ export class TarjetaConsulta extends HTMLElement {
 
         // Si los pasos vienen dentro de cada procedimiento, conserva ese nivel
         // del árbol, incluyendo procedimientos que ya no están activos.
-        const procedimientos = this._normalizarPasos(datos.procedimientos ?? datos.consultaProcedimientos);
+        const procedimientos = this._buscarListaProcedimientos(datos);
         return procedimientos.flatMap((procedimiento) => {
             const pasos = this._normalizarPasos(
                 procedimiento.pasosClinicos ?? procedimiento.consulta_procedimiento_paso
@@ -440,17 +447,17 @@ export class TarjetaConsulta extends HTMLElement {
     }
 
     _nombreProcedimiento(procedimiento) {
-        if (typeof procedimiento === "string") {
-            return procedimiento;
-        }
-
-        return procedimiento?.nombre
-            ?? procedimiento?.nombreProcedimiento
-            ?? procedimiento?.descripcion
-            ?? procedimiento?.procedimiento?.nombre
-            ?? procedimiento?.procedimiento
-            ?? procedimiento?.idProcedimiento?.nombre
-            ?? "Procedimiento sin nombre";
+        const nombres = typeof procedimiento === "string" ? [procedimiento] : [
+            procedimiento?.procedimiento?.nombre,
+            procedimiento?.nombre,
+            procedimiento?.nombreProcedimiento,
+            procedimiento?.descripcion,
+            procedimiento?.idProcedimiento?.nombre,
+            procedimiento?.paso?.nombre,
+            procedimiento?.procedimiento
+        ];
+        return nombres.find((nombre) => typeof nombre === "string" && nombre.trim())?.trim()
+            || "Procedimiento sin nombre";
     }
 
     _claseEstado(estado) {

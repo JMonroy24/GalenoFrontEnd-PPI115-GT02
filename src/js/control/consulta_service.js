@@ -98,16 +98,18 @@ export class ConsultaService extends DefaultService {
 
     async _buscarCitas(filtros, first, max) {
         const conFechas = Boolean(filtros.fechaDesde || filtros.fechaHasta);
+        const conPaciente = Boolean(filtros.tipoDocumento && filtros.numeroDocumento);
+        const filtrarAntesDePaginar = conFechas || conPaciente;
         const solicitudes = new Map();
         const mapearItems = (payload) => (Array.isArray(payload?.items) ? payload.items : [])
             .filter((consulta) => consulta !== null && typeof consulta === "object" && !Array.isArray(consulta))
             .map((consulta) => this._mapearConsulta(consulta));
-        const payload = await this._solicitarCitas(filtros, conFechas ? 0 : first, max);
+        const payload = await this._solicitarCitas(filtros, filtrarAntesDePaginar ? 0 : first, max);
         let items = mapearItems(payload);
 
-        if (conFechas) {
+        if (filtrarAntesDePaginar) {
             // Filtrar antes de paginar: una página vacía no significa que no haya
-            // coincidencias en las siguientes páginas de un backend que omite el rango.
+            // coincidencias si el backend omite el paciente, la clínica o el rango.
             let offset = Array.isArray(payload?.items) ? payload.items.length : 0;
             const total = Number(payload?.total ?? offset);
             const vistos = new Set(items.map((item) => item.idConsulta).filter((id) => id != null));
@@ -127,14 +129,21 @@ export class ConsultaService extends DefaultService {
                 offset += cantidad;
             }
             items = items.filter((consulta) => {
+                if (!conFechas) return true;
                 const fecha = String(consulta.fecha ?? "").match(/^(\d{4}-\d{2}-\d{2})(?:[T ]|$)/)?.[1];
                 return fecha && (!filtros.fechaDesde || fecha >= filtros.fechaDesde)
                     && (!filtros.fechaHasta || fecha <= filtros.fechaHasta);
             });
+            if (conPaciente) {
+                items = (await Promise.all(items.map((consulta) =>
+                    this._completarConsulta(consulta, solicitudes, filtros)
+                ))).filter((consulta) => this._coincidePacienteYClinica(consulta, filtros));
+            }
             const totalFiltrado = items.length;
             const pagina = items.slice(first, first + max);
             return new DefaultResponse(
-                await Promise.all(pagina.map((consulta) => this._completarConsulta(consulta, solicitudes, filtros))),
+                conPaciente ? pagina
+                    : await Promise.all(pagina.map((consulta) => this._completarConsulta(consulta, solicitudes, filtros))),
                 totalFiltrado, first, max
             );
         }
@@ -145,6 +154,21 @@ export class ConsultaService extends DefaultService {
             payload?.first ?? 0,
             payload?.max ?? 0
         );
+    }
+
+    _coincidePacienteYClinica(consulta, filtros) {
+        const normalizarDocumento = (valor) => String(valor ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+        const documento = normalizarDocumento(obtenerDocumentoConsulta(consulta));
+        if (!documento || documento !== normalizarDocumento(filtros.numeroDocumento)) return false;
+
+        const paciente = obtenerPacienteConsulta(consulta);
+        const tipo = paciente?.idTipoDocumento ?? paciente?.tipoDocumentoId ?? paciente?.tipoDocumento;
+        const idTipo = idRelacion(tipo, "idTipoDocumento");
+        if (idTipo != null && String(idTipo) !== String(filtros.tipoDocumento)) return false;
+
+        const idClinica = idRelacion(consulta.clinica, "idClinica")
+            ?? idRelacion(consulta.idClinica ?? consulta.clinicaId, "idClinica");
+        return !filtros.idClinica || (idClinica != null && String(idClinica) === String(filtros.idClinica));
     }
 
     async _completarConsulta(consulta, solicitudes, filtros) {

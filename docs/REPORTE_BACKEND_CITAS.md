@@ -4,7 +4,7 @@
 
 Las capturas muestran consultas del **2026-09-01** y **2026-10-30** al buscar entre **2026-09-17** y **2026-10-29**. Ambas deben quedar fuera. También muestran tarjetas sin paciente, documento, clínica ni estado.
 
-No fue posible consultar el backend local en `http://localhost:9080/galenoSV/api/v1`: rechazó la conexión. Las observaciones del servidor deben confirmarse con sus respuestas reales; las pruebas del frontend usan respuestas simuladas.
+La comprobación local del 17/11/2026 confirmó que `/personas`, `/personas-roles`, `/roles/{id}` y `/clinicas/{id}` permiten resolver la clínica del paciente de la captura. También confirmó que `/consultas` devuelve una cita de otro paciente y otra clínica aunque la búsqueda envíe documento y clínica. El frontend ahora verifica esas coincidencias antes de mostrar y paginar los resultados. El servidor debe aplicar los filtros para no enviar registros ajenos al navegador.
 
 ## Trabajo realizado en el frontend
 
@@ -13,6 +13,7 @@ No fue posible consultar el backend local en `http://localhost:9080/galenoSV/api
 - Usa el documento ya presente en el paciente. Si el DTO lo omite, puede usar el documento de la búsqueda después de verificar que el identificador de la persona coincide con el resultado filtrado de `/personas`.
 - Muestra `estado`, `estadoConsulta` o `estadoCita`. Cuando únicamente existe `activo` booleano, muestra “Activa” o “Inactiva”; ese indicador no permite inferir si una cita está pendiente, atendida o cancelada.
 - Comprueba el rango de fechas de forma inclusiva, usando el mismo día de la cita que muestra la tarjeta, sin convertirlo a otra zona horaria.
+- En la búsqueda pública con tipo y número de documento, verifica el documento del paciente y el identificador de clínica después de resolver sus asociaciones. Excluye registros sin identidad verificable y tipos de documento distintos cuando el DTO los incluye. Recorre las páginas antes de filtrar y calcular el total visible.
 - Con fechas, recorre las páginas declaradas por el servidor, filtra los resultados y después aplica la paginación visible. Así una primera página sin coincidencias no oculta citas válidas en páginas posteriores.
 - No fabrica nombres, procedimientos, estados clínicos ni historiales ausentes.
 

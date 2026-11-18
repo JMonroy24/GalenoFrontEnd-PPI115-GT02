@@ -195,6 +195,7 @@ export class AuthService extends DefaultService {
             try {
                 almacen.removeItem(SESSION_STORAGE_KEY);
                 almacen.removeItem("usuarioActivo");
+                almacen.removeItem("contexto");
             } catch {
             }
         }

@@ -82,6 +82,10 @@ export default class EncabezadoApp extends HTMLElement {
                     margin-left: auto;
                 }
 
+                [hidden] {
+                    display: none !important;
+                }
+
                 @media (max-width: 800px) {
                     #btnMenu {
                         display: inline-flex;
@@ -117,11 +121,9 @@ export default class EncabezadoApp extends HTMLElement {
             }));
         });
 
-        const navegarALogin = () => {
-            sessionStorage.removeItem("contexto");
-            this._actualizarSesion();
+        const navegar = (ruta) => {
             this.dispatchEvent(new CustomEvent("navegar", {
-                detail: "login",
+                detail: ruta,
                 bubbles: true,
                 composed: true
             }));
@@ -129,12 +131,12 @@ export default class EncabezadoApp extends HTMLElement {
 
         const btnCambiarRol = this.shadowRoot.querySelector("#btnCambiarRol");
         const btnCerrarSesion = this.shadowRoot.querySelector("#btnCerrarSesion");
-        btnCambiarRol.addEventListener("click", navegarALogin);
+        btnCambiarRol.addEventListener("click", () => navegar("dashboard"));
         btnCerrarSesion.addEventListener("click", () => {
             if (store.hasActiveSession()) {
                 authService.logout();
             }
-            navegarALogin();
+            navegar("login");
         });
     }
 
@@ -151,7 +153,9 @@ export default class EncabezadoApp extends HTMLElement {
 
         const textoContexto = this.shadowRoot.querySelector("#textoContexto");
         if (!textoContexto) return;
-        this.shadowRoot.querySelector("#btnCerrarSesion").textContent = store.hasActiveSession()
+        const sesionActiva = store.hasActiveSession();
+        this.shadowRoot.querySelector("#btnCambiarRol").hidden = !sesionActiva;
+        this.shadowRoot.querySelector("#btnCerrarSesion").textContent = sesionActiva
             ? "Cerrar sesión" : "Iniciar sesión";
         if (!usuario) {
             textoContexto.textContent = "Sin sesión";

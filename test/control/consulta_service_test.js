@@ -96,8 +96,42 @@ suite("ConsultaService (unitaria)", () => {
         });
         const respuesta = await servicio.buscarCitas({ tipoDocumento: "tipo-1", numeroDocumento: "12312378-0" });
         expect(respuesta.items[0].paciente.numeroDocumento).to.equal("12312378-0");
-        expect(respuesta.items[1].paciente).not.to.have.property("numeroDocumento");
+        expect(respuesta.items).to.have.length(1);
+        expect(respuesta.total).to.equal(1);
         expect(fetchStub.callCount).to.equal(4);
+    });
+
+    test("filtra por documento, tipo y clínica antes de paginar aunque el backend ignore los filtros", async () => {
+        const cita = (id, documento, clinica = 3, tipo = 1) => ({
+            idConsulta: id, inicio: "2026-11-05T09:00:00",
+            paciente: { nombres: "Paciente", numeroDocumento: documento, idTipoDocumento: tipo },
+            clinica: { idClinica: clinica, nombre: "Clínica" }
+        });
+        const citas = [
+            cita(1, "OTRO123"), cita(2, "PR24039", 9), cita(3, "PR24039", 3, 2),
+            cita(4, "PR24039"), cita(5, "PR24039")
+        ];
+        fetchStub = sinon.stub(window, "fetch").callsFake(async (url) => {
+            const params = new URL(url).searchParams;
+            const first = Number(params.get("first"));
+            const max = Number(params.get("max"));
+            return { ok: true, json: async () => ({ items: citas.slice(first, first + max), total: citas.length }) };
+        });
+        const respuesta = await servicio.buscarCitas({
+            tipoDocumento: "1", numeroDocumento: "PR24039", idClinica: 3
+        }, 1, 1);
+        expect(respuesta.items.map((item) => item.idConsulta)).to.deep.equal([5]);
+        expect(respuesta).to.include({ first: 1, max: 1, total: 2 });
+        expect(fetchStub.callCount).to.equal(5);
+    });
+
+    test("excluye citas sin identidad verificable en la búsqueda pública", async () => {
+        fetchStub = sinon.stub(window, "fetch").resolves({
+            ok: true, json: async () => ({ items: [{ idConsulta: 1, paciente: { nombres: "Sin documento" } }], total: 1 })
+        });
+        const respuesta = await servicio.buscarCitas({ tipoDocumento: "1", numeroDocumento: "PR24039" });
+        expect(respuesta.items).to.have.length(0);
+        expect(respuesta.total).to.equal(0);
     });
 
     const citasFechas = [

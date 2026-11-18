@@ -1,4 +1,6 @@
 import { parseRouteParams } from "../../router.js";
+import { store } from "../../store.js";
+import { authService } from "../../control/auth_service.js";
 
 const MENU = {
     "Atención clínica": [
@@ -7,7 +9,7 @@ const MENU = {
         { id: "atencion", texto: "Atención Médica" }
     ],
     "Sesión": [
-        { id: "login", texto: "Iniciar Sesión / Cambiar Rol" }
+        { id: "login", texto: "Iniciar sesión" }
     ]
 };
 
@@ -16,15 +18,25 @@ export class MenuLateral extends HTMLElement {
         super();
         this.attachShadow({ mode: "open" });
         this.alCambiarRuta = () => this._actualizarRutaActiva();
+        this.alCambiarSesion = () => this._actualizarSesion();
     }
 
     connectedCallback() {
         this.render();
         window.addEventListener("hashchange", this.alCambiarRuta);
+        store.addEventListener("state-changed", this.alCambiarSesion);
     }
 
     disconnectedCallback() {
         window.removeEventListener("hashchange", this.alCambiarRuta);
+        store.removeEventListener("state-changed", this.alCambiarSesion);
+    }
+
+    _actualizarSesion() {
+        const enlace = this.shadowRoot.querySelector('a[href="#login"]');
+        if (enlace) {
+            enlace.textContent = store.hasActiveSession() ? "Cerrar sesión" : "Iniciar sesión";
+        }
     }
 
     _actualizarRutaActiva() {
@@ -112,6 +124,18 @@ export class MenuLateral extends HTMLElement {
                 `).join("")}
             </nav>
         `;
+        this.shadowRoot.querySelector('a[href="#login"]').addEventListener("click", (evento) => {
+            evento.preventDefault();
+            if (store.hasActiveSession()) {
+                authService.logout();
+            }
+            this.dispatchEvent(new CustomEvent("navegar", {
+                detail: "login",
+                bubbles: true,
+                composed: true
+            }));
+        });
+        this._actualizarSesion();
         this._actualizarRutaActiva();
     }
 }

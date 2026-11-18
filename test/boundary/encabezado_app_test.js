@@ -33,6 +33,7 @@ suite("EncabezadoApp: sesión y contexto", () => {
         expect(host).to.be.instanceOf(EncabezadoApp);
         expect(texto()).to.equal("Sin sesión");
         expect(host.shadowRoot.querySelector("#btnCerrarSesion").textContent).to.equal("Iniciar sesión");
+        expect(host.shadowRoot.querySelector("#btnCambiarRol").hidden).to.be.true;
     });
 
     test("el botón sin sesión navega al login sin ejecutar logout", () => {
@@ -88,10 +89,39 @@ suite("EncabezadoApp: sesión y contexto", () => {
     test("al cerrar sesión vuelve a Sin sesión y limpia usuarioActivo", () => {
         store.setState({ usuario, roles: [asignacion], clinicaActiva: asignacion.clinica,
             rolSeleccionado: asignacion });
+        sessionStorage.setItem("contexto", JSON.stringify({ nombreRol: "Médico" }));
         host.shadowRoot.querySelector("#btnCerrarSesion").click();
         expect(sessionStorage.getItem("usuarioActivo")).to.be.null;
+        expect(sessionStorage.getItem("galeno_session")).to.be.null;
+        expect(sessionStorage.getItem("contexto")).to.be.null;
+        expect(store.hasActiveSession()).to.be.false;
         expect(texto()).to.equal("Sin sesión");
         expect(host.shadowRoot.querySelector("#btnCerrarSesion").textContent).to.equal("Iniciar sesión");
+        expect(host.shadowRoot.querySelector("#btnCambiarRol").hidden).to.be.true;
+    });
+
+    test("Cambiar rol abre el dashboard donde están los selectores y conserva la sesión", () => {
+        store.setState({ usuario, roles: [asignacion], clinicaActiva: asignacion.clinica,
+            rolSeleccionado: asignacion });
+        const navegar = sinon.spy();
+        host.addEventListener("navegar", navegar);
+        const boton = host.shadowRoot.querySelector("#btnCambiarRol");
+        expect(boton.hidden).to.be.false;
+        boton.click();
+        expect(navegar.calledOnce).to.be.true;
+        expect(navegar.firstCall.args[0].detail).to.equal("dashboard");
+        expect(store.hasActiveSession()).to.be.true;
+    });
+
+    test("cerrar sesión navega aunque el navegador no permita escribir en sessionStorage", () => {
+        store.setState({ usuario, clinicaActiva: asignacion.clinica });
+        const navegar = sinon.spy();
+        host.addEventListener("navegar", navegar);
+        sinon.stub(Storage.prototype, "removeItem").throws(new Error("Almacenamiento bloqueado"));
+        host.shadowRoot.querySelector("#btnCerrarSesion").click();
+        expect(store.hasActiveSession()).to.be.false;
+        expect(navegar.calledOnce).to.be.true;
+        expect(navegar.firstCall.args[0].detail).to.equal("login");
     });
 
     test("retira los listeners al desconectarse", () => {

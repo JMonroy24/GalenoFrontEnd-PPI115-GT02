@@ -162,6 +162,44 @@ suite("TarjetaConsulta (unitaria)", () => {
         expect(nombres).to.deep.equal(["Control"]);
     });
 
+    for (const campo of ["consultaProcedimientos", "consultaProcedimientoList", "consulta_procedimiento"]) {
+        test(`una lista canónica vacía no oculta los procedimientos de ${campo}`, () => {
+            const consulta = { procedimientos: [], [campo]: { items: [
+                { nombre: "", procedimiento: { nombre: "Consulta General" } },
+                { nombre: "Laboratorio" },
+                { procedimiento: {} }
+            ] } };
+            const original = structuredClone(consulta);
+            host.consulta = new ConsultaService()._mapearConsulta(consulta);
+            expect([...host.shadowRoot.querySelectorAll("#lista-procedimientos li")]
+                .map((item) => item.textContent)).to.deep.equal([
+                "Consulta General", "Laboratorio", "Procedimiento sin nombre"
+            ]);
+            expect(host.shadowRoot.querySelector("#procedimientos-vacio").hidden).to.be.true;
+            expect(consulta).to.deep.equal(original);
+            expect(fetchStub.called).to.be.false;
+        });
+    }
+
+    test("encuentra procedimientos anidados aunque la raíz tenga una lista vacía", () => {
+        host.consulta = { procedimientos: [], consulta: { cita: {
+            procedimientos: [{ procedimiento: { nombre: "Evaluación médica" }, nombre: "Asignación" }]
+        } } };
+        expect(host.shadowRoot.querySelector("#lista-procedimientos li").textContent).to.equal("Evaluación médica");
+        expect(host.shadowRoot.querySelector("#procedimientos-vacio").hidden).to.be.true;
+    });
+
+    test("muestra los pasos recibidos cuando no existe una lista de procedimientos", () => {
+        host.consulta = { procedimientos: [], pasosClinicos: [
+            { nombre: "Triaje", estado: "PENDIENTE" },
+            { procedimiento: { nombre: "Signos vitales" }, estado: "PENDIENTE" }
+        ] };
+        expect([...host.shadowRoot.querySelectorAll("#lista-procedimientos li")]
+            .map((item) => item.textContent)).to.deep.equal(["Triaje", "Signos vitales"]);
+        expect(host.shadowRoot.querySelector("#procedimientos-vacio").hidden).to.be.true;
+        expect(host.shadowRoot.querySelector("#historial-vacio").hidden).to.be.false;
+    });
+
     test("muestra los datos recibidos como texto sin insertar HTML", () => {
         const texto = '<img src=x onerror="alert(1)">';
         host.consulta = crearConsulta({ paciente: texto, clinica: texto, procedimientos: [{ nombre: texto }] });

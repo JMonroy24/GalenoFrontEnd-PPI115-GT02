@@ -19,8 +19,10 @@ suite("BusquedaCitasView (unitaria)", () => {
         fecha: "2026-11-12",
         hora: "09:30",
         estado: "PENDIENTE",
-        clinica: "Clínica Norte",
+        clinica: { idClinica: 3, nombre: "Clínica Norte" },
         paciente: {
+            idPersona: 7,
+            numeroDocumento: "01234567-8",
             nombres: "Ana",
             apellidos: "López"
         },
