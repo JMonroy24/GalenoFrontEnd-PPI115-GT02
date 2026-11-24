@@ -1,5 +1,37 @@
 # Citas: reporte para trabajar el backend
 
+## Diagnóstico y verificación local del flujo por roles — 24/11/2026
+
+La reproducción con datos reales encontró una conexión local incorrecta: Open Liberty
+utilizaba PostgreSQL en `localhost:5432`, mientras que el contenedor `GalenoSV-db`
+publica la base del proyecto en `127.0.0.1:5433`. La API devolvía HTTP 503 y el registro
+del servidor informaba SQLState `28P01` (fallo de autenticación). Se ajustó la conexión
+al contenedor existente, sin cambiar sus credenciales ni recrear la base.
+
+La configuración se guardó en los archivos locales `server.env` del backend y en un
+override de su servidor generado, todos excluidos de Git. Esta configuración pertenece
+al entorno de desarrollo; no se incluyen contraseñas en el frontend ni en este reporte.
+
+Tras recuperar HTTP 200, se verificó en Chrome el servicio y el panel con las
+asignaciones reales de empleados de la clínica `fe837a35-fbc8-4165-a146-9c4adc4ae986`:
+
+- Atención al cliente: dos citas visibles y editables en Recepción.
+- Enfermera: una cita visible y editable en Evaluación inicial después de la reparación autorizada descrita abajo.
+- Doctor: recibe la cita cuando enfermería completa su paso; no se adelantan pasos pendientes.
+
+La consulta histórica `38f051cd-a699-4652-af8d-e76ea6ef8dc2` tenía recepción completada
+y carecía de sucesor. Con autorización explícita del usuario, se repitió esa transición
+mediante PATCH con ETag, conservando exactamente `valor` y `fechaFin` de recepción.
+El servidor creó la ejecución de Evaluación inicial en estado `EN_CURSO`.
+No se marcaron como completados pasos de enfermería ni del doctor en consultas reales.
+
+La nueva prueba `test/integration/flujo_roles_it.js`, incluida en ambos runners,
+inicia sesión con cada empleado, crea una consulta temporal, comprueba las tarjetas,
+guarda cada paso desde la vista real y verifica el relevo hasta el cierre por el doctor.
+Elimina exclusivamente los registros creados por la prueba. Resultado contra Open Liberty:
+`test/runner.html`: 564/564; `test/runner_it.html`: 8/8. Se comprobó que no quedaron
+consultas temporales. El frontend de esta copia quedó disponible en `http://localhost:3000/src/`.
+
 ## Contrato actualizado confirmado el 24/11/2026
 
 El backend local y OpenAPI ahora admiten `GET /consultas` con `first`, `max`, `q`,
