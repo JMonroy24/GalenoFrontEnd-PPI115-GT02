@@ -38,15 +38,10 @@ export class DefaultService {
             }
         }
 
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), HTTP_TIMEOUT_MS);
-        const abortFromCaller = () => controller.abort(options.signal.reason);
-
-        if (options.signal?.aborted) {
-            controller.abort(options.signal.reason);
-        } else {
-            options.signal?.addEventListener("abort", abortFromCaller, { once: true });
-        }
+        const deadline = AbortSignal.timeout(HTTP_TIMEOUT_MS);
+        const signal = options.signal
+            ? AbortSignal.any([options.signal, deadline]) : deadline;
+        signal.throwIfAborted();
 
         let response;
 
@@ -55,7 +50,7 @@ export class DefaultService {
                 ...options,
                 headers,
                 credentials: "omit",
-                signal: controller.signal
+                signal
             });
         } catch (error) {
             if (this._esOperacionEscritura(method) && this._estaSinConexion()) {
@@ -75,9 +70,6 @@ export class DefaultService {
             }
 
             throw error;
-        } finally {
-            clearTimeout(timeoutId);
-            options.signal?.removeEventListener("abort", abortFromCaller);
         }
 
         if (!response.ok) {
@@ -90,8 +82,14 @@ export class DefaultService {
                     ? backendMessage.trim() : fallbackMessage
             }`;
 
+            const error = new DefaultError(message, {
+                status: response.status,
+                message,
+                details
+            });
             if (INTERCEPTED_STATUSES.has(response.status)) {
                 this._notificarError(message, details);
+                error.notificado = true;
             }
 
             if (response.status === 401) {
@@ -101,11 +99,7 @@ export class DefaultService {
                 }
             }
 
-            throw new DefaultError(message, {
-                status: response.status,
-                message,
-                details
-            });
+            throw error;
         }
 
         return response;
@@ -116,11 +110,13 @@ export class DefaultService {
 
         GeneradorMensajes.crearMensaje("Sin conexión", mensaje, "warning");
 
-        return new DefaultError(mensaje, {
+        const error = new DefaultError(mensaje, {
             code: "OFFLINE",
             method,
             details: { code: "OFFLINE", method }
         });
+        error.notificado = true;
+        return error;
     }
 
     _esOperacionEscritura(method) {
@@ -205,7 +201,7 @@ export class DefaultService {
         return Array.isArray(payload?.items) ? payload.items : payload;
     }
 
-    async findRange(first = 0, max = DEFAULT_PAGE_SIZE, query = "") {
+    async findRange(first = 0, max = DEFAULT_PAGE_SIZE, query = "", options = {}) {
         const params = new URLSearchParams();
         params.set("first", first);
         params.set("max", max);
@@ -216,7 +212,7 @@ export class DefaultService {
 
         const response = await this._request(
             `${this._urlBase}?${params.toString()}`,
-            { method: "GET" },
+            { ...options, method: "GET" },
             "Error al listar los recursos"
         );
         const payload = await this._parseBody(response);

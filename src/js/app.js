@@ -1,5 +1,4 @@
 import "./boundary/componentes/notificacion_emergente.js";
-import "./boundary/componentes/instalador_app.js";
 import "./boundary/componentes/encabezado_app.js";
 import "./boundary/componentes/menu_lateral.js";
 import "./boundary/componentes/pie_app.js";
@@ -10,16 +9,31 @@ import "./boundary/vistas/login_view.js";
 import GeneradorMensajes from "./control/generador_mensajes.js";
 import { initRouter, navigate } from "./router.js";
 import "./boundary/componentes/estado_red.js";
-import "./boundary/componentes/lista_examenes.js";
 
 initRouter({ containerSelector: "#contenido" });
 
-window.addEventListener("navegar", (evento) => {
-    navigate(evento.detail);
+const menu = document.querySelector("menu-lateral");
+const botonMenu = document.querySelector("encabezado-app")?.shadowRoot?.querySelector("#btnMenu");
+const pantallaEstrecha = window.matchMedia("(width <= 50rem)");
+const mostrarMenu = (abierto) => {
+    if (menu) menu.dataset.menuAbierto = String(abierto);
+    botonMenu?.setAttribute("aria-expanded", String(abierto));
+};
+mostrarMenu(false);
+window.addEventListener("alternar-menu", () => {
+    mostrarMenu(menu?.dataset.menuAbierto !== "true");
+});
+window.addEventListener("hashchange", () => mostrarMenu(false));
+pantallaEstrecha.addEventListener("change", () => mostrarMenu(false));
+window.addEventListener("keydown", (evento) => {
+    if (evento.key === "Escape" && pantallaEstrecha.matches && menu?.dataset.menuAbierto === "true") {
+        mostrarMenu(false);
+        botonMenu?.focus();
+    }
 });
 
-window.addEventListener("contexto-seleccionado", () => {
-    navigate("buscar-citas");
+window.addEventListener("navegar", (evento) => {
+    navigate(evento.detail);
 });
 
 if ("serviceWorker" in navigator) {

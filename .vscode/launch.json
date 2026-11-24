@@ -13,6 +13,14 @@
                 "--new-window",
                 "--user-data-dir=/tmp/brave-debug"
             ],
+            "windows": {
+                "runtimeExecutable": "C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe",
+                "runtimeArgs": [
+                    "--remote-debugging-port=9222",
+                    "--new-window",
+                    "--user-data-dir=${env:TEMP}\\brave-debug"
+                ]
+            },
             "preLaunchTask": "Lanzar browser-sync",
             "postDebugTask": "Apagar browser-sync"
         },
@@ -28,9 +36,16 @@
                 "--new-window",
                 "--user-data-dir=/tmp/brave-debug"
             ],
+            "windows": {
+                "runtimeExecutable": "C:\\Program Files\\BraveSoftware\\Brave-Browser\\Application\\brave.exe",
+                "runtimeArgs": [
+                    "--remote-debugging-port=9222",
+                    "--new-window",
+                    "--user-data-dir=${env:TEMP}\\brave-debug"
+                ]
+            },
             "preLaunchTask": "debug browser",
             "postDebugTask": "Apagar browser-sync"
         }
     ]
 }
-

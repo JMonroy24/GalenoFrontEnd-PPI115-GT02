@@ -238,6 +238,7 @@ suite("ListaExamenesAsignables (unitaria)", () => {
         let resolver;
         listarStub.callsFake(() => new Promise((res) => { resolver = res; }));
         host.idPaso = "p-carga";
+        await Promise.resolve(); // Las mutaciones de atributos se agrupan en una microtarea.
 
         expect(host.shadowRoot.querySelector("#estado").textContent).to.contain("Cargando exámenes");
 
@@ -251,7 +252,9 @@ suite("ListaExamenesAsignables (unitaria)", () => {
         listarStub.callsFake(() => new Promise((res) => pendientes.push(res)));
 
         host.idPaso = "p-viejo";
+        await Promise.resolve(); // La petición anterior debe estar en vuelo para probar la carrera.
         host.idPaso = "p-nuevo";
+        await Promise.resolve();
         pendientes[1](examenes);
         await esperar();
         pendientes[0]([{ idExamen: 99, nombre: "Obsoleto" }]);

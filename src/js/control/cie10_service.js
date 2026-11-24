@@ -33,32 +33,35 @@ export class Cie10Service extends DefaultService {
      * @param {number} [max=DEFAULT_PAGE_SIZE] - Cantidad máxima de registros.
      * @returns {Promise<import("../entity/default_response.js").default>}
      */
-    async buscarDiagnosticos(query = "", first = 0, max = DEFAULT_PAGE_SIZE) {
+    async buscarDiagnosticos(query = "", first = 0, max = DEFAULT_PAGE_SIZE, options = {}) {
+        options.signal?.throwIfAborted();
         if (this._estaSinConexion()) {
-            return this._buscarEnCatalogoLocal(query, first, max);
+            return this._buscarEnCatalogoLocal(query, first, max, options);
         }
 
         try {
-            return await super.findRange(first, max, query);
+            return await super.findRange(first, max, query, options);
         } catch (error) {
-            if (error?.name === "AbortError") {
+            if (options.signal?.aborted || error?.name === "AbortError") {
                 throw error;
             }
 
             try {
-                return await this._buscarEnCatalogoLocal(query, first, max);
+                return await this._buscarEnCatalogoLocal(query, first, max, options);
             } catch {
                 throw error;
             }
         }
     }
 
-    findRange(first = 0, max = DEFAULT_PAGE_SIZE, query = "") {
-        return this.buscarDiagnosticos(query, first, max);
+    findRange(first = 0, max = DEFAULT_PAGE_SIZE, query = "", options = {}) {
+        return this.buscarDiagnosticos(query, first, max, options);
     }
 
-    async _buscarEnCatalogoLocal(query = "", first = 0, max = DEFAULT_PAGE_SIZE) {
+    async _buscarEnCatalogoLocal(query = "", first = 0, max = DEFAULT_PAGE_SIZE, options = {}) {
+        options.signal?.throwIfAborted();
         const catalogo = await this._obtenerCatalogoLocal();
+        options.signal?.throwIfAborted();
         const termino = normalizarTexto(query).trim();
 
         const coincidencias = termino === ""

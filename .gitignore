@@ -10,3 +10,5 @@ node_modules/
 Thumbs.db
 *~
 *.swp
+# Instrucciones locales para IA
+AGENTS.md

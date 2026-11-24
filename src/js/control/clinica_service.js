@@ -7,6 +7,4 @@ export class ClinicaService extends DefaultService {
     }
 }
 
-export const clinicaService = new ClinicaService();
-
 export default ClinicaService;

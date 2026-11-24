@@ -73,6 +73,17 @@ export function obtenerPacienteConsulta(consulta = {}) {
     return paciente;
 }
 
+export function obtenerNombreClinicaConsulta(consulta = {}) {
+    const texto = (valor) => typeof valor === "string" ? valor.trim() : "";
+    const fuentes = fuentesConsulta(consulta);
+    const relaciones = fuentes.flatMap((datos) => [datos?.clinica, datos?.idClinica]);
+    return fuentes.flatMap((datos) => [datos?.nombreClinica, datos?.clinicaNombre]).map(texto).find(Boolean)
+        || relaciones.flatMap((clinica) => [clinica?.nombre, clinica?.nombreClinica,
+            clinica?.descripcion, clinica?.name]).map(texto).find(Boolean)
+        || relaciones.map(texto).find((nombre) => nombre && !esIdentificador(nombre))
+        || "Sin clínica";
+}
+
 export class ConsultaService extends DefaultService {
     constructor() {
         super(ENDPOINTS.CONSULTAS);
@@ -95,7 +106,6 @@ export class ConsultaService extends DefaultService {
             params.set("idClinica", String(idClinicaActiva).trim());
         }
         const url = `${this._urlBase}?${params.toString()}`;
-        console.log('URL de fetch consultas:', url);
         const response = await this._request(
             url,
             { method: "GET" },
@@ -296,28 +306,6 @@ export class ConsultaService extends DefaultService {
                 persona = { ...persona, numeroDocumento: filtros.numeroDocumento };
             }
         }
-        if (persona && !documentoPaciente(persona)) {
-            const idPer = idRelacion(persona, "idPersona") ?? persona.id;
-            if (idPer != null) {
-                const urlDocs = `${ENDPOINTS.API_BASE}/documentos?first=0&max=100`;
-                if (!solicitudes.has("documentos:todos")) {
-                    solicitudes.set("documentos:todos", (async () => {
-                        try {
-                            const res = await this._request(urlDocs, { method: "GET" }, "Error al leer documentos");
-                            const body = await this._parseBody(res);
-                            return Array.isArray(body?.items) ? body.items : [];
-                        } catch {
-                            return [];
-                        }
-                    })());
-                }
-                const docs = await solicitudes.get("documentos:todos");
-                const doc = docs.find((d) => String(d.idPersona) === String(idPer));
-                if (doc && doc.valor) {
-                    persona = { ...persona, numeroDocumento: doc.valor, documento: doc.valor, valor: doc.valor };
-                }
-            }
-        }
         const referenciaClinica = [datos.clinica, datos.idClinica, datos.clinicaId,
             asignacion?.clinica, asignacion?.idClinica]
             .find((valor) => tieneNombre(valor) || idRelacion(valor, "idClinica") != null);
@@ -369,28 +357,12 @@ export class ConsultaService extends DefaultService {
         return this._buscarCitas({ idClinica }, first, max);
     }
 
-    buscarCitasPorClinica(idClinica, first = 0, max = DEFAULT_PAGE_SIZE) {
-        return this.buscarPorClinica(idClinica, first, max);
-    }
-
     buscarPorEstado(estado, first = 0, max = DEFAULT_PAGE_SIZE) {
         return this._buscarCitas({ estado }, first, max);
     }
 
-    buscarCitasPorEstado(estado, first = 0, max = DEFAULT_PAGE_SIZE) {
-        return this.buscarPorEstado(estado, first, max);
-    }
-
     buscarCitasPorClinicaYEstado(idClinica, estado, first = 0, max = DEFAULT_PAGE_SIZE) {
         return this._buscarCitas({ idClinica, estado }, first, max);
-    }
-
-    buscarPorClinicaYEstado(idClinica, estado, first = 0, max = DEFAULT_PAGE_SIZE) {
-        return this.buscarCitasPorClinicaYEstado(idClinica, estado, first, max);
-    }
-
-    consultarCitas(filtros = {}, first = 0, max = DEFAULT_PAGE_SIZE) {
-        return this.buscarCitas(filtros, first, max);
     }
 
     /**

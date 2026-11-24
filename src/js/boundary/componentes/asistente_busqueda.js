@@ -31,10 +31,11 @@ export class AsistenteBusqueda extends HTMLElement {
             <style>
                 :host {
                     display: block;
+                    min-inline-size: 0;
                 }
                 form {
                     display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+                    grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
                     gap: 1rem;
                     align-items: start;
                 }
@@ -264,11 +265,13 @@ export class AsistenteBusqueda extends HTMLElement {
             this._reiniciarClinicas(
                 "No se pudieron obtener las clínicas del paciente."
             );
-            GeneradorMensajes.crearMensaje(
-                "Error al buscar clínicas del paciente",
-                error?.mensaje ?? error?.message ?? "",
-                "error"
-            );
+            if (!error?.notificado) {
+                GeneradorMensajes.crearMensaje(
+                    "Error al buscar clínicas del paciente",
+                    error?.mensaje ?? error?.message ?? "",
+                    "error"
+                );
+            }
         }
     }
 

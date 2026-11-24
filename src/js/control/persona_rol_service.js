@@ -16,6 +16,4 @@ export class PersonaRolService extends DefaultService {
     }
 }
 
-export const personaRolService = new PersonaRolService();
-
 export default PersonaRolService;

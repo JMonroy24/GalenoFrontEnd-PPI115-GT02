@@ -67,7 +67,8 @@ export class EstadoRed extends HTMLElement {
     _renderEstructura() {
         this.shadowRoot.innerHTML = `
             <style>
-                :host { display: block; }
+                :host { display: block; min-inline-size: 0; }
+                :host([hidden]) { display: none; }
                 #banner {
                     display: flex;
                     align-items: center;

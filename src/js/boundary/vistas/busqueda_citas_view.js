@@ -25,6 +25,8 @@ export class BusquedaCitasView extends HTMLElement {
     }
 
     disconnectedCallback() {
+        this.solicitudActual++;
+        this.cargando = false;
         this.removeEventListener("buscar-citas", this.escucharBusqueda);
         this.shadowRoot.removeEventListener("click", this.escucharPaginacion);
     }
@@ -35,6 +37,7 @@ export class BusquedaCitasView extends HTMLElement {
             <style>
                 :host {
                     display: block;
+                    min-inline-size: 0;
                     color: var(--color-text, #0f172a);
                     font-family: var(--font-body, system-ui, sans-serif);
                 }
@@ -45,7 +48,7 @@ export class BusquedaCitasView extends HTMLElement {
                 }
                 .resultados {
                     display: grid;
-                    grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+                    grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
                     gap: var(--space-4, 1rem);
                 }
                 .estado {
@@ -157,11 +160,13 @@ export class BusquedaCitasView extends HTMLElement {
             }
 
             this._mostrarEstado("No se pudieron cargar las citas.");
-            GeneradorMensajes.crearMensaje(
-                "Error al buscar citas",
-                error?.mensaje ?? error?.message ?? "",
-                "error"
-            );
+            if (!error?.notificado) {
+                GeneradorMensajes.crearMensaje(
+                    "Error al buscar citas",
+                    error?.mensaje ?? error?.message ?? "",
+                    "error"
+                );
+            }
         } finally {
             if (solicitud === this.solicitudActual) {
                 this.cargando = false;
@@ -239,11 +244,13 @@ export class BusquedaCitasView extends HTMLElement {
         try {
             await consultaService.descargarTicketPdf(cita?.idConsulta ?? cita?.id);
         } catch (error) {
-            GeneradorMensajes.crearMensaje(
-                "Error al descargar el ticket",
-                error?.mensaje ?? error?.message ?? "",
-                "error"
-            );
+            if (!error?.notificado) {
+                GeneradorMensajes.crearMensaje(
+                    "Error al descargar el ticket",
+                    error?.mensaje ?? error?.message ?? "",
+                    "error"
+                );
+            }
         } finally {
             if (boton) {
                 boton.disabled = false;

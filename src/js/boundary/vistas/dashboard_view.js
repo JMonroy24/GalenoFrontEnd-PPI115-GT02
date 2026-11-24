@@ -73,6 +73,7 @@ export class DashboardView extends HTMLElement {
             <style>
                 :host {
                     display: block;
+                    min-inline-size: 0;
                     color: var(--color-text, #0f172a);
                     font-family: var(--font-body, system-ui, sans-serif);
                 }
@@ -108,8 +109,10 @@ export class DashboardView extends HTMLElement {
                     display: flex;
                     flex-direction: column;
                     gap: var(--space-xs, 0.25rem);
-                    min-width: 12rem;
+                    min-inline-size: 0;
                 }
+                .selector-contexto { min-inline-size: 0; flex: 1 1 24rem; }
+                .selector-contexto .campo { flex: 1 1 12rem; }
                 label {
                     color: var(--color-text-muted, #475569);
                     font-size: var(--text-xs, 0.75rem);
@@ -118,9 +121,9 @@ export class DashboardView extends HTMLElement {
                 }
                 .filtros,
                 .barra-filtros {
-                    display: flex;
-                    flex-wrap: wrap;
-                    align-items: flex-end;
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+                    align-items: end;
                     gap: var(--space-3, 0.75rem);
                     padding: var(--space-4, 1rem);
                     border: var(--border-width, 1px) solid var(--color-border, #64748b);
@@ -129,7 +132,7 @@ export class DashboardView extends HTMLElement {
                     box-shadow: var(--shadow-sm, 0 1px 2px rgb(15 23 42 / 0.08));
                 }
                 .campo-busqueda {
-                    flex: 1 1 18rem;
+                    min-inline-size: 0;
                 }
                 .panel-principal {
                     display: block;
@@ -143,7 +146,7 @@ export class DashboardView extends HTMLElement {
                 .citas,
                 .grilla-citas {
                     display: grid;
-                    grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+                    grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
                     gap: var(--space-4, 1rem);
                 }
                 .citas[hidden],
@@ -311,7 +314,7 @@ export class DashboardView extends HTMLElement {
         });
 
         inputBusqueda.addEventListener("keydown", (evento) => {
-            if (evento.key === "Enter") {
+            if (evento.key === "Enter" && !evento.isComposing) {
                 evento.preventDefault();
                 this._cancelarDebounce();
                 this._cargarCitas();
@@ -587,7 +590,6 @@ export class DashboardView extends HTMLElement {
                     : Array.isArray(respuesta)
                         ? respuesta
                         : [];
-            console.log('Consultas cargadas:', listaConsultas);
 
             if (listaConsultas.length === 0) {
                 this._mostrarEstadoCitas("No se encontraron citas.");
@@ -607,11 +609,13 @@ export class DashboardView extends HTMLElement {
             }
 
             this._mostrarEstadoCitas("No se pudieron cargar las citas.");
-            GeneradorMensajes.crearMensaje(
-                "Error al cargar citas",
-                error?.mensaje ?? error?.message ?? "",
-                "error"
-            );
+            if (!error?.notificado) {
+                GeneradorMensajes.crearMensaje(
+                    "Error al cargar citas",
+                    error?.mensaje ?? error?.message ?? "",
+                    "error"
+                );
+            }
         }
     }
 

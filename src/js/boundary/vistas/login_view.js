@@ -9,10 +9,19 @@ export class LoginView extends HTMLElement {
         this.attachShadow({ mode: "open" });
         this.cargando = false;
         this.sesion = null;
+        this._solicitudSesion = 0;
+        this._cancelacionSesion = null;
     }
 
     connectedCallback() {
         this.render();
+    }
+
+    disconnectedCallback() {
+        this._solicitudSesion++;
+        this._cancelacionSesion?.abort();
+        this._cancelacionSesion = null;
+        this.cargando = false;
     }
 
     render() {
@@ -21,6 +30,7 @@ export class LoginView extends HTMLElement {
             <style>
                 :host {
                     display: block;
+                    min-inline-size: 0;
                     color: var(--color-text, #0f172a);
                     font-family: var(--font-body, system-ui, sans-serif);
                 }
@@ -172,20 +182,28 @@ export class LoginView extends HTMLElement {
             return;
         }
 
+        const solicitud = ++this._solicitudSesion;
+        this._cancelacionSesion = new AbortController();
+        const options = { signal: this._cancelacionSesion.signal };
         this._establecerCargando(true);
         this.sesion = null;
 
         try {
-            this.sesion = await authService.login(tipoDocumentoId, numero);
+            const sesion = await authService.login(tipoDocumentoId, numero, options);
+            if (solicitud !== this._solicitudSesion || !this.isConnected) return;
+            this.sesion = sesion;
         } catch (error) {
-            GeneradorMensajes.crearMensaje(
-                "Error al iniciar sesión",
-                error?.mensaje ?? error?.message ?? "No se pudo iniciar sesión.",
-                "error"
-            );
+            if (solicitud !== this._solicitudSesion || !this.isConnected) return;
+            if (!error?.notificado) {
+                GeneradorMensajes.crearMensaje(
+                    "Error al iniciar sesión",
+                    error?.mensaje ?? error?.message ?? "No se pudo iniciar sesión.",
+                    "error"
+                );
+            }
             return;
         } finally {
-            this._establecerCargando(false);
+            if (solicitud === this._solicitudSesion) this._establecerCargando(false);
         }
 
         navigate("#dashboard");

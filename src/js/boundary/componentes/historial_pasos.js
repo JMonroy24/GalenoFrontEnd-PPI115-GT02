@@ -1,3 +1,5 @@
+import GestorFechas from "../../control/gestor_fechas.js";
+
 export class HistorialPasos extends HTMLElement {
     constructor() {
         super();
@@ -14,7 +16,7 @@ export class HistorialPasos extends HTMLElement {
 
     set pasos(valor) {
         this._pasos = valor ?? [];
-        this.render();
+        if (this.isConnected) this.render();
     }
 
     connectedCallback() {
@@ -125,8 +127,9 @@ export class HistorialPasos extends HTMLElement {
                     display: none;
                 }
                 .dialogo {
-                    width: min(42rem, calc(100vw - 2rem));
-                    max-height: calc(100vh - 2rem);
+                    inline-size: min(42rem, calc(100% - 2rem));
+                    max-block-size: calc(100dvh - 2rem);
+                    overscroll-behavior: contain;
                     padding: 0;
                     border: var(--border-width, 1px) solid var(--color-border, #64748b);
                     border-radius: var(--radius-lg, 0.75rem);
@@ -220,6 +223,7 @@ export class HistorialPasos extends HTMLElement {
 
         const dialogo = this.shadowRoot.querySelector("#dialogo-registro");
         const cerrar = this.shadowRoot.querySelector("#cerrar-registro");
+        dialogo.addEventListener("close", () => this._notificarCierre());
 
         cerrar.addEventListener("click", (evento) => {
             evento.stopPropagation();
@@ -527,7 +531,7 @@ export class HistorialPasos extends HTMLElement {
             return [fecha, horaObjeto].filter(Boolean).join(" ") || "Sin fecha";
         }
 
-        const texto = String(fechaHora);
+        const texto = GestorFechas.normalizarFechaISO(String(fechaHora));
 
         if (texto.includes("T")) {
             const [fecha, horaTexto] = texto.split("T");
@@ -622,7 +626,7 @@ export class HistorialPasos extends HTMLElement {
         return [
             "notas", "notasConsulta", "diagnostico", "diagnosticos",
             "plan", "planTratamiento", "observaciones", "observacion"
-        ].some((clave) => Object.prototype.hasOwnProperty.call(detalle, clave));
+        ].some((clave) => Object.hasOwn(detalle, clave));
     }
 
     _formatearRegistroClinico(detalle) {

@@ -31,44 +31,43 @@ export class ListaExamenesAsignables extends HTMLElement {
         super();
         this.attachShadow({ mode: "open" });
         this.ordenExamenService = ordenExamenService;
-        this._idConsulta = null;
-        this._idPaso = null;
         this._paso = null;
+        this._reflejandoPaso = false;
         this._examenes = [];
         this._seleccion = new Set();
         this._categoria = TODAS;
         this._enviando = false;
         this._cargado = false;
         this._cargaActual = 0;
+        this._estructuraLista = false;
+        this._conexionActual = 0;
+        this._cargaProgramada = null;
     }
 
     get idConsulta() {
-        return this._idConsulta ?? this.getAttribute("id-consulta");
+        return this.getAttribute("id-consulta");
     }
 
     set idConsulta(valor) {
-        const anterior = this.idConsulta;
-        this._idConsulta = valor;
         if (valor == null || valor === "") this.removeAttribute("id-consulta");
         else this.setAttribute("id-consulta", String(valor));
-        if (anterior !== valor) this._limpiarSeleccion();
-        this._actualizarBoton();
     }
 
     get idPaso() {
-        return this._idPaso
-            ?? this.getAttribute("id-paso")
-            ?? this.getAttribute("id-paso-clinico");
+        return this.getAttribute("id-paso-clinico") ?? this.getAttribute("id-paso");
     }
 
     set idPaso(valor) {
         const anterior = this.idPaso;
-        this._idPaso = valor;
-        this.removeAttribute("id-paso-clinico");
-        if (valor == null || valor === "") this.removeAttribute("id-paso");
-        else this.setAttribute("id-paso", String(valor));
-        if (anterior !== valor) this._limpiarSeleccion();
-        this._actualizarBoton();
+        this._reflejandoPaso = true;
+        try {
+            this.removeAttribute("id-paso-clinico");
+            if (valor == null || valor === "") this.removeAttribute("id-paso");
+            else this.setAttribute("id-paso", String(valor));
+        } finally {
+            this._reflejandoPaso = false;
+        }
+        if (anterior !== this.idPaso) this._actualizarContexto(true);
     }
 
     get sinConexion() {
@@ -93,7 +92,8 @@ export class ListaExamenesAsignables extends HTMLElement {
     }
 
     attributeChangedCallback(nombre, valorViejo, valorNuevo) {
-        if (valorViejo === valorNuevo) return;
+        if (valorViejo === valorNuevo || this._reflejandoPaso) return;
+        if (!this._estaListo()) return;
 
         if (nombre === "sin-conexion") {
             this._actualizarBoton();
@@ -102,34 +102,43 @@ export class ListaExamenesAsignables extends HTMLElement {
 
         const cambioPaso = nombre === "id-paso" || nombre === "id-paso-clinico";
 
-        if (nombre === "id-consulta") {
-            this._idConsulta = valorNuevo;
-        } else if (cambioPaso) {
-            this._idPaso = valorNuevo;
-        }
+        this._actualizarContexto(cambioPaso);
+    }
 
-        this._limpiarSeleccion();
-        this._actualizarBoton();
-
-        if (cambioPaso && this.isConnected) {
+    _actualizarContexto(cambioPaso) {
+        this._seleccion.clear();
+        if (!this._estaListo()) return;
+        if (cambioPaso) {
             this.cargarExamenes();
+        } else {
+            this._limpiarSeleccion();
+            this._actualizarBoton();
         }
     }
 
     disconnectedCallback() {
         this._cargaActual += 1;
+        this._conexionActual += 1;
+        this._estructuraLista = false;
+        this._cargaProgramada = null;
     }
 
     _limpiarSeleccion() {
         this._seleccion.clear();
+        if (!this._estaListo()) return;
         this.shadowRoot?.querySelectorAll('input[type="checkbox"]').forEach((input) => {
             input.checked = false;
         });
     }
 
     async connectedCallback() {
+        this._conexionActual += 1;
         this._renderEstructura();
         await this.cargarExamenes();
+    }
+
+    _estaListo() {
+        return this.isConnected && this._estructuraLista;
     }
 
     /** Devuelve los ids de los exámenes marcados. */
@@ -137,7 +146,27 @@ export class ListaExamenesAsignables extends HTMLElement {
         return [...this._seleccion];
     }
 
-    async cargarExamenes() {
+    cargarExamenes() {
+        if (!this._estaListo()) return Promise.resolve();
+        // Invalida la respuesta anterior antes de agrupar las mutaciones de atributos.
+        this._cargaActual += 1;
+        this._limpiarSeleccion();
+        this._cargado = false;
+        this._actualizarBoton();
+        if (!this._cargaProgramada) {
+            const conexion = this._conexionActual;
+            const pendiente = Promise.resolve().then(() => {
+                if (this._cargaProgramada === pendiente) this._cargaProgramada = null;
+                if (conexion !== this._conexionActual || !this._estaListo()) return;
+                return this._cargarExamenesActuales();
+            });
+            this._cargaProgramada = pendiente;
+        }
+        return this._cargaProgramada;
+    }
+
+    async _cargarExamenesActuales() {
+        if (!this._estaListo()) return;
         const idPaso = this.idPaso;
         const carga = ++this._cargaActual;
 
@@ -152,12 +181,14 @@ export class ListaExamenesAsignables extends HTMLElement {
             return;
         }
 
+        this._cargado = false;
+        this._actualizarBoton();
         this._estado("Cargando exámenes…");
 
         try {
             const respuesta = await this.ordenExamenService.listarExamenesPorPaso(idPaso);
 
-            if (carga !== this._cargaActual) {
+            if (carga !== this._cargaActual || !this._estaListo()) {
                 return;
             }
 
@@ -174,7 +205,7 @@ export class ListaExamenesAsignables extends HTMLElement {
             this._pintarCategorias();
             this._pintarLista();
         } catch (error) {
-            if (carga !== this._cargaActual) {
+            if (carga !== this._cargaActual || !this._estaListo()) {
                 return;
             }
 
@@ -183,11 +214,13 @@ export class ListaExamenesAsignables extends HTMLElement {
             this._estado("No se pudieron cargar los exámenes.");
             this._pintarCategorias();
             this._pintarLista();
-            GeneradorMensajes.crearMensaje(
-                "Error al cargar exámenes",
-                error?.mensaje ?? error?.message ?? "",
-                "error"
-            );
+            if (!error?.notificado) {
+                GeneradorMensajes.crearMensaje(
+                    "Error al cargar exámenes",
+                    error?.mensaje ?? error?.message ?? "",
+                    "error"
+                );
+            }
         }
     }
 
@@ -219,6 +252,7 @@ export class ListaExamenesAsignables extends HTMLElement {
     }
 
     _estado(texto) {
+        if (!this._estaListo()) return;
         const nodo = this.shadowRoot.querySelector("#estado");
 
         if (nodo) {
@@ -228,9 +262,11 @@ export class ListaExamenesAsignables extends HTMLElement {
 
     _pintarCategorias() {
         const select = this.shadowRoot.querySelector("#filtro-categoria");
+        if (!this._estaListo() || !select) return;
         const examenes = Array.isArray(this._examenes) ? this._examenes : [];
         const categorias = [...new Set(examenes.map((e) => e?.categoria).filter(Boolean))].sort();
 
+        if (this._categoria !== TODAS && !categorias.includes(this._categoria)) this._categoria = TODAS;
         select.innerHTML = [
             `<option value="${TODAS}">Todas las categorías</option>`,
             ...categorias.map((c) => `<option value="${escapar(c)}">${escapar(c)}</option>`)
@@ -240,6 +276,7 @@ export class ListaExamenesAsignables extends HTMLElement {
 
     _pintarLista() {
         const contenedor = this.shadowRoot.querySelector("#lista");
+        if (!this._estaListo() || !contenedor) return;
         const visibles = this._visibles();
 
         if (this._cargado && visibles.length === 0) {
@@ -261,8 +298,9 @@ export class ListaExamenesAsignables extends HTMLElement {
 
     _actualizarBoton() {
         const boton = this.shadowRoot?.querySelector("#btn-asignar");
+        const contador = this.shadowRoot?.querySelector("#contador");
 
-        if (!boton) {
+        if (!this._estaListo() || !boton || !contador) {
             return;
         }
 
@@ -271,22 +309,23 @@ export class ListaExamenesAsignables extends HTMLElement {
 
         if (aviso) aviso.hidden = !this.sinConexion;
         boton.disabled = this.sinConexion
+            || !this._cargado
             || this._enviando
             || cantidad === 0
             || !this.idConsulta
             || !this.idPaso;
         boton.setAttribute("aria-busy", String(this._enviando));
         this.shadowRoot.querySelectorAll('input[type="checkbox"]').forEach((input) => {
-            input.disabled = this._enviando;
+            input.disabled = this._enviando || !this._cargado;
         });
-        this.shadowRoot.querySelector("#contador").textContent =
+        contador.textContent =
             cantidad === 1 ? "1 examen seleccionado" : `${cantidad} exámenes seleccionados`;
     }
 
     _onCambioCheckbox(evento) {
         const input = evento.target;
 
-        if (input.type !== "checkbox" || this._enviando) {
+        if (input.type !== "checkbox" || this._enviando || !this._cargado) {
             return;
         }
 
@@ -343,11 +382,13 @@ export class ListaExamenesAsignables extends HTMLElement {
                 this._pintarLista();
             }
         } catch (error) {
-            GeneradorMensajes.crearMensaje(
-                "No se pudieron asignar los exámenes",
-                error?.mensaje ?? error?.message ?? "Intente nuevamente.",
-                "error"
-            );
+            if (!error?.notificado) {
+                GeneradorMensajes.crearMensaje(
+                    "No se pudieron asignar los exámenes",
+                    error?.mensaje ?? error?.message ?? "Intente nuevamente.",
+                    "error"
+                );
+            }
             this._estado("No se pudieron asignar los exámenes.");
         } finally {
             this._enviando = false;
@@ -356,10 +397,13 @@ export class ListaExamenesAsignables extends HTMLElement {
     }
 
     _renderEstructura() {
+        this._estructuraLista = false;
         this.shadowRoot.innerHTML = `
             <link rel="stylesheet" href="recursos/estilos/principal.css">
             <style>
-                :host { display: block; }
+                :host { display: block;
+                    min-inline-size: 0;
+                    container: examenes / inline-size; }
                 .panel {
                     background: var(--color-surface);
                     border: var(--border);
@@ -376,11 +420,12 @@ export class ListaExamenesAsignables extends HTMLElement {
                     background: var(--color-surface); color: var(--color-text);
                 }
                 fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
-                legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+                legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
                 #lista {
                     display: grid; gap: var(--space-2);
-                    max-height: 18rem; overflow-y: auto;
-                    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+                    max-block-size: min(24rem, 60dvh); overflow-y: auto;
+                    overscroll-behavior: contain; scrollbar-gutter: stable;
+                    grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
                 }
                 .examen {
                     display: flex; align-items: center; gap: var(--space-2);
@@ -391,8 +436,8 @@ export class ListaExamenesAsignables extends HTMLElement {
                 .examen:has(input:checked) { background: var(--color-primary-soft); }
                 .examen:focus-within { outline: var(--focus-width) solid var(--color-focus); outline-offset: 2px; }
                 .examen input { inline-size: 1.15rem; block-size: 1.15rem; flex: none; }
-                .examen-nombre { flex: 1; font-size: var(--text-sm); }
-                .examen-cat { font-size: var(--text-xs); color: var(--color-text-muted); }
+                .examen-nombre { flex: 1; min-inline-size: 0; overflow-wrap: anywhere; font-size: var(--text-sm); }
+                .examen-cat { min-inline-size: 0; overflow-wrap: anywhere; font-size: var(--text-xs); color: var(--color-text-muted); }
                 .vacio, #estado { margin: 0; color: var(--color-text-muted); font-size: var(--text-sm); }
                 .aviso-offline {
                     margin: 0;
@@ -413,7 +458,7 @@ export class ListaExamenesAsignables extends HTMLElement {
                 button:hover:not(:disabled) { background: var(--color-primary-hover); }
                 button:focus-visible { outline: var(--focus-width) solid var(--color-focus); outline-offset: 2px; }
                 button:disabled { background: var(--color-surface-alt); color: var(--color-text-muted); cursor: not-allowed; }
-                @media (max-width: 640px) { .pie button { inline-size: 100%; } }
+                @container examenes (inline-size < 36rem) { .pie button { inline-size: 100%; } }
             </style>
             <section class="panel" aria-labelledby="titulo">
                 <h3 id="titulo">Exámenes médicos</h3>
@@ -444,6 +489,7 @@ export class ListaExamenesAsignables extends HTMLElement {
         });
         this.shadowRoot.querySelector("#lista").addEventListener("change", (e) => this._onCambioCheckbox(e));
         this.shadowRoot.querySelector("#btn-asignar").addEventListener("click", () => this.asignarSeleccionados());
+        this._estructuraLista = true;
     }
 }
 

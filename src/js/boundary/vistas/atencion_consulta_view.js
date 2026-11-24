@@ -1,7 +1,8 @@
 import { store } from "../../store.js";
-import { consultaService } from "../../control/consulta_service.js";
+import { consultaService, obtenerNombreClinicaConsulta } from "../../control/consulta_service.js";
 import { consultaProcedimientoService } from "../../control/consulta_procedimiento_service.js";
 import GeneradorMensajes from "../../control/generador_mensajes.js";
+import GestorFechas from "../../control/gestor_fechas.js";
 import { navigate, parseRouteParams } from "../../router.js";
 import "../../boundary/componentes/stepper_progreso.js";
 import "../../boundary/componentes/autocomplete_cie10.js";
@@ -23,12 +24,6 @@ const ETAPAS_FLUJO = Object.freeze(["Triaje", "Consulta Médica", "Tratamiento",
 const ESTADO_PENDIENTE = "PENDIENTE";
 const ESTADO_EN_CURSO = "EN_CURSO";
 const ESTADO_COMPLETADO = "COMPLETADO";
-
-export const EstadoPaso = Object.freeze({
-    PENDIENTE: ESTADO_PENDIENTE,
-    EN_CURSO: ESTADO_EN_CURSO,
-    COMPLETADO: ESTADO_COMPLETADO
-});
 
 /** Textos de acción de la botonera. */
 const TEXTO_SIGUIENTE = "Guardar y Avanzar >";
@@ -54,6 +49,7 @@ export class AtencionConsultaView extends HTMLElement {
         /** @type {boolean} Indica si hay una petición en curso. */
         this._enviando = false;
         this._cargandoConsulta = false;
+        this._solicitudConsulta = 0;
 
         /** @type {Array<object|string>} Diagnósticos CIE-10 seleccionados. */
         this._diagnosticos = [];
@@ -126,6 +122,8 @@ export class AtencionConsultaView extends HTMLElement {
     }
 
     disconnectedCallback() {
+        this._solicitudConsulta++;
+        this._cargandoConsulta = false;
         store.removeEventListener("state-changed", this._alCambioStore);
     }
 
@@ -137,10 +135,11 @@ export class AtencionConsultaView extends HTMLElement {
      */
     async _cargarConsultaPorId(id) {
         this._cargandoConsulta = true;
+        const solicitud = ++this._solicitudConsulta;
         try {
             const consulta = await consultaService.findById(id);
 
-            if (!consulta || !this.isConnected) {
+            if (!consulta || solicitud !== this._solicitudConsulta || !this.isConnected) {
                 return;
             }
 
@@ -159,14 +158,19 @@ export class AtencionConsultaView extends HTMLElement {
             this.render();
             this._cargarDatosPasoActivo();
         } catch (error) {
-            GeneradorMensajes.crearMensaje(
-                "Error al cargar la consulta",
-                error?.mensaje ?? error?.message ?? "",
-                "error"
-            );
+            if (solicitud !== this._solicitudConsulta || !this.isConnected) return;
+            if (!error?.notificado) {
+                GeneradorMensajes.crearMensaje(
+                    "Error al cargar la consulta",
+                    error?.mensaje ?? error?.message ?? "",
+                    "error"
+                );
+            }
         } finally {
-            this._cargandoConsulta = false;
-            this._establecerEnviando(false);
+            if (solicitud === this._solicitudConsulta) {
+                this._cargandoConsulta = false;
+                this._establecerEnviando(false);
+            }
         }
     }
 
@@ -210,13 +214,11 @@ export class AtencionConsultaView extends HTMLElement {
         if (notas && datos.notasConsulta !== undefined) {
             notas.value = datos.notasConsulta;
             this._actualizarContador("contador-notas", notas.value.length, MAX_NOTAS);
-            this._ajustarAltura(notas);
         }
 
         if (plan && datos.planTratamiento !== undefined) {
             plan.value = datos.planTratamiento;
             this._actualizarContador("contador-plan", plan.value.length, MAX_PLAN);
-            this._ajustarAltura(plan);
         }
     }
 
@@ -264,11 +266,13 @@ export class AtencionConsultaView extends HTMLElement {
             return;
         }
 
-        stepper.etapas = [...this._etapasFlujo];
-        stepper.estados = this._etapasFlujo.map((_, indice) => (
-            this._obtenerEstadoPaso(this._buscarPasoPorIndice(this._pasosFlujo, indice))
-        ));
-        stepper.pasoActivo = this._pasoActivo;
+        stepper.actualizar({
+            etapas: this._etapasFlujo,
+            estados: this._etapasFlujo.map((_, indice) => (
+                this._obtenerEstadoPaso(this._buscarPasoPorIndice(this._pasosFlujo, indice))
+            )),
+            pasoActivo: this._pasoActivo
+        });
     }
 
     _esPrimerPaso() {
@@ -336,7 +340,7 @@ export class AtencionConsultaView extends HTMLElement {
             const lista = this._normalizarListaPasos(candidato);
 
             if (lista.length > 0) {
-                return [...lista].sort((a, b) => (
+                return lista.toSorted((a, b) => (
                     (a.orden ?? a.idProcedimientoPaso?.orden ?? 0)
                     - (b.orden ?? b.idProcedimientoPaso?.orden ?? 0)
                 ));
@@ -664,6 +668,8 @@ export class AtencionConsultaView extends HTMLElement {
             <style>
                 :host {
                     display: block;
+                    min-inline-size: 0;
+                    container: atencion / inline-size;
                     color: var(--color-text, #0f172a);
                     font-family: var(--font-body, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
                 }
@@ -699,6 +705,17 @@ export class AtencionConsultaView extends HTMLElement {
                     color: var(--color-primary, #1e3a8a);
                     font-size: var(--text-lg, 1.125rem);
                     font-weight: 700;
+                }
+
+                .cabecera > div {
+                    min-inline-size: 0;
+                    flex: 1 1 16rem;
+                }
+
+                .cabecera-meta li {
+                    min-inline-size: 0;
+                    max-inline-size: 100%;
+                    overflow-wrap: anywhere;
                 }
 
                 .cabecera-meta {
@@ -738,7 +755,7 @@ export class AtencionConsultaView extends HTMLElement {
 
                 /* ── Tarjeta de formulario ── */
                 .tarjeta {
-                    padding: var(--space-6, 1.5rem);
+                    padding: clamp(0.75rem, 3cqi, 1.5rem);
                     border: var(--border-width, 1px) solid var(--color-border, #64748b);
                     border-radius: var(--radius-lg, 0.75rem);
                     background-color: var(--color-surface, #ffffff);
@@ -816,7 +833,11 @@ export class AtencionConsultaView extends HTMLElement {
                     font-size: var(--text-sm, 0.875rem);
                     line-height: 1.6;
                     resize: vertical;
-                    overflow-y: hidden; /* se mostrará cuando se alcance el max-height */
+                    field-sizing: content;
+                    block-size: auto;
+                    min-block-size: 6lh;
+                    max-block-size: min(24lh, 60dvh);
+                    overflow-y: auto;
                     overflow-x: hidden;
                     transition: border-color 0.15s ease, box-shadow 0.15s ease;
                 }
@@ -827,12 +848,15 @@ export class AtencionConsultaView extends HTMLElement {
                 }
 
                 input.textarea {
-                    min-height: 0;
+                    min-height: 2.75rem;
+                    min-block-size: 2.75rem;
+                    field-sizing: fixed;
                     resize: none;
                 }
 
-                .textarea:focus {
-                    outline: none;
+                .textarea:focus-visible {
+                    outline: var(--focus-width) solid var(--color-focus);
+                    outline-offset: var(--focus-offset);
                     border-color: var(--color-primary, #1e3a8a);
                     box-shadow: 0 0 0 3px var(--color-primary-soft, #dbeafe);
                 }
@@ -974,7 +998,7 @@ export class AtencionConsultaView extends HTMLElement {
                 }
 
                 /* ── Responsivo ── */
-                @media (max-width: 640px) {
+                @container atencion (inline-size < 40rem) {
                     .tarjeta {
                         padding: var(--space-4, 1rem);
                     }
@@ -984,7 +1008,7 @@ export class AtencionConsultaView extends HTMLElement {
                     }
 
                     .acciones {
-                        flex-direction: column-reverse;
+                        flex-direction: column;
                     }
 
                     .btn {
@@ -1057,12 +1081,13 @@ export class AtencionConsultaView extends HTMLElement {
     _calcularEdad(fechaNacimiento) {
         if (!fechaNacimiento) return null;
         try {
-            const nacimiento = new Date(String(fechaNacimiento).trim());
-            if (isNaN(nacimiento.getTime())) return null;
+            const iso = GestorFechas.extraerFechaCalendario(fechaNacimiento);
+            if (!iso) return null;
+            const [anio, mes, dia] = iso.split("-").map(Number);
             const hoy = new Date();
-            let edad = hoy.getFullYear() - nacimiento.getFullYear();
-            const cumplioMes = hoy.getMonth() > nacimiento.getMonth()
-                || (hoy.getMonth() === nacimiento.getMonth() && hoy.getDate() >= nacimiento.getDate());
+            let edad = hoy.getFullYear() - anio;
+            const cumplioMes = hoy.getMonth() + 1 > mes
+                || (hoy.getMonth() + 1 === mes && hoy.getDate() >= dia);
             if (!cumplioMes) edad--;
             return edad >= 0 ? edad : null;
         } catch {
@@ -1103,10 +1128,14 @@ export class AtencionConsultaView extends HTMLElement {
     _htmlCabecera() {
         const consulta = this._consulta;
         const idConsulta = consulta?.idConsulta ?? consulta?.id ?? "—";
-        const fecha = this._formatearFecha(consulta?.fecha ?? consulta?.cita?.fecha ?? "");
+        const fuentes = [consulta, consulta?.consulta, consulta?.cita, consulta?.consulta?.cita].filter(Boolean);
+        const fechaOriginal = fuentes.flatMap((datos) => [
+            datos.inicio, datos.fecha, datos.fechaConsulta, datos.fechaCita, datos.fechaHora, datos.fechaInicio
+        ]).find((valor) => GestorFechas.extraerFechaCalendario(valor));
+        const fecha = this._formatearFecha(fechaOriginal);
         const hora = consulta?.hora ?? consulta?.cita?.hora ?? "";
         const paciente = this._nombrePaciente(consulta);
-        const clinica = consulta?.clinica ?? consulta?.cita?.clinica ?? "";
+        const clinica = obtenerNombreClinicaConsulta(consulta);
         const documento = this._documentoPaciente(consulta);
         const fechaNac = this._fechaNacimientoPaciente(consulta);
         const edad = this._calcularEdad(fechaNac);
@@ -1356,7 +1385,6 @@ export class AtencionConsultaView extends HTMLElement {
         if (textareaNotas) {
             textareaNotas.addEventListener("input", () => {
                 this._actualizarContador("contador-notas", textareaNotas.value.length, MAX_NOTAS);
-                this._ajustarAltura(textareaNotas);
                 this._limpiarErrorCampo("notas");
             });
         }
@@ -1364,7 +1392,6 @@ export class AtencionConsultaView extends HTMLElement {
         if (textareaPlan) {
             textareaPlan.addEventListener("input", () => {
                 this._actualizarContador("contador-plan", textareaPlan.value.length, MAX_PLAN);
-                this._ajustarAltura(textareaPlan);
                 this._limpiarErrorCampo("plan");
             });
         }
@@ -1589,13 +1616,11 @@ export class AtencionConsultaView extends HTMLElement {
         if (notas) {
             notas.value = "";
             this._actualizarContador("contador-notas", 0, MAX_NOTAS);
-            this._ajustarAltura(notas);
         }
 
         if (plan) {
             plan.value = "";
             this._actualizarContador("contador-plan", 0, MAX_PLAN);
-            this._ajustarAltura(plan);
         }
 
         if (cie10) {
@@ -1730,11 +1755,13 @@ export class AtencionConsultaView extends HTMLElement {
                 }
             }));
         } catch (error) {
-            GeneradorMensajes.crearMensaje(
-                "Error al guardar",
-                error?.mensaje ?? error?.message ?? "No se pudieron guardar las notas.",
-                "error"
-            );
+            if (!error?.notificado) {
+                GeneradorMensajes.crearMensaje(
+                    "Error al guardar",
+                    error?.mensaje ?? error?.message ?? "No se pudieron guardar las notas.",
+                    "error"
+                );
+            }
         } finally {
             this._establecerEnviando(false);
         }
@@ -1759,11 +1786,13 @@ export class AtencionConsultaView extends HTMLElement {
         } catch (error) {
             this._sincronizarStepper();
             this._aplicarValidacionesPaso(this._pasoActivo);
-            GeneradorMensajes.crearMensaje(
-                "Error al retroceder",
-                error?.mensaje ?? error?.message ?? "No se pudo actualizar el paso anterior.",
-                "error"
-            );
+            if (!error?.notificado) {
+                GeneradorMensajes.crearMensaje(
+                    "Error al retroceder",
+                    error?.mensaje ?? error?.message ?? "No se pudo actualizar el paso anterior.",
+                    "error"
+                );
+            }
         } finally {
             this._establecerEnviando(false);
         }
@@ -1808,11 +1837,13 @@ export class AtencionConsultaView extends HTMLElement {
         } catch (error) {
             this._sincronizarStepper();
             this._aplicarValidacionesPaso(this._pasoActivo);
-            GeneradorMensajes.crearMensaje(
-                "Error al guardar",
-                error?.mensaje ?? error?.message ?? "No se pudo guardar el paso.",
-                "error"
-            );
+            if (!error?.notificado) {
+                GeneradorMensajes.crearMensaje(
+                    "Error al guardar",
+                    error?.mensaje ?? error?.message ?? "No se pudo guardar el paso.",
+                    "error"
+                );
+            }
         } finally {
             this._establecerEnviando(false);
         }
@@ -1877,11 +1908,13 @@ export class AtencionConsultaView extends HTMLElement {
 
             window.location.hash = "#dashboard";
         } catch (error) {
-            GeneradorMensajes.crearMensaje(
-                "Error al finalizar",
-                error?.mensaje ?? error?.message ?? "No se pudo finalizar la consulta.",
-                "error"
-            );
+            if (!error?.notificado) {
+                GeneradorMensajes.crearMensaje(
+                    "Error al finalizar",
+                    error?.mensaje ?? error?.message ?? "No se pudo finalizar la consulta.",
+                    "error"
+                );
+            }
         } finally {
             this._establecerEnviando(false);
         }
@@ -1918,16 +1951,6 @@ export class AtencionConsultaView extends HTMLElement {
         contador.setAttribute("aria-label",
             `${actual} de ${maximo} caracteres utilizados${sobrepasado ? " — límite alcanzado" : ""}`
         );
-    }
-
-    /**
-     * Auto-ajusta la altura del textarea a su contenido evitando scroll interno.
-     * @param {HTMLTextAreaElement} textarea
-     */
-    _ajustarAltura(textarea) {
-        if (!textarea) return;
-        textarea.style.height = "auto";
-        textarea.style.height = `${textarea.scrollHeight}px`;
     }
 
     /**
@@ -2026,21 +2049,6 @@ export class AtencionConsultaView extends HTMLElement {
         }
     }
 
-    /**
-     * Actualiza solo el bloque de cabecera del Shadow DOM cuando cambia la consulta,
-     * sin re-renderizar el formulario completo (preserva los valores escritos).
-     */
-    _actualizarResumenConsulta() {
-        const cabecera = this.shadowRoot?.querySelector(".cabecera");
-        if (cabecera) {
-            cabecera.outerHTML = this._htmlCabecera();
-            const btnVolver = this.shadowRoot?.querySelector("#btn-volver");
-            btnVolver?.addEventListener("click", () => this._volverAlDashboard());
-        }
-
-        this._sincronizarListaExamenes();
-    }
-
     // ─── Ayudantes de datos ───────────────────────────────────────────────────
 
     _nombrePaciente(consulta) {
@@ -2059,14 +2067,7 @@ export class AtencionConsultaView extends HTMLElement {
     }
 
     _formatearFecha(fecha) {
-        if (!fecha) return "";
-        try {
-            const [anio, mes, dia] = String(fecha).split("-");
-            if (!anio || !mes || !dia) return String(fecha);
-            return `${dia}/${mes}/${anio}`;
-        } catch {
-            return String(fecha);
-        }
+        return GestorFechas.formatearFechaCalendario(fecha);
     }
 
     /**

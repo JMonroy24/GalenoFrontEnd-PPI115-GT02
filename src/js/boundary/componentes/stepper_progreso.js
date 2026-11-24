@@ -176,7 +176,6 @@ export class StepperProgreso extends HTMLElement {
         this._estados = [];
         this._pasoActivo = 0;
         this._pasoActivoDefinido = false;
-        this._bloqueoAtributos = false;
     }
 
     /**
@@ -192,8 +191,7 @@ export class StepperProgreso extends HTMLElement {
      * @param {string[]|string} valor
      */
     set etapas(valor) {
-        this._etapas = parsearEtapas(valor);
-        this.render();
+        this.actualizar({ etapas: valor });
     }
 
     /**
@@ -209,8 +207,7 @@ export class StepperProgreso extends HTMLElement {
      * @param {string[]|string} valor
      */
     set estados(valor) {
-        this._estados = parsearEstados(valor);
-        this.render();
+        this.actualizar({ estados: valor });
     }
 
     /**
@@ -226,49 +223,42 @@ export class StepperProgreso extends HTMLElement {
      * @param {number|string} valor
      */
     set pasoActivo(valor) {
-        this._pasoActivo = valor;
-        this._pasoActivoDefinido = true;
-        this.render();
+        this.actualizar({ pasoActivo: valor });
     }
 
     /**
-     * Responde a los cambios en los atributos observados en el DOM.
-     * @param {string} name
-     * @param {string|null} oldValue
-     * @param {string|null} newValue
+     * Aplica etapas, estados y paso activo en una sola actualización.
+     * Los setters individuales conservan la misma API pública.
      */
+    actualizar(datos = {}) {
+        if (Object.hasOwn(datos, "etapas")) this._etapas = parsearEtapas(datos.etapas);
+        if (Object.hasOwn(datos, "estados")) this._estados = parsearEstados(datos.estados);
+        if (Object.hasOwn(datos, "pasoActivo")) {
+            this._pasoActivo = datos.pasoActivo;
+            this._pasoActivoDefinido = true;
+        }
+        if (this.isConnected) this.render();
+    }
+
     attributeChangedCallback(name, oldValue, newValue) {
-        if (oldValue === newValue || this._bloqueoAtributos) {
+        if (oldValue === newValue) {
             return;
         }
 
         if (name === "etapas") {
             this._etapas = parsearEtapas(newValue);
-            this.render();
+            if (this.isConnected) this.render();
         } else if (name === "estados") {
             this._estados = parsearEstados(newValue);
-            this.render();
+            if (this.isConnected) this.render();
         } else if (name === "paso-activo" || name === "pasoactivo") {
             this._pasoActivo = newValue;
             this._pasoActivoDefinido = true;
-            this.render();
+            if (this.isConnected) this.render();
         }
     }
 
     connectedCallback() {
-        if (this.hasAttribute("etapas")) {
-            this._etapas = parsearEtapas(this.getAttribute("etapas"));
-        }
-        if (this.hasAttribute("estados")) {
-            this._estados = parsearEstados(this.getAttribute("estados"));
-        }
-        if (this.hasAttribute("paso-activo")) {
-            this._pasoActivo = this.getAttribute("paso-activo");
-            this._pasoActivoDefinido = true;
-        } else if (this.hasAttribute("pasoactivo")) {
-            this._pasoActivo = this.getAttribute("pasoactivo");
-            this._pasoActivoDefinido = true;
-        }
         this.render();
     }
 
@@ -366,6 +356,9 @@ export class StepperProgreso extends HTMLElement {
      * Renderiza el componente en su Shadow Root.
      */
     render() {
+        const clave = JSON.stringify([this._etapas, this._estados, this._pasoActivo, this._pasoActivoDefinido]);
+        if (clave === this._claveRender) return;
+        this._claveRender = clave;
         const etapas = this._etapas.length > 0 ? this._etapas : [...ETAPAS_POR_DEFECTO];
         const total = etapas.length;
 
@@ -436,11 +429,32 @@ export class StepperProgreso extends HTMLElement {
             `;
         }).join("");
 
+        const lista = this.shadowRoot.querySelector(".stepper-lista");
+        const claveEtapas = JSON.stringify(etapas);
+        if (lista && this._claveEtapas === claveEtapas) {
+            const plantilla = document.createElement("template");
+            plantilla.innerHTML = pasosHtml;
+            [...lista.children].forEach((item, indice) => {
+                const actualizado = plantilla.content.children[indice];
+                item.className = actualizado.className;
+                if (actualizado.hasAttribute("aria-current")) item.setAttribute("aria-current", "step");
+                else item.removeAttribute("aria-current");
+                const boton = item.querySelector("button");
+                const nuevo = actualizado.querySelector("button");
+                boton.setAttribute("aria-label", nuevo.getAttribute("aria-label"));
+                boton.replaceChildren(...nuevo.childNodes);
+            });
+            return;
+        }
+        this._claveEtapas = claveEtapas;
+
         this.shadowRoot.innerHTML = `
             <link rel="stylesheet" href="recursos/estilos/principal.css">
             <style>
                 :host {
                     display: block;
+                    min-inline-size: 0;
+                    container: progreso / inline-size;
                     width: 100%;
                     box-sizing: border-box;
                     color: var(--color-text, #0f172a);
@@ -458,7 +472,7 @@ export class StepperProgreso extends HTMLElement {
                     padding: 0;
                     margin: -1px;
                     overflow: hidden;
-                    clip: rect(0, 0, 0, 0);
+                    clip-path: inset(50%);
                     white-space: nowrap;
                     border-width: 0;
                 }
@@ -467,7 +481,6 @@ export class StepperProgreso extends HTMLElement {
                     width: 100%;
                     overflow-x: auto;
                     padding: var(--space-3, 0.75rem) 0;
-                    -webkit-overflow-scrolling: touch;
                 }
 
                 .stepper-lista {
@@ -546,7 +559,7 @@ export class StepperProgreso extends HTMLElement {
                     font-weight: 600;
                     line-height: 1;
                     flex-shrink: 0;
-                    transition: all 0.25s ease;
+                    transition: background-color 0.25s ease, border-color 0.25s ease, transform 0.25s ease;
                     background-color: var(--color-surface, #ffffff);
                     border: 2px solid var(--color-surface-alt, #cbd5e1);
                     color: var(--color-text-muted, #64748b);
@@ -655,7 +668,13 @@ export class StepperProgreso extends HTMLElement {
                     color: var(--color-success, #166534);
                 }
 
-                @media (max-width: 640px) {
+                @container progreso (inline-size < 36rem) {
+                    .stepper-lista { flex-direction: column; gap: 0.75rem; min-inline-size: 0; }
+                    .stepper-paso { inline-size: 100%; min-inline-size: 0; text-align: start; }
+                    .stepper-seleccionar { flex-direction: row; align-items: center; gap: 0.75rem; text-align: start; }
+                    .stepper-indicador-fila { inline-size: auto; margin: 0; }
+                    .stepper-cuerpo { align-items: flex-start; min-inline-size: 0; }
+                    .stepper-conector { display: none; }
                     .stepper-circulo {
                         width: 2.125rem;
                         height: 2.125rem;

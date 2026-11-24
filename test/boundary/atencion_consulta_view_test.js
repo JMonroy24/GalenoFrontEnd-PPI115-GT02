@@ -74,7 +74,9 @@ suite("AtencionConsultaView (unitaria)", () => {
 
     teardown(() => {
         host?.remove();
-        window.history.replaceState(null, "", window.location.pathname + window.location.search + rutaAnterior);
+        if (window.location.hash !== rutaAnterior) {
+            window.history.replaceState(null, "", window.location.pathname + window.location.search + rutaAnterior);
+        }
         navigateStub?.restore();
         guardarPasoStub?.restore();
         tipoExamenStub?.restore();

@@ -17,8 +17,6 @@ export const ENDPOINTS = Object.freeze({
     CONSULTAS_PROCEDIMIENTOS_PASOS: "/consultas-procedimientos-pasos",
     PROCEDIMIENTOS: "/procedimientos",
     ORDENES_EXAMEN: "/ordenes-examen",
-    ORDEN_EXAMEN: "/ordenes-examen",
     EXAMENES_RESULTADOS: "/examenes-resultados",
-    EXAMEN_RESULTADO: "/examenes-resultados",
     CIE10: "/cie10"
 });

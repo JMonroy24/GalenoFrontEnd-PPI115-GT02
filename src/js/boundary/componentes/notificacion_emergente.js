@@ -23,6 +23,7 @@ export class NotificacionEmergente extends HTMLElement {
     _crearEstructura() {
         const estilos = document.createElement("style");
         estilos.textContent = `
+            :host([hidden]) { display: none; }
             #contenedor {
                 position: fixed;
                 top: 1rem;
@@ -31,7 +32,10 @@ export class NotificacionEmergente extends HTMLElement {
                 display: flex;
                 flex-direction: column;
                 gap: 0.5rem;
-                width: min(360px, calc(100vw - 2rem));
+                inline-size: min(22.5rem, calc(100% - 2rem));
+                max-block-size: calc(100dvh - 2rem);
+                overflow-y: auto;
+                overscroll-behavior: contain;
             }
             .banner {
                 display: flex;

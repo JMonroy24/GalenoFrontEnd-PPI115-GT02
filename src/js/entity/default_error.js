@@ -1,6 +1,6 @@
 export class DefaultError extends Error {
-    constructor(mensaje = "", error = null) {
-        super(mensaje);
+    constructor(mensaje = "", error = null, options = {}) {
+        super(mensaje, options);
         this.name = "DefaultError";
         this.mensaje = mensaje;
         this.error = error;

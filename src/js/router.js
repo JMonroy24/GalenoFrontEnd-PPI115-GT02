@@ -52,7 +52,14 @@ export class Router {
         this.routes = options.routes ?? ROUTES;
         this.container = options.container ?? null;
         this._initialized = false;
-        this._onHashChange = () => this.resolve();
+        this._ultimoHash = null;
+        this._ultimaSesion = null;
+        this._params = {};
+        this._onHashChange = () => {
+            if (this._ultimoHash !== window.location.hash || this._ultimaSesion !== this.hasActiveSession()) {
+                this.resolve();
+            }
+        };
         this._onDOMContentLoaded = () => this.resolve();
     }
 
@@ -157,7 +164,8 @@ export class Router {
         }
 
         const views = this.getViews(container);
-        const activeView = views.find((view) => routeFromView(view) === route);
+        const activeView = views.find((view) => routeFromView(view) === route
+            && (view.dataset.routeId ?? "") === (this._params.id ?? ""));
 
         if (activeView) {
             views.forEach((view) => {
@@ -184,6 +192,7 @@ export class Router {
 
         const view = document.createElement(viewTag);
         view.dataset.route = route;
+        if (this._params.id) view.dataset.routeId = this._params.id;
         view.classList.add("is-active");
         view.setAttribute("aria-hidden", "false");
         container.replaceChildren(view);
@@ -210,7 +219,10 @@ export class Router {
 
         if (!this.canNavigate(resolvedRoute)) {
             const loginRoute = this.normalizeRoute("#login");
+            this._params = {};
             this.render(loginRoute);
+            this._ultimoHash = window.location.hash;
+            this._ultimaSesion = this.hasActiveSession();
             return loginRoute;
         }
 
@@ -223,7 +235,10 @@ export class Router {
             window.location.hash = targetHash;
         }
 
+        this._params = params;
         this.render(resolvedRoute);
+        this._ultimoHash = typeof window !== "undefined" ? window.location.hash : targetHash;
+        this._ultimaSesion = this.hasActiveSession();
 
         return resolvedRoute;
     }

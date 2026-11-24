@@ -1,4 +1,4 @@
-import { cie10Service, Cie10Service } from "../../control/cie10_service.js";
+import { cie10Service } from "../../control/cie10_service.js";
 
 /** Tiempo de debounce para la búsqueda de diagnósticos en milisegundos. */
 const DEBOUNCE_MS = 300;
@@ -77,7 +77,7 @@ export class AutoCompleteCie10 extends HTMLElement {
         super();
         this.attachShadow({ mode: "open" });
 
-        /** @type {Cie10Service} */
+        /** @type {import("../../control/cie10_service.js").Cie10Service} */
         this._servicio = cie10Service;
 
         /** @type {Array<object|string>} Lista de diagnósticos seleccionados. */
@@ -95,8 +95,7 @@ export class AutoCompleteCie10 extends HTMLElement {
         /** @type {number} Contador secuencial para evitar condiciones de carrera en búsquedas. */
         this._contadorSolicitudes = 0;
 
-        /** @type {boolean} Indica si hay una búsqueda en progreso. */
-        this._cargando = false;
+        this._cancelacionBusqueda = null;
 
         this._manejadorClickFuera = (evento) => {
             const dentro = typeof evento.composedPath === "function"
@@ -114,8 +113,7 @@ export class AutoCompleteCie10 extends HTMLElement {
     }
 
     disconnectedCallback() {
-        clearTimeout(this._timerDebounce);
-        this._timerDebounce = null;
+        this._invalidarBusqueda();
         document.removeEventListener("click", this._manejadorClickFuera);
     }
 
@@ -161,6 +159,7 @@ export class AutoCompleteCie10 extends HTMLElement {
      * Limpia las selecciones actuales, resultados flotantes y el campo de búsqueda.
      */
     limpiar() {
+        this._invalidarBusqueda();
         this._seleccionados = [];
         this._resultados = [];
         this._indiceActivo = -1;
@@ -178,6 +177,7 @@ export class AutoCompleteCie10 extends HTMLElement {
      */
     seleccionarDiagnostico(diag) {
         if (!diag) return false;
+        this._invalidarBusqueda();
 
         const claveNueva = extraerClave(diag);
         const yaExiste = this._seleccionados.some(
@@ -235,6 +235,8 @@ export class AutoCompleteCie10 extends HTMLElement {
             <style>
                 :host {
                     display: block;
+                    min-inline-size: 0;
+                    container: cie10 / inline-size;
                     width: 100%;
                     box-sizing: border-box;
                     color: var(--color-text, #0f172a);
@@ -243,18 +245,6 @@ export class AutoCompleteCie10 extends HTMLElement {
 
                 *, *::before, *::after {
                     box-sizing: inherit;
-                }
-
-                .sr-only {
-                    position: absolute;
-                    width: 1px;
-                    height: 1px;
-                    padding: 0;
-                    margin: -1px;
-                    overflow: hidden;
-                    clip: rect(0, 0, 0, 0);
-                    white-space: nowrap;
-                    border-width: 0;
                 }
 
                 .autocomplete-contenedor {
@@ -290,8 +280,9 @@ export class AutoCompleteCie10 extends HTMLElement {
                     opacity: 1;
                 }
 
-                .input-search:focus {
-                    outline: none;
+                .input-search:focus-visible {
+                    outline: var(--focus-width) solid var(--color-focus);
+                    outline-offset: var(--focus-offset);
                     border-color: var(--color-primary, #1e3a8a);
                     box-shadow: 0 0 0 3px var(--color-primary-soft, #dbeafe);
                 }
@@ -327,7 +318,9 @@ export class AutoCompleteCie10 extends HTMLElement {
                     left: 0;
                     right: 0;
                     z-index: 1050;
-                    max-height: 18rem;
+                    max-block-size: min(18rem, 50dvh);
+                    overscroll-behavior: contain;
+                    scrollbar-gutter: stable;
                     overflow-y: auto;
                     margin: 0;
                     padding: 0.25rem 0;
@@ -437,7 +430,8 @@ export class AutoCompleteCie10 extends HTMLElement {
                     overflow: hidden;
                     text-overflow: ellipsis;
                     white-space: nowrap;
-                    max-width: 22rem;
+                    min-inline-size: 0;
+                    max-inline-size: min(22rem, 65cqi);
                 }
 
                 .btn-eliminar-chip {
@@ -470,9 +464,9 @@ export class AutoCompleteCie10 extends HTMLElement {
                     outline-offset: 1px;
                 }
 
-                @media (max-width: 640px) {
+                @container cie10 (inline-size < 30rem) {
                     .chip-nombre {
-                        max-width: 12rem;
+                        max-inline-size: min(12rem, 65cqi);
                     }
                 }
             </style>
@@ -530,8 +524,7 @@ export class AutoCompleteCie10 extends HTMLElement {
 
         input.addEventListener("input", () => {
             const query = input.value.trim();
-            clearTimeout(this._timerDebounce);
-            this._timerDebounce = null;
+            this._invalidarBusqueda();
 
             if (query.length === 0) {
                 this._ocultarResultados();
@@ -540,6 +533,7 @@ export class AutoCompleteCie10 extends HTMLElement {
 
             // Debounce de 300 ms requerido
             this._timerDebounce = setTimeout(() => {
+                this._timerDebounce = null;
                 this._ejecutarBusqueda(query);
             }, DEBOUNCE_MS);
         });
@@ -551,14 +545,26 @@ export class AutoCompleteCie10 extends HTMLElement {
 
     // ─── Búsqueda y consulta de servicio ───
 
+    _invalidarBusqueda() {
+        clearTimeout(this._timerDebounce);
+        this._timerDebounce = null;
+        this._contadorSolicitudes++;
+        this._cancelacionBusqueda?.abort();
+        this._cancelacionBusqueda = null;
+        this._mostrarCargando(false);
+    }
+
     async _ejecutarBusqueda(query) {
+        this._invalidarBusqueda();
+        this._cancelacionBusqueda = new AbortController();
+        const options = { signal: this._cancelacionBusqueda.signal };
         const solicitud = ++this._contadorSolicitudes;
         this._mostrarCargando(true);
 
         try {
             let resultado;
             if (typeof this._servicio?.findRange === "function") {
-                resultado = await this._servicio.findRange(0, 20, query);
+                resultado = await this._servicio.findRange(0, 20, query, options);
             } else if (typeof this._servicio?.buscarDiagnosticos === "function") {
                 resultado = await this._servicio.buscarDiagnosticos(query);
             } else if (typeof this.buscar === "function") {
@@ -666,7 +672,6 @@ export class AutoCompleteCie10 extends HTMLElement {
     }
 
     _mostrarCargando(activo) {
-        this._cargando = activo;
         const spinner = this.shadowRoot.querySelector("#spinner");
         const input = this.shadowRoot.querySelector("#input-busqueda");
         if (spinner) {
@@ -680,6 +685,7 @@ export class AutoCompleteCie10 extends HTMLElement {
     // ─── Manejo de teclado en el combobox ───
 
     _manejarTeclado(evento) {
+        if (evento.isComposing) return;
         const lista = this.shadowRoot.querySelector("#lista-resultados");
         const input = this.shadowRoot.querySelector("#input-busqueda");
         if (!lista || lista.hidden || this._resultados.length === 0) {
@@ -743,6 +749,8 @@ export class AutoCompleteCie10 extends HTMLElement {
         const listaChips = this.shadowRoot?.querySelector("#chips-lista");
         if (!listaChips) return;
 
+        const botones = [...listaChips.querySelectorAll("button")];
+        const indiceFoco = botones.indexOf(this.shadowRoot.activeElement);
         listaChips.replaceChildren();
 
         this._seleccionados.forEach((diag, indice) => {
@@ -770,6 +778,11 @@ export class AutoCompleteCie10 extends HTMLElement {
 
             listaChips.appendChild(li);
         });
+        if (indiceFoco >= 0) {
+            const nuevos = listaChips.querySelectorAll("button");
+            (nuevos[Math.min(indiceFoco, nuevos.length - 1)]
+                ?? this.shadowRoot.querySelector("#input-busqueda"))?.focus();
+        }
     }
 
     // ─── Emisión del evento ───

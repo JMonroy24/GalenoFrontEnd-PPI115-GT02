@@ -59,6 +59,7 @@ export class MenuLateral extends HTMLElement {
             <style>
                 :host {
                     display: block;
+                    min-inline-size: 0;
                     width: 100%;
                 }
                 nav {

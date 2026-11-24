@@ -6,13 +6,16 @@ export class BuscadorTipoDocumentos extends HTMLElement {
         super();
         this.attachShadow({ mode: "open" });
         this.items = [];
+        this._solicitudActual = 0;
     }
 
     async connectedCallback() {
         this._renderEstructura();
+        const solicitud = ++this._solicitudActual;
 
         try {
             const respuesta = await tipoDocumentoService.findRange();
+            if (solicitud !== this._solicitudActual || !this.isConnected) return;
             const items = Array.isArray(respuesta?.items)
                 ? respuesta.items
                 : Array.isArray(respuesta?.datos)
@@ -24,15 +27,22 @@ export class BuscadorTipoDocumentos extends HTMLElement {
             this.items = items.filter((tipoDocumento) => tipoDocumento?.activo !== false);
             this._cargarOpciones();
         } catch (error) {
+            if (solicitud !== this._solicitudActual || !this.isConnected) return;
             const select = this.shadowRoot.querySelector("select");
             select.setAttribute("aria-busy", "false");
             select.options[0].textContent = "No se pudieron cargar los tipos de documento";
-            GeneradorMensajes.crearMensaje(
-                "Error al cargar tipos de documento",
-                error?.mensaje ?? error?.message ?? "",
-                "error"
-            );
+            if (!error?.notificado) {
+                GeneradorMensajes.crearMensaje(
+                    "Error al cargar tipos de documento",
+                    error?.mensaje ?? error?.message ?? "",
+                    "error"
+                );
+            }
         }
+    }
+
+    disconnectedCallback() {
+        this._solicitudActual++;
     }
 
     _renderEstructura() {

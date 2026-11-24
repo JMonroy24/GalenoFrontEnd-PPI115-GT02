@@ -164,14 +164,7 @@ suite("AuthService (unitaria)", () => {
                 expect(sesion.perfil).to.equal(persona);
                 expect(sesion.roles).to.deep.equal([rol]);
                 expect(store.isAuthenticated()).to.be.true;
-                expect(logStub.getCalls().map((llamada) => llamada.args)).to.deep.equal([
-                    ["Petición Persona URL:", urlPersona.href],
-                    ["Respuesta Backend Persona:", respuestaPersona],
-                    ["Personas encontradas:", respuestaPersona.items],
-                    ["Persona seleccionada:", persona],
-                    ["Petición Roles URL:", urlRoles.href],
-                    ["Respuesta Backend Roles:", respuestaRoles]
-                ]);
+                expect(logStub.called).to.be.false;
             });
         }
 

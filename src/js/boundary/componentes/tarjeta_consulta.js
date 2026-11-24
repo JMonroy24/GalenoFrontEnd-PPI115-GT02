@@ -1,5 +1,6 @@
+import GestorFechas from "../../control/gestor_fechas.js";
 import "./historial_pasos.js";
-import { obtenerPacienteConsulta, obtenerDocumentoConsulta } from "../../control/consulta_service.js";
+import { obtenerPacienteConsulta, obtenerDocumentoConsulta, obtenerNombreClinicaConsulta } from "../../control/consulta_service.js";
 
 export class TarjetaConsulta extends HTMLElement {
     constructor() {
@@ -14,7 +15,7 @@ export class TarjetaConsulta extends HTMLElement {
 
     set consulta(valor) {
         this._consulta = valor;
-        this.render();
+        if (this.isConnected) this.render();
     }
 
     connectedCallback() {
@@ -22,8 +23,6 @@ export class TarjetaConsulta extends HTMLElement {
     }
 
     render() {
-        const consulta = this._consulta;
-        console.log('Auditoría de Consulta JSON:', consulta);
         const datos = {
             ...(this._consulta?.consulta?.cita ?? {}),
             ...(this._consulta?.consulta ?? {}),
@@ -39,6 +38,7 @@ export class TarjetaConsulta extends HTMLElement {
             <style>
                 :host {
                     display: block;
+                    min-inline-size: 0;
                     color: var(--color-text, #0f172a);
                     font-family: var(--font-body, system-ui, sans-serif);
                 }
@@ -99,7 +99,7 @@ export class TarjetaConsulta extends HTMLElement {
                 }
                 .datos {
                     display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
+                    grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
                     gap: var(--space-4, 1rem);
                     margin: 0;
                     padding: var(--space-4, 1rem);
@@ -322,7 +322,7 @@ export class TarjetaConsulta extends HTMLElement {
 
     _obtenerFecha(datos) {
         const fecha = this._fechasConsulta(datos)[0]?.trim() || "";
-        return fecha.match(/^(\d{4}-\d{2}-\d{2})[T ]/)?.[1] || fecha || "Sin fecha";
+        return GestorFechas.extraerFechaCalendario(fecha) || "Sin fecha";
     }
 
     _obtenerHora(datos) {
@@ -334,13 +334,7 @@ export class TarjetaConsulta extends HTMLElement {
     }
 
     _obtenerClinica(datos) {
-        const fuentes = this._fuentesDatos(datos);
-        const relaciones = fuentes.flatMap((fuente) => [fuente?.clinica, fuente?.idClinica]);
-        return fuentes.map((fuente) => fuente?.nombreClinica || fuente?.clinicaNombre).find(Boolean)
-            || relaciones.map((clinica) => clinica?.nombre || clinica?.descripcion
-                || clinica?.nombreClinica || clinica?.name).find(Boolean)
-            || relaciones.find((clinica) => typeof clinica === "string" && clinica.trim())
-            || "Sin clínica";
+        return obtenerNombreClinicaConsulta(datos);
     }
 
     _obtenerEstado(datos) {

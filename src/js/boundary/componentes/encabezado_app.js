@@ -11,14 +11,12 @@ export default class EncabezadoApp extends HTMLElement {
 
     connectedCallback() {
         this.render();
-        window.addEventListener("contexto-seleccionado", this.alContexto);
         window.addEventListener("sesion-iniciada", this.alContexto);
         window.addEventListener("sesion-cerrada", this.alContexto);
         store.addEventListener("state-changed", this.alContexto);
     }
 
     disconnectedCallback() {
-        window.removeEventListener("contexto-seleccionado", this.alContexto);
         window.removeEventListener("sesion-iniciada", this.alContexto);
         window.removeEventListener("sesion-cerrada", this.alContexto);
         store.removeEventListener("state-changed", this.alContexto);
@@ -30,6 +28,8 @@ export default class EncabezadoApp extends HTMLElement {
             <style>
                 :host {
                     display: block;
+                    min-inline-size: 0;
+                    container: encabezado / inline-size;
                 }
 
                 .barra {
@@ -52,7 +52,7 @@ export default class EncabezadoApp extends HTMLElement {
 
                 #btnMenu .linea {
                     display: block;
-                    width: 18px;
+                    inline-size: 1.125rem;
                     height: 2px;
                     background-color: var(--color-texto);
                 }
@@ -64,8 +64,8 @@ export default class EncabezadoApp extends HTMLElement {
                 }
 
                 .logo {
-                    width: 32px;
-                    height: 32px;
+                    inline-size: 2rem;
+                    block-size: 2rem;
                     object-fit: contain;
                 }
 
@@ -74,26 +74,29 @@ export default class EncabezadoApp extends HTMLElement {
                     font-weight: 700;
                 }
 
+                #textoContexto { min-inline-size: 0; overflow-wrap: anywhere; }
                 .contexto {
                     display: flex;
                     align-items: center;
                     flex-wrap: wrap;
                     gap: 0.5rem;
-                    margin-left: auto;
+                    margin-inline-start: auto;
+                    min-inline-size: 0;
+                    flex: 1 1 18rem;
                 }
 
                 [hidden] {
                     display: none !important;
                 }
 
-                @media (max-width: 800px) {
+                @container encabezado (inline-size <= 50rem) {
                     #btnMenu {
                         display: inline-flex;
                     }
                 }
             </style>
             <header class="barra">
-                <button id="btnMenu" class="btn" type="button" aria-label="Alternar menú">
+                <button id="btnMenu" class="btn" type="button" aria-label="Alternar menú" aria-expanded="false">
                     <span class="linea"></span>
                     <span class="linea"></span>
                     <span class="linea"></span>
@@ -141,6 +144,9 @@ export default class EncabezadoApp extends HTMLElement {
     }
 
     _actualizarSesion() {
+        const escribir = (nodo, texto) => {
+            if (nodo.textContent !== texto) nodo.textContent = texto;
+        };
         const estado = store.getState();
         let usuario = estado.usuario;
         let contexto = null;
@@ -155,10 +161,10 @@ export default class EncabezadoApp extends HTMLElement {
         if (!textoContexto) return;
         const sesionActiva = store.hasActiveSession();
         this.shadowRoot.querySelector("#btnCambiarRol").hidden = !sesionActiva;
-        this.shadowRoot.querySelector("#btnCerrarSesion").textContent = sesionActiva
-            ? "Cerrar sesión" : "Iniciar sesión";
+        escribir(this.shadowRoot.querySelector("#btnCerrarSesion"), sesionActiva
+            ? "Cerrar sesión" : "Iniciar sesión");
         if (!usuario) {
-            textoContexto.textContent = "Sin sesión";
+            escribir(textoContexto, "Sin sesión");
             return;
         }
 
@@ -174,7 +180,7 @@ export default class EncabezadoApp extends HTMLElement {
         const nombreClinica = clinica?.nombre || clinica?.nombreClinica || contexto?.nombreClinica;
         const nombreRol = rol?.nombre || rol?.descripcion || rol?.nombreRol
             || estado.rolSeleccionado?.nombreRol || contexto?.nombreRol;
-        textoContexto.textContent = [nombre, nombreClinica, nombreRol].filter(Boolean).join(" / ");
+        escribir(textoContexto, [nombre, nombreClinica, nombreRol].filter(Boolean).join(" / "));
     }
 }
 

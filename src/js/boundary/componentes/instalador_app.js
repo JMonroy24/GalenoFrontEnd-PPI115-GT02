@@ -21,6 +21,7 @@ export default class InstaladorApp extends HTMLElement {
         `;
 
         const boton = this.shadowRoot.querySelector("#btnInstalar");
+        boton.hidden = !this.deferredPrompt;
         boton.addEventListener("click", async () => {
             if (!this.deferredPrompt) {
                 return;

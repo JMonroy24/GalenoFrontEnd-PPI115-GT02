@@ -1,7 +1,6 @@
 import DefaultService from "./default_service.js";
 import { API_BASE, DEFAULT_PAGE_SIZE } from "../config.js";
 import { ENDPOINTS } from "../routes.js";
-import GeneradorMensajes from "./generador_mensajes.js";
 import DefaultError from "../entity/default_error.js";
 import { store } from "../store.js";
 import { esRolEmpleado } from "../entity/rol_empleado.js";
@@ -31,7 +30,8 @@ export class AuthService extends DefaultService {
         this.restaurarSesion();
     }
 
-    async login(tipoDocumentoId, numeroDocumento) {
+    async login(tipoDocumentoId, numeroDocumento, options = {}) {
+        options.signal?.throwIfAborted();
         const idTipoDocumento = String(tipoDocumentoId ?? "").trim();
         const documento = String(numeroDocumento ?? "").trim();
 
@@ -47,23 +47,18 @@ export class AuthService extends DefaultService {
         const url = `${this._urlBase}?${params.toString()}`;
 
         try {
-            console.log("Petición Persona URL:", url);
             const response = await this._request(
                 url,
-                { method: "GET" },
+                { ...options, method: "GET" },
                 "Error al autenticar al empleado"
             );
             const payload = await this._parseBody(response);
-            console.log("Respuesta Backend Persona:", payload);
-            console.log("Personas encontradas:", payload?.items);
             const perfil = Array.isArray(payload?.items) && payload.items.length > 0
                 ? payload.items[0]
                 : null;
-            console.log("Persona seleccionada:", perfil);
 
             if (!perfil) {
                 const mensaje = "Usuario no encontrado";
-                GeneradorMensajes.crearMensaje("Usuario no encontrado", mensaje, "error");
                 throw new DefaultError(mensaje, {
                     status: 404,
                     message: mensaje
@@ -76,7 +71,7 @@ export class AuthService extends DefaultService {
                 throw new DefaultError("La persona no tiene un identificador válido.", { status: 422 });
             }
 
-            const roles = await this._completarNombresRelaciones(await this._obtenerRoles(idPersona));
+            const roles = await this._completarNombresRelaciones(await this._obtenerRoles(idPersona, options), options);
             const rolesEmpleado = roles.filter((personaRol) => (
                 this._perteneceAPersona(personaRol, idPersona) && esRolEmpleado(personaRol)
             ));
@@ -84,7 +79,6 @@ export class AuthService extends DefaultService {
             if (rolesEmpleado.length === 0) {
                 this.logout();
                 const mensaje = "Acceso denegado: usuario no es empleado";
-                GeneradorMensajes.crearMensaje("Acceso denegado", mensaje, "error");
                 throw new DefaultError(mensaje, {
                     status: 403,
                     message: mensaje
@@ -112,7 +106,7 @@ export class AuthService extends DefaultService {
                 rolSeleccionado
             };
 
-            this._guardarSesion(sesion);
+            options.signal?.throwIfAborted();
             this.sesion = sesion;
             this._sincronizarStore(sesion, { clinicaActiva, rolSeleccionado });
             if (typeof window !== "undefined") {
@@ -124,13 +118,20 @@ export class AuthService extends DefaultService {
 
             return sesion;
         } catch (error) {
+            if (options.signal?.aborted) throw options.signal.reason;
             if (error instanceof DefaultError) {
+                const detalle = error.details;
+                const mensaje = typeof detalle === "string" ? detalle
+                    : detalle?.message ?? detalle?.mensaje ?? detalle?.detail;
+                if (typeof mensaje === "string" && mensaje.trim()) {
+                    error.message = mensaje.trim();
+                    error.mensaje = error.message;
+                }
                 throw error;
             }
 
             const mensaje = error?.mensaje ?? error?.message ?? "Error al autenticar al empleado";
-            GeneradorMensajes.crearMensaje("Error al autenticar", mensaje, "error");
-            throw new DefaultError(mensaje, error);
+            throw new DefaultError(mensaje, error, { cause: error });
         }
     }
 
@@ -213,27 +214,6 @@ export class AuthService extends DefaultService {
         }
     }
 
-    _guardarSesion(sesion) {
-        const almacen = this._obtenerAlmacen();
-
-        if (!almacen) {
-            return;
-        }
-
-        try {
-            almacen.setItem(SESSION_STORAGE_KEY, JSON.stringify({
-                perfil: sesion.perfil,
-                usuario: sesion.usuario ?? sesion.perfil,
-                token: sesion.token ?? null,
-                roles: Array.isArray(sesion.roles) ? sesion.roles : [],
-                clinica: sesion.clinicaActiva ?? sesion.clinica ?? null,
-                clinicaActiva: sesion.clinicaActiva ?? sesion.clinica ?? null,
-                rolSeleccionado: sesion.rolSeleccionado ?? sesion.roles?.[0] ?? null
-            }));
-        } catch {
-        }
-    }
-
     _sincronizarStore(sesion, contexto = null) {
         const roles = Array.isArray(sesion?.roles) ? sesion.roles : [];
         const clinicaActiva = contexto?.clinicaActiva
@@ -263,14 +243,12 @@ export class AuthService extends DefaultService {
         }
     }
 
-    async _obtenerRoles(idPersona) {
+    async _obtenerRoles(idPersona, options = {}) {
         const params = new URLSearchParams({ first: "0", max: String(DEFAULT_PAGE_SIZE), personaId: String(idPersona) });
         const url = `${API_BASE.replace(/\/+$/, "")}${ENDPOINTS.PERSONAS_ROLES}?${params.toString()}`;
 
-        console.log("Petición Roles URL:", url);
-        const response = await this._request(url, { method: "GET" }, "Error al obtener los roles de la persona");
+        const response = await this._request(url, { ...options, method: "GET" }, "Error al obtener los roles de la persona");
         const respuesta = await this._parseBody(response);
-        console.log("Respuesta Backend Roles:", respuesta);
         const roles = Array.isArray(respuesta?.items)
             ? respuesta.items
             : Array.isArray(respuesta) ? respuesta : [];
@@ -280,7 +258,7 @@ export class AuthService extends DefaultService {
             && typeof registro === "object" && !Array.isArray(registro));
     }
 
-    async _completarNombresRelaciones(asignaciones) {
+    async _completarNombresRelaciones(asignaciones, options = {}) {
         // El DTO actual contiene UUIDs; otras versiones incluyen las entidades anidadas.
         const solicitudes = new Map();
         const resolver = async (registro, relacion, campoId, endpoint) => {
@@ -305,7 +283,7 @@ export class AuthService extends DefaultService {
             if (!solicitudes.has(url)) {
                 solicitudes.set(url, (async () => {
                     try {
-                        const response = await this._request(url, { method: "GET" }, "Error al obtener el nombre de la relación");
+                        const response = await this._request(url, { ...options, method: "GET" }, "Error al obtener el nombre de la relación");
                         const datos = await this._parseBody(response);
                         // No reemplazar el identificador de la asignación con otro del catálogo.
                         if (String(datos?.[campoId] ?? datos?.id) === String(id)) {
@@ -358,7 +336,6 @@ export class AuthService extends DefaultService {
             .find((clinica) => String(clinica?.idClinica ?? clinica?.id) === String(clinicaActualId))
             ?? estado.clinicaActiva ?? clinicaActiva;
         Object.assign(sesion, { roles, rolSeleccionado: rolActual, clinica: clinicaActual, clinicaActiva: clinicaActual });
-        this._guardarSesion(sesion);
         this._sincronizarStore(sesion);
     }
 

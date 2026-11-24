@@ -7,11 +7,6 @@ export class PersonaService extends DefaultService {
         super(ENDPOINTS.PERSONAS);
     }
 
-    async buscarPorDui(dui) {
-        const respuesta = await this.findRange(0, 1, dui);
-        return respuesta.items[0] ?? null;
-    }
-
     async buscarPorDocumento(tipoDocumento, numeroDocumento) {
         const numero = String(numeroDocumento ?? "").trim();
 
