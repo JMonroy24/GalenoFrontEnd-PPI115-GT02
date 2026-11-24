@@ -42,7 +42,9 @@ suite("DashboardView (unitaria)", () => {
                 }
             ]
         }
-    ];
+    ].map((cita) => ({ ...cita, clinica: { idClinica: 1, nombre: 'Clínica Central' },
+        historialPasos: cita.pasos, pasos: [{ idConsultaProcedimientoPaso: `paso-${cita.idConsulta}`,
+            nombre: 'Atención médica', idRol: 10, idProcedimientoPaso: 'def-1', estado: 'EN_CURSO', indicaFin: true }] }));
 
     setup(() => {
         buscarCitasStub = sinon.stub(consultaService, "buscarCitas").resolves({
@@ -198,9 +200,9 @@ suite("DashboardView (unitaria)", () => {
         let url = new URL(fetchStub.firstCall.args[0]);
         expect(url.pathname).to.match(/\/consultas$/);
         expect(url.searchParams.get("idClinica")).to.equal("1");
-        expect(url.searchParams.get("clinicaId")).to.equal("1");
-        expect(url.searchParams.get("fechaDesde")).to.equal(host.fechaDesde);
-        expect(url.searchParams.get("fechaHasta")).to.equal(host.fechaHasta);
+        expect(url.searchParams.get("idClinica")).to.equal("1");
+        expect(url.searchParams.get("desde")).to.equal(host.fechaDesde);
+        expect(url.searchParams.get("hasta")).to.equal(host.fechaHasta);
         expect(url.searchParams.has("periodo")).to.be.false;
 
         const selectClinica = host.shadowRoot.querySelector("#clinica-activa");
@@ -209,7 +211,7 @@ suite("DashboardView (unitaria)", () => {
         await new Promise((resolve) => setTimeout(resolve, 20));
         url = new URL(fetchStub.lastCall.args[0]);
         expect(url.searchParams.get("idClinica")).to.equal("2");
-        expect(url.searchParams.get("clinicaId")).to.equal("2");
+        expect(url.searchParams.get("idClinica")).to.equal("2");
         expect(host.shadowRoot.querySelectorAll("tarjeta-consulta")).to.have.length(0);
     });
 
@@ -229,8 +231,8 @@ suite("DashboardView (unitaria)", () => {
         buscarCitasStub.restore();
         buscarCitasStub = null;
         const consultas = [
-            { idConsulta: 101, clinica: { id: "1", nombre: "Central" }, procedimientos: [{ nombre: "Control" }] },
-            { idConsulta: 102, clinica: { id: "2", nombre: "Norte" }, procedimientos: [{ nombre: "Control" }] },
+            { idConsulta: 101, pasos: [{ estado: "EN_CURSO", idRol: 10, idProcedimientoPaso: "def-1", indicaFin: true }], clinica: { id: "1", nombre: "Central" }, procedimientos: [{ nombre: "Control" }] },
+            { idConsulta: 102, pasos: [{ estado: "EN_CURSO", idRol: 10, idProcedimientoPaso: "def-1", indicaFin: true }], clinica: { id: "2", nombre: "Norte" }, procedimientos: [{ nombre: "Control" }] },
             { idConsulta: 103 }
         ];
         host.fechaDesde = "";
@@ -247,11 +249,13 @@ suite("DashboardView (unitaria)", () => {
         await new Promise((resolve) => setTimeout(resolve, 20));
         expect([...host.shadowRoot.querySelectorAll("tarjeta-consulta")].map((card) => card.consulta.idConsulta))
             .to.deep.equal([102]);
-        const url = new URL(fetchStub.lastCall.args[0]);
-        expect(url.searchParams.get("clinicaId")).to.equal("2");
+        const url = new URL(fetchStub.getCalls().findLast(c => String(c.args[0]).includes('/consultas?')).args[0]);
+        expect(url.searchParams.get("idClinica")).to.equal("2");
     });
 
     test("limita roles por clínica y recarga tarjetas con un contexto válido al cambiar selectores", async () => {
+        buscarCitasStub.callsFake(async filtros => ({ items: citasFicticias.map(c => ({ ...c,
+            clinica: { idClinica: filtros.clinicaId }, pasos: [{ estado: 'EN_CURSO', idRol: filtros.idRol }] })) }));
         const clinicaA = { idClinica: "clinica-a", nombre: "Central" };
         const clinicaB = { idClinica: "clinica-b", nombre: "Norte" };
         const asignaciones = [
@@ -290,6 +294,8 @@ suite("DashboardView (unitaria)", () => {
     });
 
     test("normaliza un contexto restaurado inválido antes de la primera petición", async () => {
+        buscarCitasStub.callsFake(async filtros => ({ items: citasFicticias.map(c => ({ ...c,
+            clinica: { idClinica: filtros.clinicaId }, pasos: [{ estado: 'EN_CURSO', idRol: filtros.idRol }] })) }));
         host.remove();
         const asignacion = { idPersonaRol: "asignacion-b", idClinica: "b",
             rol: { idRol: "rol-b", nombre: "Médico" } };
@@ -564,6 +570,7 @@ suite("DashboardView (unitaria)", () => {
         buscarCitasStub.resolves({ items: [101, 102].map((idConsulta) => ({
             idConsulta,
             paciente: { nombres: `Paciente ${idConsulta}`, numeroDocumento: String(idConsulta) },
+            clinica: { idClinica: 1 }, pasos: [{ estado: 'EN_CURSO', idRol: 10 }],
             pasosClinicos: [{ idPaso: idConsulta, nombre: "Evaluación", estado: "COMPLETADO",
                 valor: { notas: `Registro ${idConsulta}`, diagnostico: ["J00"], plan: "Reposo" } }]
         })) });

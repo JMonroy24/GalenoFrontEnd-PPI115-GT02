@@ -3,6 +3,8 @@ import { DEFAULT_PAGE_SIZE } from "../config.js";
 import DefaultResponse from "../entity/default_response.js";
 import { ENDPOINTS } from "../routes.js";
 import { personaService } from "./persona_service.js";
+import { procedimientoService, leerCatalogo } from './procedimiento_service.js';
+import { idEntidad, idRolPaso, indicePasoVigente, estadoPaso } from '../entity/flujo_consulta.js';
 import {
     construirPayloadPaso,
     consultaProcedimientoService,
@@ -94,17 +96,21 @@ export class ConsultaService extends DefaultService {
         params.set("first", first);
         params.set("max", max);
 
-        Object.entries(filtros).forEach(([clave, valor]) => {
+        // Nombres oficiales del OpenAPI. Los alias pertenecen solo a la API de la vista.
+        const parametros = {
+            idClinica: filtros.idClinica ?? filtros.clinicaId,
+            idRol: filtros.idRol,
+            pacienteId: filtros.pacienteId ?? filtros.idPaciente,
+            desde: filtros.desde ?? filtros.fechaDesde,
+            hasta: filtros.hasta ?? filtros.fechaHasta,
+            q: filtros.q
+        };
+        Object.entries(parametros).forEach(([clave, valor]) => {
             if (valor !== undefined && valor !== null && String(valor).trim() !== "") {
                 params.set(clave, valor);
             }
         });
 
-        const idClinicaActiva = filtros.clinicaId ?? filtros.idClinica;
-        if (idClinicaActiva != null && String(idClinicaActiva).trim() !== "") {
-            params.set("clinicaId", String(idClinicaActiva).trim());
-            params.set("idClinica", String(idClinicaActiva).trim());
-        }
         const url = `${this._urlBase}?${params.toString()}`;
         const response = await this._request(
             url,
@@ -115,6 +121,21 @@ export class ConsultaService extends DefaultService {
     }
 
     async _buscarCitas(filtros, first, max) {
+        if (filtros.idRol != null) {
+            const payload = await this._solicitarCitas(filtros, first, max);
+            const solicitudes = new Map();
+            const items = await Promise.all((payload.items ?? []).map(async (item) => {
+                const consulta = await this._completarConsulta(this._mapearConsulta(item), solicitudes, filtros);
+                return this.cargarFlujoConsulta(consulta, solicitudes, filtros.idRol);
+            }));
+            return new DefaultResponse(items.filter((consulta) => {
+                const idClinica = filtros.idClinica ?? filtros.clinicaId;
+                if (idClinica != null && !this._coincideClinica(consulta, idClinica)) return false;
+                const vigente = indicePasoVigente(consulta.pasos);
+                const paso = vigente >= 0 ? consulta.pasos[vigente] : consulta.pasos.at(-1);
+                return String(idRolPaso(paso)) === String(filtros.idRol);
+            }), payload.total ?? items.length, payload.first ?? first, payload.max ?? max);
+        }
         const conFechas = Boolean(filtros.fechaDesde || filtros.fechaHasta);
         const conPaciente = Boolean(filtros.tipoDocumento && filtros.numeroDocumento);
         const conClinica = filtros.idClinica != null && String(filtros.idClinica).trim() !== "";
@@ -444,19 +465,101 @@ export class ConsultaService extends DefaultService {
         return this.actualizarPaso(idPaso, atencion);
     }
 
+    async _leerRelacion(endpoint, id, solicitudes) {
+        if (id == null || id === '') return null;
+        const url = `${ENDPOINTS.API_BASE}${endpoint}/${encodeURIComponent(id)}`;
+        if (!solicitudes.has(url)) {
+            solicitudes.set(url, (async () => {
+                const response = await this._request(url, { method: 'GET' }, 'Error al leer una relación del paso');
+                return response.json();
+            })());
+        }
+        return solicitudes.get(url);
+    }
+
+    async cargarFlujoConsulta(consulta, solicitudes = new Map(), idRolSeleccionado = null) {
+        // Las respuestas completas ya normalizadas también son válidas (p. ej., caché offline).
+        if (Array.isArray(consulta.pasos) && consulta.pasos.length && consulta.pasos.every((paso) =>
+            idRolPaso(paso) != null && paso.idProcedimientoPaso != null && typeof paso.indicaFin === 'boolean')) return consulta;
+        const [conProcedimientos] = await this._completarProcedimientos([consulta], solicitudes);
+        const catalogo = (endpoint) => {
+            if (!solicitudes.has(endpoint)) solicitudes.set(endpoint, leerCatalogo(this, endpoint));
+            return solicitudes.get(endpoint);
+        };
+        const asignaciones = conProcedimientos.procedimientos.filter((asignacion) =>
+            idEntidad(asignacion.idProcedimiento ?? asignacion.procedimiento, 'idProcedimiento') != null);
+        if (!asignaciones.length) return { ...conProcedimientos, pasos: [], pasosClinicos: [], historialPasos: [] };
+        const [ejecuciones, ordenes] = await Promise.all([
+            catalogo(ENDPOINTS.CONSULTAS_PROCEDIMIENTOS_PASOS), catalogo(ENDPOINTS.ORDENES_EXAMEN)
+        ]);
+        const procedimientos = await Promise.all(asignaciones.map(async (asignacion) => {
+            const idProcedimiento = idEntidad(asignacion.idProcedimiento ?? asignacion.procedimiento, 'idProcedimiento');
+            const clave = `flujo:${idProcedimiento}`;
+            if (!solicitudes.has(clave)) solicitudes.set(clave, procedimientoService.obtenerArbolPasos(idProcedimiento));
+            const definiciones = await solicitudes.get(clave);
+            const idAsignacion = asignacion.idConsultaProcedimiento ?? asignacion.id;
+            const registros = await Promise.all(ejecuciones.filter((paso) =>
+                String(idEntidad(paso.idConsultaProcedimiento, 'idConsultaProcedimiento')) === String(idAsignacion)
+            ).map(async (registro) => {
+                const personaRol = await this._leerRelacion(ENDPOINTS.PERSONAS_ROLES,
+                    idEntidad(registro.idPersonaRol, 'idPersonaRol'), solicitudes);
+                const persona = personaRol?.persona ?? await this._leerRelacion(ENDPOINTS.PERSONAS,
+                    idEntidad(personaRol?.idPersona, 'idPersona'), solicitudes);
+                const examenes = await Promise.all(ordenes.filter((orden) => String(idEntidad(orden.idConsultaProcedimientoPaso,
+                    'idConsultaProcedimientoPaso')) === String(registro.idConsultaProcedimientoPaso ?? registro.id))
+                    .map(async (orden) => ({ ...orden, examen: orden.examen ?? await this._leerRelacion(
+                        ENDPOINTS.EXAMENES, idEntidad(orden.idExamen, 'idExamen'), solicitudes) })));
+                return { ...registro, idConsultaProcedimientoPaso: registro.idConsultaProcedimientoPaso ?? registro.id,
+                    responsable: { ...personaRol, persona },
+                    ordenesExamen: examenes };
+            }));
+            const pasos = await Promise.all(definiciones.map(async (definicion) => {
+                const idDefinicion = definicion.idProcedimientoPaso ?? definicion.id;
+                const candidatos = registros.filter((registro) =>
+                    String(idEntidad(registro.idProcedimientoPaso, 'idProcedimientoPaso')) === String(idDefinicion));
+                const abiertos = candidatos.filter((registro) => ['EN_CURSO', 'PENDIENTE'].includes(estadoPaso(registro)));
+                const registro = abiertos.find((paso) => estadoPaso(paso) === 'EN_CURSO') ?? abiertos[0]
+                    ?? candidatos.toSorted((a, b) => String(b.fechaFin ?? '').localeCompare(String(a.fechaFin ?? '')))[0];
+                const rolResponsable = await this._leerRelacion(ENDPOINTS.ROLES,
+                    idEntidad(definicion.idRol, 'idRol'), solicitudes);
+                return { ...definicion, ...registro,
+                    id: registro?.id ?? null, idConsultaProcedimientoPaso: registro?.idConsultaProcedimientoPaso ?? null,
+                    idProcedimientoPaso: idDefinicion, procedimientoPaso: definicion,
+                    idRol: definicion.idRol, rolResponsable, orden: definicion.orden,
+                    indicaFin: definicion.indicaFin, estado: registro?.estado ?? 'FUTURO' };
+            }));
+            const historial = registros.filter((registro) => estadoPaso(registro) === 'COMPLETADO').map((registro) => {
+                const paso = pasos.find((paso) => String(paso.idProcedimientoPaso) === String(registro.idProcedimientoPaso));
+                return { ...paso, ...registro, nombre: paso?.nombre ?? 'Paso sin definición' };
+            });
+            return { ...asignacion, pasos, historialPasos: historial };
+        }));
+        const elegido = procedimientos.find((p) => {
+            const vigente = indicePasoVigente(p.pasos);
+            return vigente >= 0 && (idRolSeleccionado == null || String(idRolPaso(p.pasos[vigente])) === String(idRolSeleccionado));
+        }) ?? procedimientos.find((p) => idRolSeleccionado != null
+            && String(idRolPaso(p.pasos.at(-1))) === String(idRolSeleccionado)) ?? procedimientos[0];
+        return { ...conProcedimientos, procedimientos, pasos: elegido?.pasos ?? [], pasosClinicos: elegido?.pasos ?? [],
+            idConsultaProcedimientoActivo: elegido?.idConsultaProcedimiento ?? elegido?.id,
+            historialPasos: procedimientos.map((p) => ({
+                nombre: p.procedimiento?.nombre ?? p.nombre ?? 'Procedimiento', esGrupoHistorial: true,
+                pasos: p.historialPasos
+            })) };
+    }
+
     async findById(id) {
         const respuesta = await super.findById(id);
         const consulta = this._normalizePayload(respuesta) ?? respuesta;
         if (!consulta || typeof consulta !== "object") return consulta;
         const mapeada = this._mapearConsulta(consulta);
         const completada = await this._completarConsulta(mapeada, new Map(), {});
-        return {
+        return this.cargarFlujoConsulta({
             ...consulta,
             ...completada,
             pasos: consulta.pasos ?? completada.pasos,
             paciente: completada.paciente ?? consulta.paciente,
             clinica: completada.clinica ?? consulta.clinica
-        };
+        });
     }
 
     async descargarTicketPdf(idConsulta) {

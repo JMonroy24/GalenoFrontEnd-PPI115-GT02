@@ -4,6 +4,7 @@ import "../componentes/tarjeta_consulta.js";
 import { navigate } from "../../router.js";
 import GeneradorMensajes from "../../control/generador_mensajes.js";
 import { esRolEmpleado } from "../../entity/rol_empleado.js";
+import { puedeAtenderConsulta } from '../../entity/flujo_consulta.js';
 
 const DEBOUNCE_BUSQUEDA_MS = 300;
 const DIAS_RANGO_PERIODO = 30;
@@ -583,13 +584,14 @@ export class DashboardView extends HTMLElement {
                 return;
             }
 
-            const listaConsultas = Array.isArray(respuesta?.items)
+            const consultasRecibidas = Array.isArray(respuesta?.items)
                 ? respuesta.items
                 : Array.isArray(respuesta?.datos)
                     ? respuesta.datos
                     : Array.isArray(respuesta)
                         ? respuesta
                         : [];
+            const listaConsultas = consultasRecibidas.filter((consulta) => puedeAtenderConsulta(consulta, store.getState()));
 
             if (listaConsultas.length === 0) {
                 this._mostrarEstadoCitas("No se encontraron citas.");
@@ -629,6 +631,8 @@ export class DashboardView extends HTMLElement {
         botonAtender.slot = "acciones";
         botonAtender.className = "btn btn-primario btn-atender";
         botonAtender.textContent = "Atender Consulta";
+        botonAtender.disabled = !puedeAtenderConsulta(cita, store.getState());
+        if (botonAtender.disabled) botonAtender.title = 'Esta consulta no tiene un paso habilitado para su asignación activa.';
         botonAtender.addEventListener("click", (evento) => {
             evento.stopPropagation();
             this._atenderConsulta(cita);
@@ -648,6 +652,7 @@ export class DashboardView extends HTMLElement {
     }
 
     _atenderConsulta(cita) {
+        if (!puedeAtenderConsulta(cita, store.getState())) return;
         this._seleccionarConsulta(cita);
 
         store.setState({

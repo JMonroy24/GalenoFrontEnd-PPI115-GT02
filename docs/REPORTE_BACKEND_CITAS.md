@@ -1,5 +1,30 @@
 # Citas: reporte para trabajar el backend
 
+## Contrato actualizado confirmado el 24/11/2026
+
+El backend local y OpenAPI ahora admiten `GET /consultas` con `first`, `max`, `q`,
+`pacienteId` (asignación persona-rol del paciente), `idClinica`, `idRol`, `desde` y `hasta`.
+Los límites de fecha son inclusivos en `America/El_Salvador`. Los nombres
+`clinicaId`, `fechaDesde` y `fechaHasta` son alias internos del frontend y se traducen
+antes de enviar HTTP. `tipoDocumento` y `numeroDocumento` no se envían a este recurso;
+la búsqueda pública conserva su comprobación de identidad mediante los recursos de personas.
+
+Para HU3/HU4, el frontend une `/consultas-procedimientos`,
+`/consultas-procedimientos-pasos`, `/procedimientos-pasos` y
+`/procedimientos-pasos-secuencias` mediante sus IDs. Las relaciones `SIGUIENTE`
+determinan el orden; `idRol` determina el responsable e `indicaFin` determina el cierre.
+Los registros completados aportan `fechaFin` para el historial.
+
+`GET /procedimientos-pasos-examenes/asignables?idProcedimientoPaso=...` devuelve los
+exámenes permitidos de la definición. Al crear órdenes, `idConsultaProcedimientoPaso`
+identifica su ejecución en la consulta, que es un identificador distinto.
+
+`PATCH /consultas-procedimientos-pasos/{id}` conserva `estadoPaso`, `valor` e
+`If-Match`; el servidor completa y activa el sucesor o finaliza según `indicaFin`.
+Para retroceder se agrega `accion: "RETROCEDER"`. El frontend recarga el flujo tras
+la respuesta y no escribe el sucesor por separado. Las observaciones que siguen
+documentan el estado anterior a esta actualización.
+
 ## Evidencia y alcance
 
 Las capturas muestran consultas del **2026-09-01** y **2026-10-30** al buscar entre **2026-09-17** y **2026-10-29**. Ambas deben quedar fuera. También muestran tarjetas sin paciente, documento, clínica ni estado.

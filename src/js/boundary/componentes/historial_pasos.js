@@ -37,6 +37,7 @@ export class HistorialPasos extends HTMLElement {
         this.shadowRoot.innerHTML = `
             <link rel="stylesheet" href="recursos/estilos/principal.css">
             <style>
+                :host([hidden]) { display: none; }
                 :host {
                     display: block;
                     color: var(--color-text, #0f172a);
@@ -455,7 +456,9 @@ export class HistorialPasos extends HTMLElement {
             ?? paso?.ejecutor
             ?? paso?.usuario;
 
-        return this._nombrePersona(profesional) || "Sin profesional";
+        const rol = paso?.rolResponsable?.nombre ?? paso?.rolResponsable?.descripcion
+            ?? paso?.responsable?.rol?.nombre ?? '';
+        return [this._nombrePersona(profesional) || "Sin profesional", rol].filter(Boolean).join(' · ');
     }
 
     _nombrePersona(persona) {
@@ -499,7 +502,8 @@ export class HistorialPasos extends HTMLElement {
     }
 
     _fechaHoraPaso(paso) {
-        const fechaHora = paso?.fechaHoraEjecucion
+        const fechaHora = paso?.fechaFin
+            ?? paso?.fechaHoraEjecucion
             ?? paso?.fechaHoraRegistro
             ?? paso?.fechaHora
             ?? paso?.fechaEjecucion
@@ -531,6 +535,7 @@ export class HistorialPasos extends HTMLElement {
             return [fecha, horaObjeto].filter(Boolean).join(" ") || "Sin fecha";
         }
 
+        if (paso?.fechaFin) return GestorFechas.formatearFechaISO(fechaHora) || 'Sin fecha';
         const texto = GestorFechas.normalizarFechaISO(String(fechaHora));
 
         if (texto.includes("T")) {
@@ -566,7 +571,11 @@ export class HistorialPasos extends HTMLElement {
             ?? paso.texto
             ?? paso.datos;
 
-        return this._textoDetalle(detalle) || "Sin registro disponible.";
+        const examenes = paso.ordenesExamen ?? [];
+        const texto = this._textoDetalle(detalle) || 'Sin registro disponible.';
+        const lista = examenes.map((orden) => [orden.examen?.nombre ?? orden.nombreExamen ?? orden.idExamen,
+            orden.indicaciones].filter(Boolean).join(': ')).join('\n');
+        return examenes.length ? `${texto}\n\nExámenes administrados:\n${lista}` : texto;
     }
 
     _textoDetalle(detalle) {

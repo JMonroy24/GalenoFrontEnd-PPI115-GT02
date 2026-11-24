@@ -44,8 +44,12 @@ export function construirPayloadPaso(atencion = {}) {
         throw new Error(`Estado de paso no válido: ${estadoPaso}`);
     }
 
+    if (atencion.accion != null && atencion.accion !== 'RETROCEDER') {
+        throw new Error('Acción de paso no válida.');
+    }
     return {
         estadoPaso,
+        ...(atencion.accion ? { accion: atencion.accion } : {}),
         valor: typeof atencion.valor === "string"
             ? atencion.valor
             : serializarValorPaso(atencion)

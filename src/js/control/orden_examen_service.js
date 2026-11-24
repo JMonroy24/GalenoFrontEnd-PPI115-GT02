@@ -1,6 +1,7 @@
 import DefaultService from "./default_service.js";
 import { DEFAULT_PAGE_SIZE } from "../config.js";
 import { ENDPOINTS } from "../routes.js";
+import { estaActivo } from "../entity/rol_empleado.js";
 
 const MAX_CATALOGOS = 200;
 const CATEGORIA_POR_DEFECTO = "General";
@@ -29,88 +30,37 @@ function idDe(origen, claves) {
     return null;
 }
 
-function itemsDe(servicio, respuesta) {
-    const items = servicio._normalizePayload(respuesta);
-    return Array.isArray(items) ? items : [];
-}
-
 export class OrdenExamenService extends DefaultService {
     constructor() {
         super(ENDPOINTS.ORDENES_EXAMEN);
-        this.pasosExamenesService = new DefaultService(ENDPOINTS.PROCEDIMIENTOS_PASOS_EXAMENES);
-        this.examenesService = new DefaultService(ENDPOINTS.EXAMENES);
-        this.examenesTiposExamenService = new DefaultService(ENDPOINTS.EXAMENES_TIPOS_EXAMEN);
-        this.tiposExamenService = new DefaultService(ENDPOINTS.TIPOS_EXAMEN);
     }
 
     async listarExamenesPorPaso(idProcedimientoPaso) {
-        if (idProcedimientoPaso === null || idProcedimientoPaso === undefined
-            || String(idProcedimientoPaso).trim() === "") {
-            return [];
-        }
-
-        const params = new URLSearchParams();
-        params.set("idProcedimientoPaso", String(idProcedimientoPaso));
-        params.set("first", "0");
-        params.set("max", String(MAX_CATALOGOS));
-
-        const respuesta = await this.pasosExamenesService._request(
-            `${this.pasosExamenesService._urlBase}?${params.toString()}`,
-            { method: "GET" },
-            "Error al listar los exámenes del paso"
-        );
-        const relaciones = itemsDe(
-            this.pasosExamenesService,
-            await this.pasosExamenesService._parseBody(respuesta)
-        );
-        const clavesExamen = ["idExamen", "examen"];
-        const ids = [...new Set(relaciones
-            .map((relacion) => idDe(relacion, clavesExamen))
-            .filter((id) => id !== null))];
-
-        if (ids.length === 0) {
-            return [];
-        }
-
-        const [examenes, vinculos, tipos] = await Promise.all([
-            Promise.all(ids.map((id) => this.examenesService.get(id))),
-            this.examenesTiposExamenService.findRange(0, MAX_CATALOGOS),
-            this.tiposExamenService.findRange(0, MAX_CATALOGOS)
-        ]);
-        const tiposPorId = new Map(itemsDe(this.tiposExamenService, tipos)
-            .map((tipo) => [String(idDe(tipo, ["idTipoExamen", "tipoExamen", "id"])), tipo]));
-        const categoriaPorExamen = new Map();
-
-        itemsDe(this.examenesTiposExamenService, vinculos).forEach((vinculo) => {
-            const idExamen = idDe(vinculo, clavesExamen);
-            const idTipo = idDe(vinculo, ["idTipoExamen", "tipoExamen", "id"]);
-            const categoria = primero(tiposPorId.get(String(idTipo)), ["nombre", "descripcion", "categoria"]);
-
-            if (idExamen !== null && categoria !== "" && !categoriaPorExamen.has(String(idExamen))) {
-                categoriaPorExamen.set(String(idExamen), String(categoria));
+        if (idProcedimientoPaso == null || String(idProcedimientoPaso).trim() === '') return [];
+        const examenes = [];
+        const vistos = new Set();
+        let first = 0;
+        while (true) {
+            const params = new URLSearchParams({ idProcedimientoPaso: String(idProcedimientoPaso),
+                first: String(first), max: String(MAX_CATALOGOS) });
+            const response = await this._request(`${ENDPOINTS.API_BASE}${ENDPOINTS.EXAMENES_ASIGNABLES}?${params}`,
+                { method: 'GET' }, 'Error al listar los exámenes asignables');
+            const payload = await response.json();
+            const pagina = Array.isArray(payload) ? payload : payload?.items ?? [];
+            let nuevos = 0;
+            for (const examen of pagina) {
+                const idExamen = examen.idExamen ?? examen.id;
+                if (vistos.has(String(idExamen))) continue;
+                vistos.add(String(idExamen));
+                nuevos++;
+                if (!estaActivo(examen) || String(examen.idProcedimientoPaso) !== String(idProcedimientoPaso)) continue;
+                examenes.push({ idExamen, id: String(idExamen), nombre: examen.nombre ?? 'Examen sin nombre',
+                    categoria: examen.nombreTipoExamen || CATEGORIA_POR_DEFECTO,
+                    indicaciones: examen.indicaciones ?? '' });
             }
-        });
-
-        const indicacionesPorExamen = new Map(relaciones
-            .filter((relacion) => idDe(relacion, clavesExamen) !== null)
-            .map((relacion) => [
-                String(idDe(relacion, clavesExamen)),
-                primero(relacion, ["indicaciones", "indicacion", "descripcion"])
-            ]));
-
-        return examenes
-            .filter((examen) => examen && examen.activo !== false)
-            .map((examen) => {
-                const idExamen = idDe(examen, ["idExamen", "id"]);
-
-                return {
-                    idExamen,
-                    id: String(idExamen ?? ""),
-                    nombre: primero(examen, ["nombre", "descripcion", "titulo"], "Examen sin nombre"),
-                    categoria: categoriaPorExamen.get(String(idExamen)) ?? CATEGORIA_POR_DEFECTO,
-                    indicaciones: indicacionesPorExamen.get(String(idExamen)) ?? ""
-                };
-            });
+            first += pagina.length;
+            if (!nuevos || first >= Number(payload?.total ?? first)) return examenes;
+        }
     }
 
     _payloadOrden(idProcedimientoPaso, examen) {

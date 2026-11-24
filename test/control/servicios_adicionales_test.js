@@ -48,13 +48,15 @@ suite("Servicios adicionales (unitaria)", () => {
     });
 
     test("ProcedimientoService obtiene el árbol de pasos y sus alias delegan", async () => {
-        fetchStub = sinon.stub(window, "fetch").resolves(ok([{ idPaso: "p-1" }]));
+        fetchStub = sinon.stub(window, "fetch").callsFake(async (url) => ok({ items:
+            new URL(url).pathname.endsWith('/procedimientos-pasos-secuencias') ? [] :
+                [{ id: 'paso-1', idProcedimiento: 'p-1', nombre: 'Paso único', indicaFin: true }], total: 1 }));
         const servicio = new ProcedimientoService();
 
         const pasos = await servicio.obtenerArbolPasos("p-1");
         const url = new URL(fetchStub.firstCall.args[0]);
-        expect(url.pathname).to.equal("/galenoSV/api/v1/procedimientos/p-1/pasos");
-        expect(pasos).to.deep.equal([{ idPaso: "p-1" }]);
+        expect(url.pathname).to.equal("/galenoSV/api/v1/procedimientos-pasos");
+        expect(pasos).to.deep.equal([{ id: 'paso-1', idProcedimiento: 'p-1', nombre: 'Paso único', indicaFin: true, orden: 0 }]);
 
         const delegado = sinon.stub(servicio, "obtenerArbolPasos").resolves("arbol");
         expect(await servicio.obtenerArbolPasosAtencion("p-2")).to.equal("arbol");

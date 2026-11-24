@@ -24,7 +24,7 @@ const escapar = (texto) => String(texto ?? "")
  */
 export class ListaExamenesAsignables extends HTMLElement {
     static get observedAttributes() {
-        return ["id-consulta", "id-paso", "id-paso-clinico", "sin-conexion"];
+        return ["id-consulta", "id-paso", "id-paso-clinico", "id-procedimiento-paso", "solo-lectura", "sin-conexion"];
     }
 
     constructor() {
@@ -74,6 +74,14 @@ export class ListaExamenesAsignables extends HTMLElement {
         return this.hasAttribute("sin-conexion");
     }
 
+    get idProcedimientoPaso() {
+        return this.getAttribute('id-procedimiento-paso');
+    }
+
+    get soloLectura() { return this.hasAttribute('solo-lectura'); }
+
+    set soloLectura(valor) { this.toggleAttribute('solo-lectura', Boolean(valor)); }
+
     set sinConexion(valor) {
         this.toggleAttribute("sin-conexion", Boolean(valor));
     }
@@ -84,6 +92,9 @@ export class ListaExamenesAsignables extends HTMLElement {
 
     set paso(valor) {
         this._paso = valor ?? null;
+        const idDefinicion = valor?.idProcedimientoPaso?.id ?? valor?.idProcedimientoPaso;
+        if (idDefinicion != null) this.setAttribute('id-procedimiento-paso', String(idDefinicion));
+        else this.removeAttribute('id-procedimiento-paso');
         this.idPaso = valor?.idConsultaProcedimientoPaso
             ?? valor?.idPaso
             ?? valor?.idPasoClinico
@@ -95,12 +106,13 @@ export class ListaExamenesAsignables extends HTMLElement {
         if (valorViejo === valorNuevo || this._reflejandoPaso) return;
         if (!this._estaListo()) return;
 
-        if (nombre === "sin-conexion") {
+        if (nombre === "sin-conexion" || nombre === 'solo-lectura') {
+            if (this.soloLectura) this._limpiarSeleccion();
             this._actualizarBoton();
             return;
         }
 
-        const cambioPaso = nombre === "id-paso" || nombre === "id-paso-clinico";
+        const cambioPaso = nombre === "id-paso" || nombre === "id-paso-clinico" || nombre === 'id-procedimiento-paso';
 
         this._actualizarContexto(cambioPaso);
     }
@@ -167,7 +179,7 @@ export class ListaExamenesAsignables extends HTMLElement {
 
     async _cargarExamenesActuales() {
         if (!this._estaListo()) return;
-        const idPaso = this.idPaso;
+        const idPaso = this.idProcedimientoPaso;
         const carga = ++this._cargaActual;
 
         this._limpiarSeleccion();
@@ -248,7 +260,7 @@ export class ListaExamenesAsignables extends HTMLElement {
             return null;
         }
 
-        return { idPaso, idConsultaProcedimientoPaso: idPaso };
+        return { idPaso, idConsultaProcedimientoPaso: idPaso, idProcedimientoPaso: this.idProcedimientoPaso };
     }
 
     _estado(texto) {
@@ -308,7 +320,7 @@ export class ListaExamenesAsignables extends HTMLElement {
         const aviso = this.shadowRoot?.querySelector("#aviso-offline");
 
         if (aviso) aviso.hidden = !this.sinConexion;
-        boton.disabled = this.sinConexion
+        boton.disabled = this.sinConexion || this.soloLectura || !this.idProcedimientoPaso
             || !this._cargado
             || this._enviando
             || cantidad === 0
@@ -316,7 +328,7 @@ export class ListaExamenesAsignables extends HTMLElement {
             || !this.idPaso;
         boton.setAttribute("aria-busy", String(this._enviando));
         this.shadowRoot.querySelectorAll('input[type="checkbox"]').forEach((input) => {
-            input.disabled = this._enviando || !this._cargado;
+            input.disabled = this.soloLectura || this.sinConexion || this._enviando || !this._cargado;
         });
         contador.textContent =
             cantidad === 1 ? "1 examen seleccionado" : `${cantidad} exámenes seleccionados`;
@@ -325,7 +337,7 @@ export class ListaExamenesAsignables extends HTMLElement {
     _onCambioCheckbox(evento) {
         const input = evento.target;
 
-        if (input.type !== "checkbox" || this._enviando || !this._cargado) {
+        if (input.type !== "checkbox" || this.soloLectura || this.sinConexion || this._enviando || !this._cargado) {
             return;
         }
 
@@ -341,13 +353,14 @@ export class ListaExamenesAsignables extends HTMLElement {
     async asignarSeleccionados() {
         const contexto = this._contextoPaso();
 
-        if (this.sinConexion || this._enviando || this._seleccion.size === 0 || !this.idConsulta || !contexto) {
+        if (this.soloLectura || this.sinConexion || this._enviando || this._seleccion.size === 0
+            || !this.idConsulta || !this.idProcedimientoPaso || !contexto) {
             return;
         }
 
         const ids = this.obtenerSeleccionados();
-        const seleccionados = ids.map((id) =>
-            this._examenes.find((examen) => examen.id === id) ?? { idExamen: id });
+        const seleccionados = ids.map((id) => this._examenes.find((examen) => examen.id === id));
+        if (seleccionados.some((examen) => !examen)) return;
         const idConsulta = this.idConsulta;
 
         this._enviando = true;

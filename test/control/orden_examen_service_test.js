@@ -23,57 +23,21 @@ suite("OrdenExamenService (unitaria)", () => {
         expect(servicio._urlBase).to.match(/\/ordenes-examen$/);
     });
 
-    test("listarExamenesPorPaso filtra por idProcedimientoPaso y resuelve los exámenes en /examenes", async () => {
-        fetchStub = sinon.stub(window, "fetch").callsFake(async (url) => {
-            const ruta = new URL(url).pathname;
-
-            if (ruta.endsWith("/procedimientos-pasos-examenes")) {
-                return ok([
-                    { idProcedimientoPaso: "p-9", idExamen: 1, indicaciones: "Ayuno" },
-                    { idProcedimientoPaso: "p-9", idExamen: 2, indicaciones: "" }
-                ]);
-            }
-            if (ruta.endsWith("/examenes/1")) {
-                return ok({ idExamen: 1, nombre: "Hemograma", activo: true });
-            }
-            if (ruta.endsWith("/examenes/2")) {
-                return ok({ idExamen: 2, nombre: "Glucosa", activo: true });
-            }
-            if (ruta.endsWith("/examenes-tipos-examen")) {
-                return ok([{ idExamen: 1, idTipoExamen: 7 }]);
-            }
-            if (ruta.endsWith("/tipos-examen")) {
-                return ok([{ idTipoExamen: 7, nombre: "Laboratorio" }]);
-            }
-
-            throw new Error(`URL inesperada: ${ruta}`);
-        });
-
-        const examenes = await servicio.listarExamenesPorPaso("p-9");
-        const rutas = fetchStub.getCalls().map((llamada) => new URL(llamada.args[0]));
-        const llamadaPasos = rutas.find((ruta) => ruta.pathname.endsWith("/procedimientos-pasos-examenes"));
-
-        expect(llamadaPasos.searchParams.get("idProcedimientoPaso")).to.equal("p-9");
-        expect(rutas.filter((ruta) => /\/examenes\/\d+$/.test(ruta.pathname))
-            .map((ruta) => ruta.pathname)).to.deep.equal([
-            "/galenoSV/api/v1/examenes/1",
-            "/galenoSV/api/v1/examenes/2"
-        ]);
+    test("listarExamenesPorPaso usa asignables y rechaza exámenes de otro paso o inactivos", async () => {
+        fetchStub = sinon.stub(window, 'fetch').callsFake(async () => ok({ items: [
+            { idExamen: 1, idProcedimientoPaso: 'p-9', nombre: 'Hemograma', activo: true, nombreTipoExamen: 'Laboratorio', indicaciones: 'Ayuno' },
+            { idExamen: 2, idProcedimientoPaso: 'p-9', nombre: 'Glucosa', activo: true },
+            { idExamen: 3, idProcedimientoPaso: 'otro-paso', nombre: 'Otro', activo: true },
+            { idExamen: 4, idProcedimientoPaso: 'p-9', nombre: 'Retirado', activo: false }
+        ], total: 4 }));
+        const examenes = await servicio.listarExamenesPorPaso('p-9');
+        const url = new URL(fetchStub.firstCall.args[0]);
+        expect(url.pathname).to.equal('/galenoSV/api/v1/procedimientos-pasos-examenes/asignables');
+        expect(url.searchParams.get('idProcedimientoPaso')).to.equal('p-9');
+        expect(fetchStub.calledOnce).to.be.true;
         expect(examenes).to.deep.equal([
-            {
-                idExamen: 1,
-                id: "1",
-                nombre: "Hemograma",
-                categoria: "Laboratorio",
-                indicaciones: "Ayuno"
-            },
-            {
-                idExamen: 2,
-                id: "2",
-                nombre: "Glucosa",
-                categoria: "General",
-                indicaciones: ""
-            }
+            { idExamen: 1, id: '1', nombre: 'Hemograma', categoria: 'Laboratorio', indicaciones: 'Ayuno' },
+            { idExamen: 2, id: '2', nombre: 'Glucosa', categoria: 'General', indicaciones: '' }
         ]);
     });
 

@@ -1,3 +1,11 @@
+export function estaActivo(entidad) {
+    const inactivos = new Set(['false', '0', 'inactivo', 'inactiva', 'deshabilitado', 'deshabilitada',
+        'cancelado', 'cancelada', 'suspendido', 'suspendida', 'eliminado', 'eliminada', 'baja']);
+    return ![entidad?.activo, entidad?.activa, entidad?.estado?.nombre ?? entidad?.estado,
+        entidad?.estadoPersonaRol].some((valor) => valor != null
+            && inactivos.has(String(valor).trim().toLowerCase()));
+}
+
 export function esRolEmpleado(asignacion) {
     if (!asignacion || typeof asignacion !== "object" || Array.isArray(asignacion)) {
         return false;
@@ -9,6 +17,8 @@ export function esRolEmpleado(asignacion) {
         || asignacion.nombreRol || asignacion.nombre || asignacion.name || "").trim().toLowerCase();
     const esEmpleado = rol?.esEmpleado ?? asignacion.esEmpleado;
 
-    return nombre !== "paciente" && esEmpleado !== false
+    return estaActivo(asignacion) && estaActivo(rol)
+        && estaActivo(asignacion.clinica) && estaActivo(asignacion.persona)
+        && nombre !== "paciente" && esEmpleado !== false
         && (nombre !== "" || esEmpleado === true);
 }

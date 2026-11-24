@@ -234,15 +234,15 @@ suite("ConsultaService (unitaria)", () => {
         expect(fetchStub.callCount).to.equal(3);
     });
 
-    test("envía clinicaId e idClinica con la clínica del Dashboard y conserva el rol", async () => {
+    test("envía idClinica oficial con la clínica del Dashboard y conserva el rol", async () => {
         fetchStub = sinon.stub(window, "fetch").resolves({
-            ok: true, json: async () => ({ items: [{ idConsulta: 101, idClinica: "clinica-uuid",
+            ok: true, json: async () => ({ items: [{ idConsulta: 101, pasos: [{ estado: "EN_CURSO", idRol: "rol-uuid", idProcedimientoPaso: "def-1", indicaFin: true }], idClinica: "clinica-uuid",
                 clinica: { id: "clinica-uuid", nombre: "Central" } }], total: 1 })
         });
         const respuesta = await servicio.buscarCitas({ clinicaId: "clinica-uuid", idRol: "rol-uuid" });
         const url = new URL(fetchStub.firstCall.args[0]);
         expect(url.searchParams.get("idClinica")).to.equal("clinica-uuid");
-        expect(url.searchParams.get("clinicaId")).to.equal("clinica-uuid");
+        expect(url.searchParams.get("idClinica")).to.equal("clinica-uuid");
         expect(url.searchParams.get("idRol")).to.equal("rol-uuid");
         expect(respuesta.items[0].idConsulta).to.equal(101);
     });
@@ -258,7 +258,7 @@ suite("ConsultaService (unitaria)", () => {
         fetchStub = sinon.stub(window, "fetch").callsFake(async (url) => {
             const { pathname, searchParams } = new URL(url);
             if (pathname.endsWith("/consultas")) {
-                expect(searchParams.get("clinicaId")).to.equal("activa");
+                expect(searchParams.get("idClinica")).to.equal("activa");
                 expect(searchParams.get("idClinica")).to.equal("activa");
                 const first = Number(searchParams.get("first"));
                 return { ok: true, json: async () => ({ items: consultas.slice(first, first + 1), total: 5 }) };
@@ -620,9 +620,9 @@ suite("ConsultaService (unitaria)", () => {
         expect(new URL(url).searchParams.get("pacienteId")).to.equal("a0b1c2d3-e4f5-4678-9abc-0123456789ab");
         expect(new URL(url).searchParams.has("q")).to.be.false;
         expect(url).to.contain("idClinica=uuid-clinica-123");
-        expect(url).to.contain("tipoDocumento=DUI");
-        expect(url).to.contain("numeroDocumento=01234567-8");
-        expect(url).to.contain("fechaDesde=2024-01-01");
-        expect(url).to.contain("fechaHasta=2024-12-31");
+        expect(url).not.to.contain("tipoDocumento=");
+        expect(url).not.to.contain("numeroDocumento=");
+        expect(url).to.contain("desde=2024-01-01");
+        expect(url).to.contain("hasta=2024-12-31");
     });
 });

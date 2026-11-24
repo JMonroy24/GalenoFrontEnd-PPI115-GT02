@@ -1,12 +1,7 @@
 /**
  * Constante con las etapas por defecto del flujo clínico / de atención.
  */
-export const ETAPAS_POR_DEFECTO = Object.freeze([
-    "Triaje",
-    "Consulta Médica",
-    "Tratamiento",
-    "Cierre"
-]);
+export const ETAPAS_POR_DEFECTO = Object.freeze([]);
 
 /**
  * Escapa caracteres HTML especiales para evitar inyecciones al renderizar cadenas.

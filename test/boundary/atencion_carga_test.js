@@ -43,7 +43,7 @@ suite("Carga de atención: ciclo de vida y DTO del backend", () => {
         const alError = (evento) => errores.push(evento.error);
         window.addEventListener("error", alError);
         try {
-            fixture.innerHTML = '<lista-examenes-asignables id-consulta="c-1" id-paso-clinico="p-1" sin-conexion></lista-examenes-asignables>';
+            fixture.innerHTML = '<lista-examenes-asignables id-consulta="c-1" id-paso-clinico="p-1" id-procedimiento-paso="p-1" sin-conexion></lista-examenes-asignables>';
             await esperar();
             expect(errores).to.deep.equal([]);
             expect(listar.calledOnceWithExactly("p-1")).to.be.true;
@@ -59,6 +59,7 @@ suite("Carga de atención: ciclo de vida y DTO del backend", () => {
         host.setAttribute("id-consulta", "c-1");
         host.setAttribute("id-paso-clinico", "p-anterior");
         host.idPaso = "p-final";
+        host.setAttribute("id-procedimiento-paso", "p-final");
         host.sinConexion = true;
         await esperar();
         expect(listar.calledOnceWithExactly("p-final")).to.be.true;
@@ -69,6 +70,7 @@ suite("Carga de atención: ciclo de vida y DTO del backend", () => {
         const host = document.createElement("lista-examenes-asignables");
         host.idConsulta = "c-1";
         host.idPaso = "p-1";
+        host.setAttribute("id-procedimiento-paso", "p-1");
         host._actualizarContexto(true);
         host._pintarCategorias();
         await host.cargarExamenes();
@@ -79,6 +81,7 @@ suite("Carga de atención: ciclo de vida y DTO del backend", () => {
     test("desconectar antes de la carga agrupada cancela esa carga", async () => {
         const host = document.createElement("lista-examenes-asignables");
         host.idPaso = "p-1";
+        host.setAttribute("id-procedimiento-paso", "p-1");
         fixture.append(host);
         host.remove();
         await esperar();
@@ -90,6 +93,7 @@ suite("Carga de atención: ciclo de vida y DTO del backend", () => {
         listar.onFirstCall().returns(anterior.promise);
         const host = document.createElement("lista-examenes-asignables");
         host.idPaso = "p-anterior";
+        host.setAttribute("id-procedimiento-paso", "p-anterior");
         fixture.append(host);
         await esperar();
         host.remove();

@@ -33,6 +33,7 @@ suite("ListaExamenesAsignables (unitaria)", () => {
         };
         host.idConsulta = "c-1";
         host.idPaso = "p-9";
+        host.setAttribute("id-procedimiento-paso", "p-9");
         document.body.appendChild(host);
         await esperar();
     });
@@ -106,12 +107,14 @@ suite("ListaExamenesAsignables (unitaria)", () => {
         let resolver;
         crearStub.callsFake(() => new Promise((r) => { resolver = r; }));
         host.idPaso = "p-1";
+        host.setAttribute("id-procedimiento-paso", "p-1");
         await esperar();
         marcar("1");
         let detalle;
         host.addEventListener("ordenes-asignadas", (e) => { detalle = e.detail; });
         const envio = host.asignarSeleccionados();
         host.idPaso = "p-2";
+        host.setAttribute("id-procedimiento-paso", "p-2");
         host.idConsulta = "c-2";
         resolver([{ idOrdenExamen: 90 }]);
         await envio;
@@ -121,6 +124,7 @@ suite("ListaExamenesAsignables (unitaria)", () => {
 
     test("cambiar de paso limpia la selección, recarga la lista y sin paso no consulta", async () => {
         host.idPaso = "p-2";
+        host.setAttribute("id-procedimiento-paso", "p-2");
         marcar("1");
         await esperar();
 
@@ -166,6 +170,7 @@ suite("ListaExamenesAsignables (unitaria)", () => {
         };
         host.idConsulta = "c-1";
         host.idPaso = "p-9";
+        host.setAttribute("id-procedimiento-paso", "p-9");
         document.body.appendChild(host);
         await esperar();
 
@@ -225,6 +230,7 @@ suite("ListaExamenesAsignables (unitaria)", () => {
     test("acepta respuesta {items} y normaliza descripción, id y categoría por defecto", async () => {
         listarStub.resolves({ items: [{ id: 7, activo: true }] });
         host.idPaso = "p-7";
+        host.setAttribute("id-procedimiento-paso", "p-7");
         await esperar();
 
         const input = host.shadowRoot.querySelector('input[value="7"]');
@@ -238,6 +244,7 @@ suite("ListaExamenesAsignables (unitaria)", () => {
         let resolver;
         listarStub.callsFake(() => new Promise((res) => { resolver = res; }));
         host.idPaso = "p-carga";
+        host.setAttribute("id-procedimiento-paso", "p-carga");
         await Promise.resolve(); // Las mutaciones de atributos se agrupan en una microtarea.
 
         expect(host.shadowRoot.querySelector("#estado").textContent).to.contain("Cargando exámenes");
@@ -252,8 +259,10 @@ suite("ListaExamenesAsignables (unitaria)", () => {
         listarStub.callsFake(() => new Promise((res) => pendientes.push(res)));
 
         host.idPaso = "p-viejo";
+        host.setAttribute("id-procedimiento-paso", "p-viejo");
         await Promise.resolve(); // La petición anterior debe estar en vuelo para probar la carrera.
         host.idPaso = "p-nuevo";
+        host.setAttribute("id-procedimiento-paso", "p-nuevo");
         await Promise.resolve();
         pendientes[1](examenes);
         await esperar();
@@ -368,6 +377,7 @@ suite("ListaExamenesAsignables (unitaria)", () => {
         expect(host.shadowRoot.querySelector('input[value="1"]').checked).to.be.false;
 
         host.setAttribute("id-paso-clinico", "p-alias");
+        host.setAttribute("id-procedimiento-paso", "p-alias");
         await esperar();
         expect(host.idPaso).to.equal("p-alias");
         expect(listarStub.lastCall.args[0]).to.equal("p-alias");

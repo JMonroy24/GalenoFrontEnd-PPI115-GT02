@@ -343,16 +343,13 @@ suite("LoginView (unitaria)", () => {
         expect(store.isAuthenticated()).to.be.false;
     });
 
-    test("acepta los roles que el backend devuelve sin reclasificar sus atributos", async () => {
-        fetchStub.withArgs(sinon.match((url) => String(url).includes("/personas-roles?")))
+    test("rechaza una asignación inactiva aunque el backend la devuelva", async () => {
+        fetchStub.withArgs(sinon.match((url) => String(url).includes('/personas-roles?')))
             .resolves(responder({ items: [{ ...rolEmpleado, activo: false }] }));
-        host.shadowRoot.querySelector("#numero-documento").value = "01234567-8";
-
+        host.shadowRoot.querySelector('#numero-documento').value = '01234567-8';
         await host._iniciarSesion();
-
-        expect(navigateStub.calledOnceWith("#dashboard")).to.be.true;
-        expect(host.sesion.roles).to.deep.equal([{ ...rolEmpleado, activo: false }]);
-        expect(store.isAuthenticated()).to.be.true;
+        expect(navigateStub.called).to.be.false;
+        expect(store.isAuthenticated()).to.be.false;
     });
 
     test("limpia los errores de validación al corregir los campos sin llamar al backend", async () => {

@@ -385,6 +385,7 @@ export class TarjetaConsulta extends HTMLElement {
 
     _obtenerPasos(datos) {
         const fuentes = [
+            datos.historialPasos,
             datos.pasosClinicos,
             datos.pasos_clinicos,
             datos.consulta_procedimiento_paso,

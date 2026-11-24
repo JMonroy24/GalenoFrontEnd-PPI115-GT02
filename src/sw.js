@@ -1,4 +1,4 @@
-const CACHE_NAME = "galenosv-app-shell-v26";
+const CACHE_NAME = "galenosv-app-shell-v27";
 
 const APP_SHELL = [
     "/index.html",
@@ -14,6 +14,7 @@ const APP_SHELL = [
     "/js/router.js",
     "/js/store.js",
     "/js/entity/rol_empleado.js",
+    "/js/entity/flujo_consulta.js",
     "/js/boundary/vistas/busqueda_citas_view.js",
     "/js/boundary/vistas/login_view.js",
     "/js/boundary/vistas/dashboard_view.js",

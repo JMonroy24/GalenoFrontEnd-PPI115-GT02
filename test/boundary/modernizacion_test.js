@@ -160,6 +160,7 @@ suite("Modernización: regresiones de interacción y responsividad", () => {
 
     test("el stepper mantiene el botón y el foco al actualizar los estados", () => {
         const host = montar("stepper-progreso");
+        host.etapas = ["Recepción", "Evaluación", "Atención", "Finalización"];
         const boton = host.shadowRoot.querySelector("button");
         boton.focus();
         host.actualizar({ estados: ["COMPLETADO", "EN_CURSO", "PENDIENTE", "PENDIENTE"], pasoActivo: 1 });
@@ -173,6 +174,7 @@ suite("Modernización: regresiones de interacción y responsividad", () => {
         host.ordenExamenService = { listarExamenesPorPaso: async () => [{ idExamen: 1, nombre: "Examen" }] };
         host.idConsulta = 1;
         host.idPaso = 2;
+        host.setAttribute("id-procedimiento-paso", "def-2");
         fixture.appendChild(host);
         await flush();
         const input = host.shadowRoot.querySelector('input[type="checkbox"]');
@@ -193,9 +195,11 @@ suite("Modernización: regresiones de interacción y responsividad", () => {
         host.ordenExamenService = { listarExamenesPorPaso: listar };
         host.idConsulta = "consulta";
         host.idPaso = "primero";
+        host.setAttribute("id-procedimiento-paso", "def-primero");
         fixture.appendChild(host);
         await flush();
         host.idPaso = "segundo";
+        host.setAttribute("id-procedimiento-paso", "def-segundo");
         const input = host.shadowRoot.querySelector("input");
         expect(input.disabled).to.be.true;
         input.checked = true;
@@ -281,6 +285,7 @@ suite("Modernización: regresiones de interacción y responsividad", () => {
 
     test("reconectar un stepper conserva el paso elegido por propiedad", () => {
         const host = document.createElement("stepper-progreso");
+        host.etapas = ["Recepción", "Evaluación", "Atención"];
         host.setAttribute("paso-activo", "0");
         fixture.appendChild(host);
         host.pasoActivo = 2;

@@ -8,6 +8,7 @@ suite("StepperProgreso (unitaria)", () => {
 
     setup(() => {
         host = document.createElement("stepper-progreso");
+        host.etapas = ["Triaje", "Consulta Médica", "Tratamiento", "Cierre"];
         document.body.appendChild(host);
     });
 
@@ -24,14 +25,11 @@ suite("StepperProgreso (unitaria)", () => {
         assert.isNotNull(host.shadowRoot);
     });
 
-    test("utiliza las etapas por defecto cuando no se especifican", () => {
-        expect(host.etapas).to.deep.equal(["Triaje", "Consulta Médica", "Tratamiento", "Cierre"]);
-        const items = host.shadowRoot.querySelectorAll("li.stepper-paso");
-        expect(items).to.have.length(4);
-
-        const etiquetas = Array.from(host.shadowRoot.querySelectorAll(".stepper-etiqueta"))
-            .map((el) => el.textContent.trim());
-        expect(etiquetas).to.deep.equal(["Triaje", "Consulta Médica", "Tratamiento", "Cierre"]);
+    test("no inventa etapas cuando el backend no especifica una secuencia", () => {
+        host.etapas = [];
+        expect(host.etapas).to.deep.equal([]);
+        expect(ETAPAS_POR_DEFECTO).to.deep.equal([]);
+        expect(host.shadowRoot.querySelectorAll('li.stepper-paso')).to.have.length(0);
     });
 
     test("renderiza estructura accesible con role='list' y role='listitem'", () => {
