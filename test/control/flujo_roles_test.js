@@ -61,12 +61,56 @@ suite('HU3/HU4: permisos y flujo real por rol', () => {
         test(`rechaza rol o asignación inválida ${JSON.stringify(valor)}`, () => expect(esRolEmpleado(valor)).to.be.false);
     }
 
-    test('el permiso exige clínica, asignación y pertenencia a los roles de sesión', () => {
+    test('el permiso exige clínica y pertenencia al rol de sesión, sin restringir la cola por persona', () => {
         seleccionar(1); const estado = store.getState(); const c = consulta([paso(1)]);
         expect(puedeOperarPaso(c.pasos[0], c, estado)).to.be.true;
         expect(puedeOperarPaso(c.pasos[0], c, { ...estado, roles: [] })).to.be.false;
         expect(puedeOperarPaso(c.pasos[0], { ...c, clinica: { id: 'otra' } }, estado)).to.be.false;
-        expect(puedeOperarPaso({ ...c.pasos[0], idPersonaRol: 'otro-empleado' }, c, estado)).to.be.false;
+        expect(puedeOperarPaso({ ...c.pasos[0], idPersonaRol: 'otro-empleado' }, c, estado)).to.be.true;
+        expect(puedeOperarPaso(c.pasos[0], c, { ...estado,
+            rolSeleccionado: { ...roles[1], idPersonaRol: 'asignacion-ajena' } })).to.be.false;
+    });
+
+    test('María en recepción ve y atiende la cola del rol aunque el paso esté asignado a otro empleado', async () => {
+        const c = consulta([{ ...paso(0, 'PENDIENTE'), idPersonaRol: 'recepcionista-original' },
+            paso(1, 'FUTURO'), paso(2, 'FUTURO')]);
+        seleccionar(0, c);
+        store.setState({ usuario: { nombres: 'María', apellidos: 'López' } });
+        sandbox.stub(consultaService, 'buscarCitas').resolves({ items: [c], total: 1 });
+        const dashboard = montar('dashboard-view'); await esperar();
+        const tarjeta = dashboard.shadowRoot.querySelector('tarjeta-consulta');
+        expect(tarjeta).not.to.be.null;
+        expect(tarjeta.querySelector('button').disabled).to.be.false;
+        const host = montar('atencion-consulta-view');
+        expect(host.shadowRoot.querySelector('#notas').readOnly).to.be.false;
+        expect(host.shadowRoot.querySelector('#btn-anterior').disabled).to.be.true;
+        host._seleccionarPaso(1);
+        expect(host.shadowRoot.querySelector('#notas').readOnly).to.be.true;
+        host._seleccionarPaso(2);
+        expect(host.shadowRoot.querySelector('#btn-finalizar').disabled).to.be.true;
+    });
+
+    test('Recepción completa su único paso y entrega la consulta a enfermería', async () => {
+        const c = consulta([{ ...paso(0), idPersonaRol: 'recepcionista-original' }, paso(1, 'FUTURO'), paso(2, 'FUTURO')]);
+        seleccionar(0, c);
+        const actualizada = consulta([paso(0, 'COMPLETADO'), paso(1), paso(2, 'FUTURO')]);
+        const guardar = sandbox.stub(consultaProcedimientoService, 'guardarPaso').resolves({});
+        sandbox.stub(consultaService, 'findById').resolves(actualizada);
+        sandbox.stub(consultaService, 'buscarCitas').resolves({ items: [actualizada], total: 1 });
+        const host = montar('atencion-consulta-view');
+        host.cargarDatosFormulario({ notasConsulta: 'Recepción registrada' });
+        await host._avanzarPaso();
+        expect(guardar.calledOnce).to.be.true;
+        expect(guardar.firstCall.args[0]).to.equal('ejecucion-0');
+        expect(host.shadowRoot.querySelector('#notas').readOnly).to.be.true;
+        expect(host.shadowRoot.querySelector('#aviso-lectura').textContent).to.include('Enfermera');
+        await host._avanzarPaso(); await host._finalizarConsulta();
+        expect(guardar.calledOnce).to.be.true;
+        const dashboard = montar('dashboard-view'); await esperar();
+        expect(dashboard.shadowRoot.querySelectorAll('tarjeta-consulta')).to.have.length(0);
+        store.setState({ rolSeleccionado: roles[1] }); await esperar();
+        expect(dashboard.shadowRoot.querySelectorAll('tarjeta-consulta')).to.have.length(1);
+        expect(host.shadowRoot.querySelector('#notas').readOnly).to.be.false;
     });
 
     test('prioriza EN_CURSO sobre PENDIENTE y no considera operativos los completados', () => {

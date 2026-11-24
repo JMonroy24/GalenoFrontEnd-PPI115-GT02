@@ -100,7 +100,7 @@ suite("EncabezadoApp: sesión y contexto", () => {
         expect(host.shadowRoot.querySelector("#btnCambiarRol").hidden).to.be.true;
     });
 
-    test("Cambiar rol abre el dashboard donde están los selectores y conserva la sesión", () => {
+    test("Cambiar rol abre un selector y aplicar vuelve al dashboard conservando la sesión", () => {
         store.setState({ usuario, roles: [asignacion], clinicaActiva: asignacion.clinica,
             rolSeleccionado: asignacion });
         const navegar = sinon.spy();
@@ -108,9 +108,69 @@ suite("EncabezadoApp: sesión y contexto", () => {
         const boton = host.shadowRoot.querySelector("#btnCambiarRol");
         expect(boton.hidden).to.be.false;
         boton.click();
+        expect(host.shadowRoot.querySelector('#dialogo-rol').open).to.be.true;
+        expect(navegar.called).to.be.false;
+        host.shadowRoot.querySelector('#btnAplicarRol').click();
+        expect(host.shadowRoot.querySelector('#dialogo-rol').open).to.be.false;
         expect(navegar.calledOnce).to.be.true;
         expect(navegar.firstCall.args[0].detail).to.equal("dashboard");
         expect(store.hasActiveSession()).to.be.true;
+    });
+
+    test('cambiar clínica muestra solo sus roles activos y aplica la asignación elegida', () => {
+        const otra = { idPersonaRol: 9, idPersona: 42, clinica: { id: 'norte', nombre: 'Norte' },
+            rol: { id: 'enfermera', nombre: 'Enfermera', activo: true } };
+        const inactiva = { ...otra, idPersonaRol: 10, rol: { id: 'panadero', nombre: 'Panadero', activo: false } };
+        const paciente = { ...otra, idPersonaRol: 11, rol: { id: 'paciente', nombre: 'Paciente' } };
+        const ajena = { ...otra, idPersonaRol: 12, idPersona: 99, rol: { id: 'ajeno', nombre: 'Doctor' } };
+        store.setState({ usuario, roles: [asignacion, otra, inactiva, paciente, ajena],
+            clinicaActiva: asignacion.clinica, rolSeleccionado: asignacion });
+        host.shadowRoot.querySelector('#btnCambiarRol').click();
+        const clinica = host.shadowRoot.querySelector('#clinica-cambio-rol');
+        clinica.value = 'norte'; clinica.dispatchEvent(new Event('change'));
+        const select = host.shadowRoot.querySelector('#asignacion-cambio-rol');
+        expect([...select.options].map(o => o.value)).to.deep.equal(['enfermera']);
+        expect(store.getState().rolSeleccionado).to.deep.equal(asignacion);
+        host.shadowRoot.querySelector('#btnAplicarRol').click();
+        expect(store.getState().rolSeleccionado).to.deep.equal(otra);
+        expect(store.getState().clinicaActiva).to.deep.equal(otra.clinica);
+        expect(JSON.parse(sessionStorage.getItem('galeno_session')).rolSeleccionado).to.deep.equal(otra);
+    });
+
+    test('Cancelar cierra el selector sin cambiar el rol y devuelve el foco al botón', () => {
+        store.setState({ usuario, roles: [asignacion], clinicaActiva: asignacion.clinica, rolSeleccionado: asignacion });
+        const boton = host.shadowRoot.querySelector('#btnCambiarRol');
+        boton.focus(); boton.click();
+        const dialogo = host.shadowRoot.querySelector('#dialogo-rol');
+        expect(host.shadowRoot.activeElement.id).to.equal('clinica-cambio-rol');
+        dialogo.querySelector('[value="cancelar"]').click();
+        expect(dialogo.open).to.be.false;
+        expect(host.shadowRoot.activeElement).to.equal(boton);
+        expect(store.getState().rolSeleccionado).to.deep.equal(asignacion);
+    });
+
+    test('explica cuando el empleado solo tiene un rol, incluso estando ya en el dashboard', () => {
+        store.setState({ usuario, roles: [asignacion], clinicaActiva: asignacion.clinica, rolSeleccionado: asignacion });
+        host.shadowRoot.querySelector('#btnCambiarRol').click();
+        expect(host.shadowRoot.querySelector('#dialogo-rol').open).to.be.true;
+        expect(host.shadowRoot.querySelector('#aviso-cambio-rol').textContent).to.include('Solo tiene este rol');
+    });
+
+    test('revalida asignaciones al aplicar si fueron retiradas mientras estaba abierto', () => {
+        store.setState({ usuario, roles: [asignacion], clinicaActiva: asignacion.clinica, rolSeleccionado: asignacion });
+        host.shadowRoot.querySelector('#btnCambiarRol').click();
+        store.setState({ roles: [] });
+        const navegar = sinon.spy(); host.addEventListener('navegar', navegar);
+        host.shadowRoot.querySelector('#btnAplicarRol').click();
+        expect(navegar.called).to.be.false;
+        expect(host.shadowRoot.querySelector('#dialogo-rol').open).to.be.true;
+        expect(host.shadowRoot.querySelector('#aviso-cambio-rol').textContent).to.include('ya no está disponible');
+    });
+
+    test('cerrar sesión también cierra el diálogo de cambio de rol', () => {
+        store.setState({ usuario, roles: [asignacion], clinicaActiva: asignacion.clinica, rolSeleccionado: asignacion });
+        host.shadowRoot.querySelector('#btnCambiarRol').click(); authService.logout();
+        expect(host.shadowRoot.querySelector('#dialogo-rol').open).to.be.false;
     });
 
     test("cerrar sesión navega aunque el navegador no permita escribir en sessionStorage", () => {

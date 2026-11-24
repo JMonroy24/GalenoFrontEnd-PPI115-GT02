@@ -15,6 +15,12 @@ Para HU3/HU4, el frontend une `/consultas-procedimientos`,
 determinan el orden; `idRol` determina el responsable e `indicaFin` determina el cierre.
 Los registros completados aportan `fechaFin` para el historial.
 
+La cola de atención y los permisos del paso vigente corresponden al rol activo y a
+la clínica del empleado. `idPersonaRol` de la ejecución identifica al responsable
+registrado; no convierte la cola del rol en una cola exclusiva de esa persona.
+La selección de contexto se valida siempre contra las asignaciones activas propias
+del empleado, excluyendo pacientes y roles inactivos.
+
 `GET /procedimientos-pasos-examenes/asignables?idProcedimientoPaso=...` devuelve los
 exámenes permitidos de la definición. Al crear órdenes, `idConsultaProcedimientoPaso`
 identifica su ejecución en la consulta, que es un identificador distinto.

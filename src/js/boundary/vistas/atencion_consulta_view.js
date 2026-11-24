@@ -1914,7 +1914,7 @@ export class AtencionConsultaView extends HTMLElement {
                 ?? this._pasoDetectado?.rolResponsable?.descripcion ?? 'responsable del paso';
             avisoLectura.textContent = this._mensajeRelevo || (this._obtenerEstadoPaso(this._pasoDetectado) === ESTADO_COMPLETADO
                 ? 'Está consultando un paso completado en modo lectura.'
-                : `Solo lectura. Este paso debe ser atendido por el rol ${rol} y su empleado asignado.`);
+                : `Solo lectura. Este paso debe ser atendido por el rol ${rol} en la clínica de la consulta.`);
         }
 
         for (const selector of ["#stepper-flujo", "#cie10-busqueda", "#lista-examenes"]) {

@@ -28,7 +28,6 @@ export function puedeOperarPaso(paso, consulta, estado) {
     const clinicaConsulta = idEntidad(consulta?.clinica ?? consulta?.idClinica, 'idClinica');
     const rol = idRolAsignacion(seleccion);
     const responsable = idRolPaso(paso);
-    const asignado = idEntidad(paso?.idPersonaRol, 'idPersonaRol');
     const seleccionado = idEntidad(seleccion?.idPersonaRol ?? seleccion?.id, 'idPersonaRol');
     const pertenece = (estado?.roles ?? []).some((item) => esRolEmpleado(item)
         && String(idRolAsignacion(item)) === String(rol)
@@ -38,7 +37,7 @@ export function puedeOperarPaso(paso, consulta, estado) {
         && rol != null && responsable != null && String(rol) === String(responsable)
         && clinica != null && clinicaConsulta != null && String(clinica) === String(clinicaConsulta)
         && String(idClinicaAsignacion(seleccion)) === String(clinica)
-        && (asignado == null || seleccionado != null && String(asignado) === String(seleccionado))
+        // idPersonaRol identifica al responsable registrado; no restringe la cola compartida del rol.
         && ['EN_CURSO', 'PENDIENTE'].includes(estadoPaso(paso))
         && !consulta?.fechaFin && consulta?.estado !== 'FINALIZADA');
 }
