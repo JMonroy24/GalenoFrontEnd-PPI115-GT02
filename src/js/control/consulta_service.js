@@ -121,25 +121,16 @@ export class ConsultaService extends DefaultService {
     }
 
     async _buscarCitas(filtros, first, max) {
-        if (filtros.idRol != null) {
-            const payload = await this._solicitarCitas(filtros, first, max);
-            const solicitudes = new Map();
-            const items = await Promise.all((payload.items ?? []).map(async (item) => {
-                const consulta = await this._completarConsulta(this._mapearConsulta(item), solicitudes, filtros);
-                return this.cargarFlujoConsulta(consulta, solicitudes, filtros.idRol);
-            }));
-            return new DefaultResponse(items.filter((consulta) => {
-                const idClinica = filtros.idClinica ?? filtros.clinicaId;
-                if (idClinica != null && !this._coincideClinica(consulta, idClinica)) return false;
-                const vigente = indicePasoVigente(consulta.pasos);
-                const paso = vigente >= 0 ? consulta.pasos[vigente] : consulta.pasos.at(-1);
-                return String(idRolPaso(paso)) === String(filtros.idRol);
-            }), payload.total ?? items.length, payload.first ?? first, payload.max ?? max);
-        }
-        const conFechas = Boolean(filtros.fechaDesde || filtros.fechaHasta);
+        const desde = filtros.desde ?? filtros.fechaDesde;
+        const hasta = filtros.hasta ?? filtros.fechaHasta;
+        const conFechas = Boolean(desde || hasta);
+        const conRol = filtros.idRol != null && String(filtros.idRol).trim() !== '';
+        const calendarioCola = conRol && conFechas ? new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'America/El_Salvador', year: 'numeric', month: '2-digit', day: '2-digit'
+        }) : null;
         const conPaciente = Boolean(filtros.tipoDocumento && filtros.numeroDocumento);
         const conClinica = filtros.idClinica != null && String(filtros.idClinica).trim() !== "";
-        const filtrarAntesDePaginar = conFechas || conPaciente || conClinica;
+        const filtrarAntesDePaginar = conFechas || conPaciente || conClinica || conRol;
         const solicitudes = new Map();
         const mapearItems = (payload) => (Array.isArray(payload?.items) ? payload.items : [])
             .filter((consulta) => consulta !== null && typeof consulta === "object" && !Array.isArray(consulta))
@@ -170,15 +161,29 @@ export class ConsultaService extends DefaultService {
             }
             items = items.filter((consulta) => {
                 if (!conFechas) return true;
-                const fecha = String(consulta.fecha ?? "").match(/^(\d{4}-\d{2}-\d{2})(?:[T ]|$)/)?.[1];
-                return fecha && (!filtros.fechaDesde || fecha >= filtros.fechaDesde)
-                    && (!filtros.fechaHasta || fecha <= filtros.fechaHasta);
+                const texto = String(consulta.fecha ?? '').replace(/\[.*\]$/u, '');
+                const instante = calendarioCola && /[T ].*(?:Z|[+-]\d{2}:?\d{2})$/u.test(texto)
+                    ? new Date(texto) : null;
+                const fecha = instante && !Number.isNaN(instante.getTime()) ? calendarioCola.format(instante)
+                    : texto.match(/^(\d{4}-\d{2}-\d{2})(?:[T ]|$)/)?.[1];
+                return fecha && (!desde || fecha >= desde) && (!hasta || fecha <= hasta);
             });
-            if (conPaciente || conClinica) {
+            if (conPaciente || conClinica || conRol) {
                 items = (await Promise.all(items.map((consulta) =>
                     this._completarConsulta(consulta, solicitudes, filtros)
                 ))).filter((consulta) => (!conPaciente || this._coincidePacienteYClinica(consulta, filtros))
                     && (!conClinica || this._coincideClinica(consulta, filtros.idClinica)));
+            }
+            if (conRol) {
+                // La cola depende del paso vigente: resolverla en todas las páginas
+                // antes de contar y paginar evita ocultar coincidencias posteriores.
+                items = (await Promise.all(items.map((consulta) =>
+                    this.cargarFlujoConsulta(consulta, solicitudes, filtros.idRol)
+                ))).filter((consulta) => {
+                    const vigente = indicePasoVigente(consulta.pasos);
+                    return vigente >= 0 && String(idRolPaso(consulta.pasos[vigente])) === String(filtros.idRol);
+                });
+                return new DefaultResponse(items.slice(first, first + max), items.length, first, max);
             }
             const totalFiltrado = items.length;
             const pagina = items.slice(first, first + max);

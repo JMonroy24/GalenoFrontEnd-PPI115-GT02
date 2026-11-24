@@ -23,7 +23,8 @@ suite('HU3/HU4: permisos y flujo real por rol', () => {
         idRol: `rol-${i}`, idPersonaRol: `asignacion-${i}`, rolResponsable: roles[i].rol,
         nombre: ['Recepción', 'Triaje', 'Atención médica'][i], indicaFin: i === 2, estado
     });
-    const consulta = (pasos) => ({ idConsulta: 'consulta', clinica: { id: 'clinica', nombre: 'Central' }, pasos });
+    const consulta = (pasos) => ({ idConsulta: 'consulta', clinica: { id: 'clinica', nombre: 'Central' },
+        fechaInicio: '2026-11-24T09:00:00-06:00', fechaFin: '2026-11-24T10:00:00-06:00', pasos });
     const esperar = () => new Promise(resolve => setTimeout(resolve, 0));
     const montar = (tag) => fixture.appendChild(document.createElement(tag));
     const seleccionar = (i, datos = consulta([paso(i)])) => store.setState({ roles,
@@ -53,7 +54,58 @@ suite('HU3/HU4: permisos y flujo real por rol', () => {
             host._atenderConsulta(citas[(i + 1) % 3]);
             expect(store.getState().consultaActiva.idConsulta).to.equal('consulta');
         });
+
+        test(`${roles[i].rol.nombre} ve y opera un paso abierto aunque la cita tenga fechaFin`, async () => {
+            const c = { ...consulta([paso(i)]), fechaInicio: '2026-11-24T09:00:00-06:00',
+                fechaFin: '2026-11-24T10:00:00-06:00' };
+            seleccionar(i, c);
+            sandbox.stub(consultaService, 'buscarCitas').resolves({ items: [c], total: 1 });
+            const dashboard = montar('dashboard-view'); await esperar();
+            const tarjeta = dashboard.shadowRoot.querySelector('tarjeta-consulta');
+            expect(tarjeta).not.to.be.null;
+            expect(tarjeta.querySelector('button').disabled).to.be.false;
+            const host = montar('atencion-consulta-view');
+            expect(host.shadowRoot.querySelector('#notas').readOnly).to.be.false;
+            expect(puedeOperarPaso(c.pasos[0], { ...c, estado: 'FINALIZADA' }, store.getState())).to.be.false;
+        });
     }
+
+    for (const i of [0, 1]) {
+        test(`busca la cola de ${roles[i].rol.nombre} en todas las páginas antes de filtrar y paginar`, async () => {
+            const servicio = new ConsultaService();
+            const datos = [
+                { ...consulta([paso(2)]), idConsulta: 'otro-rol' },
+                ...[0, 1].map(j => ({ ...consulta([paso(i)]), idConsulta: `propia-${j}` })),
+                { ...consulta([paso(i, 'COMPLETADO')]), idConsulta: 'completada' },
+                { ...consulta([paso(i)]), idConsulta: 'otra-clinica', clinica: { id: 'otra', nombre: 'Otra' } }
+            ];
+            sandbox.stub(servicio, '_solicitarCitas').callsFake(async (filtros, first, max) =>
+                ({ items: datos.slice(first, first + max), total: datos.length, first, max }));
+            const filtros = { idRol: `rol-${i}`, idClinica: 'clinica' };
+            const primera = await servicio.buscarCitas(filtros, 0, 1);
+            expect(primera.items.map(c => c.idConsulta)).to.deep.equal(['propia-0']);
+            const resultado = await servicio.buscarCitas(filtros, 1, 1);
+            expect(resultado.items.map(c => c.idConsulta)).to.deep.equal(['propia-1']);
+            expect(resultado.total).to.equal(2);
+            expect(resultado.first).to.equal(1);
+            expect(resultado.max).to.equal(1);
+            expect(servicio._solicitarCitas.firstCall.args[1]).to.equal(0);
+        });
+    }
+
+    test('la cola por rol conserva el día inclusivo de El Salvador al recibir instantes UTC', async () => {
+        const servicio = new ConsultaService();
+        const datos = [
+            { ...consulta([paso(1)]), idConsulta: 'inicio', fechaInicio: '2026-11-24T06:00:00Z[UTC]' },
+            { ...consulta([paso(1)]), idConsulta: 'fin', fechaInicio: '2026-11-25T05:59:59Z[UTC]' },
+            { ...consulta([paso(1)]), idConsulta: 'fuera', fechaInicio: '2026-11-25T06:00:00Z[UTC]' }
+        ];
+        sandbox.stub(servicio, '_solicitarCitas').resolves({ items: datos, total: datos.length });
+        const resultado = await servicio.buscarCitas({ idRol: 'rol-1', idClinica: 'clinica',
+            desde: '2026-11-24', hasta: '2026-11-24' });
+        expect(resultado.items.map(c => c.idConsulta)).to.deep.equal(['inicio', 'fin']);
+        expect(resultado.total).to.equal(2);
+    });
 
     for (const valor of [null, {}, { nombre: 'Paciente', activo: true },
         { nombre: 'Panadero', activo: false }, { rol: { nombre: 'Doctor', activo: false } },

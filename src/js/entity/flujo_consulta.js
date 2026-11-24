@@ -39,7 +39,8 @@ export function puedeOperarPaso(paso, consulta, estado) {
         && String(idClinicaAsignacion(seleccion)) === String(clinica)
         // idPersonaRol identifica al responsable registrado; no restringe la cola compartida del rol.
         && ['EN_CURSO', 'PENDIENTE'].includes(estadoPaso(paso))
-        && !consulta?.fechaFin && consulta?.estado !== 'FINALIZADA');
+        // Una fecha en la cita no sustituye el estado de su ejecución clínica.
+        && consulta?.estado !== 'FINALIZADA');
 }
 
 export function pasosConsulta(consulta) {
