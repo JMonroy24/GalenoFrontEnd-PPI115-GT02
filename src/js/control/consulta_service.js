@@ -555,24 +555,14 @@ export class ConsultaService extends DefaultService {
         });
     }
 
-    async obtenerTicketPdf(idConsulta, { signal } = {}) {
+    obtenerUrlTicket(idConsulta) {
         if (idConsulta == null || String(idConsulta).trim() === "") {
-            throw new Error("La consulta no tiene un identificador válido para descargar el ticket.");
+            throw new Error("La consulta no tiene un identificador válido para ver el ticket.");
         }
 
-        const parametros = new URLSearchParams({ frontendUrl: window.location.origin });
-        const url = `${ENDPOINTS.API_BASE}${ENDPOINTS.CONSULTAS}/${encodeURIComponent(idConsulta)}/ticket?${parametros}`;
-        const response = await this._request(
-            url,
-            { method: "GET", headers: { Accept: "application/pdf" }, signal },
-            "Error al descargar el ticket de la consulta"
-        );
-        const blob = await response.blob();
-        if (blob.type.split(";")[0].toLowerCase() !== "application/pdf") {
-            throw new Error("El servidor no devolvió un ticket PDF válido.");
-        }
-
-        return blob;
+        const url = new URL(`${ENDPOINTS.API_BASE}${ENDPOINTS.CONSULTAS}/${encodeURIComponent(idConsulta)}/ticket`);
+        url.searchParams.set('frontendUrl', window.location.origin);
+        return url.href;
     }
 }
 

@@ -10,6 +10,19 @@ const LEGACY_KEYS = Object.freeze({
 });
 
 const SESSION_KEY = "galeno_session";
+export const APP_INSTALADA_KEY = "galenosv_app_instalada";
+
+export function estaEnModoInstalado() {
+    return globalThis.navigator?.standalone === true
+        || ["standalone", "window-controls-overlay"].some(modo =>
+            globalThis.window?.matchMedia?.(`(display-mode: ${modo})`).matches === true);
+}
+
+function leerAppInstalada() {
+    if (estaEnModoInstalado()) return true;
+    try { return localStorage.getItem(APP_INSTALADA_KEY) === "1"; }
+    catch { return false; }
+}
 
 const CAMPOS_SESION = new Set([
     "token",
@@ -53,10 +66,17 @@ export class Store extends EventTarget {
             rolSeleccionado: sesion?.rolSeleccionado ?? sesion?.roles?.[0] ?? null,
             clinicaActiva: sesion?.clinicaActiva ?? null,
             clinica: sesion?.clinicaActiva ?? null,
-            online: globalThis.navigator?.onLine ?? true
+            online: globalThis.navigator?.onLine ?? true,
+            appInstalada: leerAppInstalada()
         };
+        this._persistirAppInstalada(this.state.appInstalada);
 
         if (typeof window !== "undefined") {
+            window.addEventListener("storage", evento => {
+                if (evento.key === APP_INSTALADA_KEY) {
+                    this.setState({ appInstalada: estaEnModoInstalado() || evento.newValue === "1" });
+                }
+            });
             window.addEventListener("online", () => {
                 this.setState({ online: true });
                 GeneradorMensajes.crearMensaje(
@@ -86,6 +106,11 @@ export class Store extends EventTarget {
             Object.entries(partialState).forEach(([clave, valor]) => {
                 changes[LEGACY_KEYS[clave] ?? clave] = valor;
             });
+        }
+
+        if (changes && Object.hasOwn(changes, "appInstalada")) {
+            changes.appInstalada = changes.appInstalada === true;
+            this._persistirAppInstalada(changes.appInstalada);
         }
 
         if (!changes || !Object.entries(changes).some(
@@ -127,6 +152,15 @@ export class Store extends EventTarget {
 
     setContextoTrabajo(clinicaActiva, rolSeleccionado) {
         this.setState({ clinicaActiva, rolSeleccionado });
+    }
+
+    _persistirAppInstalada(instalada) {
+        try {
+            if (instalada) localStorage.setItem(APP_INSTALADA_KEY, "1");
+            else localStorage.removeItem(APP_INSTALADA_KEY);
+        } catch {
+            // La UI conserva el estado de esta ejecución si el almacenamiento está restringido.
+        }
     }
 
     _persistirSesion() {

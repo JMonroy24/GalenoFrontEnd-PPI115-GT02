@@ -30,7 +30,6 @@ const ROUTES = Object.freeze({
     "buscar-citas": "busqueda-citas-view",
     dashboard: "dashboard-view",
     consulta: "detalle-consulta-view",
-    ticket: "ticket-view",
     atencion: "atencion-consulta-view"
 });
 

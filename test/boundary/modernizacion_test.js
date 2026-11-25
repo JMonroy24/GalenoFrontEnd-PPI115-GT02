@@ -242,7 +242,6 @@ suite("Modernización: regresiones de interacción y responsividad", () => {
 
 
     test("hidden oculta realmente el botón de instalación", async () => {
-        if (typeof navigator.install === 'function') sinon.stub(navigator, 'install').value(undefined);
         const host = montar("instalador-app");
         await cargarEstilos(host);
         const boton = host.shadowRoot.querySelector("button");

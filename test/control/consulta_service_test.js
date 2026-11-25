@@ -305,49 +305,24 @@ suite("ConsultaService (unitaria)", () => {
         expect(respuesta.items[0].procedimientos).to.deep.equal([]);
     });
 
-    test("obtenerTicketPdf devuelve el PDF y el origen del QR sin descargar ni crear URLs", async () => {
-        const blob = new Blob(["%PDF-1.4\nTicket de cita"], { type: "application/pdf" });
-        const leerBlob = sinon.stub().resolves(blob);
-        fetchStub = sinon.stub(window, "fetch").resolves({ ok: true, blob: leerBlob });
-        const crearUrl = sinon.stub(URL, "createObjectURL").returns("blob:ticket-prueba");
-        const revocarUrl = sinon.stub(URL, "revokeObjectURL");
-        const click = sinon.stub(HTMLAnchorElement.prototype, "click");
-
+    test("obtenerUrlTicket apunta al PDF público y codifica el ID y el origen del QR", () => {
+        fetchStub = sinon.stub(window, 'fetch');
+        const crearUrl = sinon.spy(URL, 'createObjectURL');
+        const click = sinon.stub(HTMLAnchorElement.prototype, 'click');
         try {
-            expect(await servicio.obtenerTicketPdf("cita/101")).to.equal(blob);
-            expect(fetchStub.firstCall.args[0]).to.contain("/consultas/cita%2F101/ticket");
-            expect(fetchStub.firstCall.args[1].headers.get("Accept")).to.equal("application/pdf");
-            expect(leerBlob.calledOnce).to.be.true;
-            expect(new URL(fetchStub.firstCall.args[0]).searchParams.get('frontendUrl')).to.equal(location.origin);
+            const url = new URL(servicio.obtenerUrlTicket('cita/101'));
+            expect(url.pathname).to.equal('/galenoSV/api/v1/consultas/cita%2F101/ticket');
+            expect(url.searchParams.get('frontendUrl')).to.equal(location.origin);
+            expect(fetchStub.called).to.be.false;
             expect(crearUrl.called).to.be.false;
             expect(click.called).to.be.false;
-            expect(revocarUrl.called).to.be.false;
-        } finally {
-            click.restore();
-            crearUrl.restore();
-            revocarUrl.restore();
-        }
+        } finally { crearUrl.restore(); click.restore(); }
     });
 
-    test("obtenerTicketPdf rechaza errores HTTP sin iniciar una descarga", async () => {
-        fetchStub = sinon.stub(window, "fetch").resolves({ ok: false, status: 500 });
-        const crearUrl = sinon.spy(URL, "createObjectURL");
-        try {
-            let error;
-            try { await servicio.obtenerTicketPdf(101); } catch (err) { error = err; }
-            expect(error).to.be.instanceOf(DefaultError);
-            expect(crearUrl.called).to.be.false;
-        } finally {
-            crearUrl.restore();
-        }
-    });
-
-    test("obtenerTicketPdf rechaza consultas sin identificador antes de llamar a fetch", async () => {
-        fetchStub = sinon.stub(window, "fetch");
-        for (const id of [undefined, null, "", " "]) {
-            let error;
-            try { await servicio.obtenerTicketPdf(id); } catch (err) { error = err; }
-            expect(error).to.be.instanceOf(Error);
+    test("obtenerUrlTicket rechaza identificadores vacíos sin solicitudes de red", () => {
+        fetchStub = sinon.stub(window, 'fetch');
+        for (const id of [undefined, null, '', ' ']) {
+            expect(() => servicio.obtenerUrlTicket(id)).to.throw('identificador válido');
         }
         expect(fetchStub.called).to.be.false;
     });

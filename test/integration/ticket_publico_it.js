@@ -19,7 +19,7 @@ describe('Ticket y detalle público (integración con Open Liberty)', function (
     });
 
     it('obtiene un PDF público válido pasando el origen del frontend, sin descarga automática', async () => {
-        const respuesta = await fetch(`${API_BASE}/consultas/${id}/ticket?${new URLSearchParams({ frontendUrl: location.origin })}`,
+        const respuesta = await fetch(consultaService.obtenerUrlTicket(id),
             { headers: { Accept: 'application/pdf' }, credentials: 'omit' });
         expect(respuesta.status).to.equal(200);
         expect(respuesta.headers.get('Content-Type')).to.include('application/pdf');

@@ -303,13 +303,13 @@ suite("BusquedaCitasView (unitaria)", () => {
         expect(resultados.querySelectorAll("tarjeta-consulta")).to.have.length(0);
     });
 
-    test("cada tarjeta ofrece las dos opciones inline y enlaza a la vista previa", async () => {
+    test("cada tarjeta ofrece las dos opciones inline y enlaza al PDF público en otra pestaña", async () => {
         await host.buscar({});
         const tarjeta = host.shadowRoot.querySelector('tarjeta-consulta');
         const opciones = tarjeta.shadowRoot.querySelector('opciones-ticket');
         expect(opciones.getAttribute('id-consulta')).to.equal('101');
         expect(opciones.shadowRoot.querySelector('#instalar').textContent).to.equal('Descargar aplicación para poder ver el ticket');
-        expect(opciones.shadowRoot.querySelector('#ver-web').getAttribute('href')).to.equal('#ticket/101');
+        expect(opciones.shadowRoot.querySelector('#ver-web').getAttribute('href')).to.equal(consultaService.obtenerUrlTicket(101));
         expect(opciones.shadowRoot.querySelector('#ver-web').textContent).to.equal('ver ticket en la web');
         expect(opciones.shadowRoot.querySelector('dialog, [popover], [aria-modal]')).to.be.null;
     });
@@ -380,8 +380,8 @@ suite("BusquedaCitasView (unitaria)", () => {
         await host.buscar({});
         const opciones = [...host.shadowRoot.querySelectorAll('tarjeta-consulta')]
             .map(tarjeta => tarjeta.shadowRoot.querySelector('opciones-ticket').shadowRoot);
-        expect(opciones[0].querySelector('#ver-web').getAttribute('href')).to.equal('#ticket/101');
-        expect(opciones[1].querySelector('#ver-web').getAttribute('href')).to.equal('#ticket/202');
+        expect(opciones[0].querySelector('#ver-web').getAttribute('href')).to.equal(consultaService.obtenerUrlTicket(101));
+        expect(opciones[1].querySelector('#ver-web').getAttribute('href')).to.equal(consultaService.obtenerUrlTicket(202));
         expect(opciones[2].querySelector('#instalar').disabled).to.be.true;
         expect(opciones[2].querySelector('#ver-web').hasAttribute('href')).to.be.false;
     });

@@ -24,7 +24,11 @@ export default class InstaladorApp extends HTMLElement {
         }
         this.shadowRoot.querySelector('#btnInstalar').addEventListener('click', async () => {
             try {
-                await instalacionService.solicitarInstalacion();
+                const resultado = await instalacionService.solicitarInstalacion();
+                const aviso = this.shadowRoot.querySelector('#aviso');
+                aviso.hidden = instalacionService.estaInstalada;
+                aviso.textContent = resultado === 'cancelada' ? 'La instalación no se completó. Puedes volver a instalar desde el navegador.'
+                    : 'Instala GalenoSV desde la barra o el menú del navegador.';
             } catch {
                 const aviso = this.shadowRoot.querySelector('#aviso');
                 aviso.textContent = 'Instala GalenoSV desde la barra o el menú del navegador.';
@@ -43,6 +47,8 @@ export default class InstaladorApp extends HTMLElement {
         const boton = this.shadowRoot.querySelector('#btnInstalar');
         boton.hidden = !instalacionService.disponible;
         boton.disabled = instalacionService.enCurso;
+        boton.setAttribute('aria-busy', String(instalacionService.enCurso));
+        if (instalacionService.estaInstalada) this.shadowRoot.querySelector('#aviso').hidden = true;
     }
 }
 
