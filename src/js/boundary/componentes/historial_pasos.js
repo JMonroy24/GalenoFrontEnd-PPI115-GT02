@@ -1,6 +1,113 @@
+import { crearPlantilla } from "../dom.js";
 import GestorFechas from "../../control/gestor_fechas.js";
 
+const { contenido: plantilla, estilos } = crearPlantilla(`
+<link rel="stylesheet" href="recursos/estilos/principal.css">
+<style>
+    :host([hidden]) { display: none; }
+    :host {
+        display: block;
+        color: var(--color-text, #0f172a);
+        font-family: var(--font-body, system-ui, sans-serif);
+    }
+    .historial {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-3, 0.75rem);
+    }
+    .lista-pasos,
+    .lista-pasos ul {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-3, 0.75rem);
+        margin: 0;
+        padding: 0;
+        list-style: none;
+    }
+    .lista-pasos ul {
+        margin-block-start: var(--space-3, 0.75rem);
+        padding-inline-start: var(--space-6, 1.5rem);
+        border-inline-start: var(--border-width, 1px) solid var(--color-border, #64748b);
+    }
+    .paso {
+        min-inline-size: 0;
+    }
+    .paso-contenido {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--space-3, 0.75rem);
+        padding: var(--space-4, 1rem);
+        border: var(--border-width, 1px) solid var(--color-border, #64748b);
+        border-radius: var(--radius-lg, 0.75rem);
+        background-color: var(--color-surface, #ffffff);
+        box-shadow: var(--shadow-sm, 0 1px 2px rgb(15 23 42 / 0.08));
+    }
+    .paso-info {
+        flex: 1 1 18rem;
+        min-inline-size: 0;
+    }
+    .paso-nombre {
+        margin: 0 0 var(--space-1, 0.25rem);
+        color: var(--color-primary, #1e3a8a);
+        font-size: var(--text-base, 1rem);
+    }
+    .paso-datos {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-1, 0.25rem) var(--space-4, 1rem);
+        margin: 0;
+        color: var(--color-text-muted, #475569);
+        font-size: var(--text-sm, 0.875rem);
+    }
+    .paso-dato {
+        overflow-wrap: anywhere;
+    }
+    .boton {
+        padding: var(--space-2, 0.5rem) var(--space-4, 1rem);
+        border: 0;
+        border-radius: var(--radius-md, 0.5rem);
+        background-color: var(--color-primary, #1e3a8a);
+        color: #ffffff;
+        font: inherit;
+        font-size: var(--text-sm, 0.875rem);
+        font-weight: 600;
+        cursor: pointer;
+    }
+    .boton:hover {
+        background-color: var(--color-primary-strong, #1e40af);
+    }
+    .boton:focus-visible {
+        outline: 2px solid var(--color-secondary, #0284c7);
+        outline-offset: 2px;
+    }
+    .vacio {
+        margin: 0;
+        padding: var(--space-4, 1rem);
+        border: var(--border-width, 1px) solid var(--color-border, #64748b);
+        border-radius: var(--radius-lg, 0.75rem);
+        background-color: var(--color-surface, #ffffff);
+        color: var(--color-text-muted, #475569);
+        text-align: center;
+    }
+    .vacio[hidden] {
+        display: none;
+    }
+    .registro-inline { flex: 1 1 100%; min-inline-size: 0; }
+    summary.boton { inline-size: fit-content; }
+    .registro-contenido { padding-block-start: 1rem; overflow-wrap: anywhere; }
+    .titulo-registro { margin: 0 0 0.5rem; color: var(--color-primary, #1e3a8a); }
+    .detalle-registro { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
+</style>
+<section class="historial">
+    <ul id="lista-pasos" class="lista-pasos"></ul>
+    <p id="historial-vacio" class="vacio" hidden>No hay pasos registrados.</p>
+</section>
+`);
+
 export class HistorialPasos extends HTMLElement {
+    #eventos = new AbortController();
     constructor() {
         super();
         this.attachShadow({ mode: "open" });
@@ -23,6 +130,8 @@ export class HistorialPasos extends HTMLElement {
     }
 
     disconnectedCallback() {
+        this.#eventos.abort();
+
         this._cerrarRegistro();
     }
 
@@ -31,113 +140,15 @@ export class HistorialPasos extends HTMLElement {
     }
 
     render() {
+        this.#eventos.abort();
+        this.#eventos = new AbortController();
         this._cerrarRegistro();
         this._registros.clear();
         this._cantidadRegistros = 0;
-        this.shadowRoot.innerHTML = `
-            <link rel="stylesheet" href="recursos/estilos/principal.css">
-            <style>
-                :host([hidden]) { display: none; }
-                :host {
-                    display: block;
-                    color: var(--color-text, #0f172a);
-                    font-family: var(--font-body, system-ui, sans-serif);
-                }
-                .historial {
-                    display: flex;
-                    flex-direction: column;
-                    gap: var(--space-3, 0.75rem);
-                }
-                .lista-pasos,
-                .lista-pasos ul {
-                    display: flex;
-                    flex-direction: column;
-                    gap: var(--space-3, 0.75rem);
-                    margin: 0;
-                    padding: 0;
-                    list-style: none;
-                }
-                .lista-pasos ul {
-                    margin-top: var(--space-3, 0.75rem);
-                    padding-left: var(--space-6, 1.5rem);
-                    border-left: var(--border-width, 1px) solid var(--color-border, #64748b);
-                }
-                .paso {
-                    min-width: 0;
-                }
-                .paso-contenido {
-                    display: flex;
-                    flex-wrap: wrap;
-                    align-items: center;
-                    justify-content: space-between;
-                    gap: var(--space-3, 0.75rem);
-                    padding: var(--space-4, 1rem);
-                    border: var(--border-width, 1px) solid var(--color-border, #64748b);
-                    border-radius: var(--radius-lg, 0.75rem);
-                    background-color: var(--color-surface, #ffffff);
-                    box-shadow: var(--shadow-sm, 0 1px 2px rgb(15 23 42 / 0.08));
-                }
-                .paso-info {
-                    flex: 1 1 18rem;
-                    min-width: 0;
-                }
-                .paso-nombre {
-                    margin: 0 0 var(--space-1, 0.25rem);
-                    color: var(--color-primary, #1e3a8a);
-                    font-size: var(--text-base, 1rem);
-                }
-                .paso-datos {
-                    display: flex;
-                    flex-wrap: wrap;
-                    gap: var(--space-1, 0.25rem) var(--space-4, 1rem);
-                    margin: 0;
-                    color: var(--color-text-muted, #475569);
-                    font-size: var(--text-sm, 0.875rem);
-                }
-                .paso-dato {
-                    overflow-wrap: anywhere;
-                }
-                .boton {
-                    padding: var(--space-2, 0.5rem) var(--space-4, 1rem);
-                    border: 0;
-                    border-radius: var(--radius-md, 0.5rem);
-                    background-color: var(--color-primary, #1e3a8a);
-                    color: #ffffff;
-                    font: inherit;
-                    font-size: var(--text-sm, 0.875rem);
-                    font-weight: 600;
-                    cursor: pointer;
-                }
-                .boton:hover {
-                    background-color: var(--color-primary-strong, #1e40af);
-                }
-                .boton:focus-visible {
-                    outline: 2px solid var(--color-secondary, #0284c7);
-                    outline-offset: 2px;
-                }
-                .vacio {
-                    margin: 0;
-                    padding: var(--space-4, 1rem);
-                    border: var(--border-width, 1px) solid var(--color-border, #64748b);
-                    border-radius: var(--radius-lg, 0.75rem);
-                    background-color: var(--color-surface, #ffffff);
-                    color: var(--color-text-muted, #475569);
-                    text-align: center;
-                }
-                .vacio[hidden] {
-                    display: none;
-                }
-                .registro-inline { flex: 1 1 100%; min-inline-size: 0; }
-                summary.boton { inline-size: fit-content; }
-                .registro-contenido { padding-block-start: 1rem; overflow-wrap: anywhere; }
-                .titulo-registro { margin: 0 0 0.5rem; color: var(--color-primary, #1e3a8a); }
-                .detalle-registro { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
-            </style>
-            <section class="historial">
-                <ul id="lista-pasos" class="lista-pasos"></ul>
-                <p id="historial-vacio" class="vacio" hidden>No hay pasos registrados.</p>
-            </section>
-        `;
+        if (!this.shadowRoot.firstChild) {
+            this.shadowRoot.adoptedStyleSheets = [estilos];
+            this.shadowRoot.append(plantilla.content.cloneNode(true));
+        }
 
         const lista = this.shadowRoot.querySelector("#lista-pasos");
         const vacio = this.shadowRoot.querySelector("#historial-vacio");
@@ -199,8 +210,8 @@ export class HistorialPasos extends HTMLElement {
                         detail: { paso: this._pasosOriginales.get(paso) ?? paso }
                     }));
                 };
-                registro.addEventListener("toggle", actualizar);
-                registro.addEventListener("click", evento => evento.stopPropagation());
+                registro.addEventListener("toggle", actualizar, { signal: this.#eventos.signal });
+                registro.addEventListener("click", evento => evento.stopPropagation(), { signal: this.#eventos.signal });
                 this._registros.set(registro, actualizar);
                 contenido.append(registro);
                 this._cantidadRegistros++;

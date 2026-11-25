@@ -1,3 +1,4 @@
+import { escaparHtml, crearEstilos } from "../dom.js";
 import { store } from "../../store.js";
 import { consultaService, obtenerNombreClinicaConsulta } from "../../control/consulta_service.js";
 import { consultaProcedimientoService } from "../../control/consulta_procedimiento_service.js";
@@ -30,6 +31,377 @@ const ESTADO_COMPLETADO = "COMPLETADO";
 const TEXTO_SIGUIENTE = "Guardar y Avanzar >";
 const TEXTO_FINALIZAR = "Finalizar Consulta";
 
+const estilos = crearEstilos(`
+:host {
+    display: block;
+    min-inline-size: 0;
+    container: atencion / inline-size;
+    color: var(--color-text, #0f172a);
+    font-family: var(--font-body, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+}
+
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+/* ── Contenedor principal ── */
+.vista {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6, 1.5rem);
+    max-inline-size: 56rem;
+    margin: 0 auto;
+}
+
+/* ── Encabezado con resumen de la consulta ── */
+.cabecera {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--space-4, 1rem);
+    padding: var(--space-4, 1rem) var(--space-6, 1.5rem);
+    border: var(--border-width, 1px) solid var(--color-border, #64748b);
+    border-radius: var(--radius-lg, 0.75rem);
+    background-color: var(--color-primary-soft, #dbeafe);
+}
+
+.cabecera-titulo {
+    margin: 0 0 var(--space-1, 0.25rem);
+    color: var(--color-primary, #1e3a8a);
+    font-size: var(--text-lg, 1.125rem);
+    font-weight: 700;
+}
+
+.cabecera > div {
+    min-inline-size: 0;
+    flex: 1 1 16rem;
+}
+
+.cabecera-meta li {
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    overflow-wrap: anywhere;
+}
+
+.cabecera-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-1, 0.25rem) var(--space-4, 1rem);
+    margin: 0;
+    color: var(--color-text-muted, #475569);
+    font-size: var(--text-sm, 0.875rem);
+    list-style: none;
+    padding: 0;
+}
+
+.btn-volver {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1, 0.25rem);
+    padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
+    border: var(--border-width, 1px) solid var(--color-border, #64748b);
+    border-radius: var(--radius, 0.5rem);
+    background-color: var(--color-surface, #ffffff);
+    color: var(--color-text, #0f172a);
+    font: inherit;
+    font-size: var(--text-sm, 0.875rem);
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.btn-volver:hover {
+    background-color: var(--color-surface-alt, #e2e8f0);
+}
+
+.btn-volver:focus-visible {
+    outline: var(--focus-width, 3px) solid var(--color-focus, var(--color-primary, #1e3a8a));
+    outline-offset: var(--focus-offset, 3px);
+}
+
+/* ── Tarjeta de formulario ── */
+.tarjeta {
+    padding: clamp(0.75rem, 3cqi, 1.5rem);
+    border: var(--border-width, 1px) solid var(--color-border, #64748b);
+    border-radius: var(--radius-lg, 0.75rem);
+    background-color: var(--color-surface, #ffffff);
+    box-shadow: var(--shadow-sm, 0 1px 2px rgb(15 23 42 / 0.08));
+}
+
+.tarjeta-titulo {
+    margin: 0 0 var(--space-6, 1.5rem);
+    color: var(--color-primary, #1e3a8a);
+    font-size: var(--text-xl, 1.25rem);
+    font-weight: 700;
+}
+
+/* ── Formulario ── */
+.form-clinico {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6, 1.5rem);
+}
+
+/* ── Grupo de campo ── */
+.campo {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2, 0.5rem);
+}
+
+.campo-cabecera {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-2, 0.5rem);
+    flex-wrap: wrap;
+}
+
+/* ── Etiqueta ── */
+.etiqueta {
+    color: var(--color-text, #0f172a);
+    font-size: var(--text-sm, 0.875rem);
+    font-weight: 600;
+}
+
+.etiqueta-descripcion {
+    display: block;
+    margin-block-start: var(--space-1, 0.25rem);
+    color: var(--color-text-muted, #475569);
+    font-size: var(--text-xs, 0.75rem);
+    font-weight: 400;
+}
+
+/* ── Contador de caracteres ── */
+.contador {
+    font-size: var(--text-xs, 0.75rem);
+    color: var(--color-text-muted, #475569);
+    text-align: right;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.contador[data-sobrepasado="true"] {
+    color: var(--color-error, #b91c1c);
+    font-weight: 600;
+}
+
+/* ── Textarea ── */
+.textarea {
+    inline-size: 100%;
+    min-block-size: 8rem;
+    padding: var(--space-3, 0.75rem);
+    border: var(--border-width, 1px) solid var(--color-border, #64748b);
+    border-radius: var(--radius, 0.5rem);
+    background-color: var(--color-surface, #ffffff);
+    color: var(--color-text, #0f172a);
+    font: inherit;
+    font-size: var(--text-sm, 0.875rem);
+    line-height: 1.6;
+    resize: vertical;
+    field-sizing: content;
+    block-size: auto;
+    min-block-size: 6lh;
+    max-block-size: min(24lh, 60dvh);
+    overflow-y: auto;
+    overflow-x: hidden;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.textarea::placeholder {
+    color: var(--color-text-muted, #475569);
+    opacity: 1;
+}
+
+input.textarea {
+    min-block-size: 2.75rem;
+    min-block-size: 2.75rem;
+    field-sizing: fixed;
+    resize: none;
+}
+
+.textarea:focus-visible {
+    outline: var(--focus-width) solid var(--color-focus);
+    outline-offset: var(--focus-offset);
+    border-color: var(--color-primary, #1e3a8a);
+    box-shadow: 0 0 0 3px var(--color-primary-soft, #dbeafe);
+}
+
+.textarea[aria-invalid="true"] {
+    border-color: var(--color-error, #b91c1c);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-error, #b91c1c) 15%, transparent);
+}
+
+/* ── Mensaje de error en campo ── */
+.error-campo {
+    min-block-size: 1rem;
+    color: var(--color-error, #b91c1c);
+    font-size: var(--text-xs, 0.75rem);
+    font-weight: 500;
+}
+
+/* ── Divisor entre secciones ── */
+.divisor {
+    block-size: 1px;
+    border: none;
+    background-color: var(--color-surface-alt, #e2e8f0);
+    margin: 0;
+}
+
+/* ── Acciones del formulario ── */
+.acciones {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--space-3, 0.75rem);
+    padding-block-start: var(--space-4, 1rem);
+    border-block-start: var(--border-width, 1px) solid var(--color-surface-alt, #e2e8f0);
+}
+
+.aviso-offline {
+    flex-basis: 100%;
+    margin: 0;
+    padding: var(--space-3, 0.75rem);
+    border: var(--border-width, 1px) solid var(--color-warning, #b45309);
+    border-radius: var(--radius, 0.5rem);
+    background-color: var(--color-warning-soft, #fef3c7);
+    color: var(--color-text, #0f172a);
+    font-size: var(--text-sm, 0.875rem);
+}
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2, 0.5rem);
+    min-block-size: 2.75rem;
+    padding: var(--space-2, 0.5rem) var(--space-5, 1.25rem);
+    border: var(--border-width, 1px) solid var(--color-border, #64748b);
+    border-radius: var(--radius, 0.5rem);
+    background-color: var(--color-surface, #ffffff);
+    color: var(--color-text, #0f172a);
+    font: inherit;
+    font-size: var(--text-sm, 0.875rem);
+    font-weight: 600;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.btn:hover {
+    background-color: var(--color-surface-alt, #e2e8f0);
+}
+
+.btn:focus-visible {
+    outline: var(--focus-width, 3px) solid var(--color-focus, var(--color-primary, #1e3a8a));
+    outline-offset: var(--focus-offset, 3px);
+}
+
+.btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.btn-cancelar {
+    border-color: var(--color-border, #64748b);
+}
+
+.btn-guardar {
+    border-color: var(--color-primary, #1e3a8a);
+    background-color: var(--color-primary, #1e3a8a);
+    color: #ffffff;
+}
+
+.btn-guardar:hover:not(:disabled) {
+    border-color: var(--color-primary-hover, #172554);
+    background-color: var(--color-primary-hover, #172554);
+}
+
+.btn-guardar-notas {
+    border-color: var(--color-secondary, #0369a1);
+    background-color: var(--color-secondary, #0369a1);
+    color: #ffffff;
+}
+
+.btn-guardar-notas:hover:not(:disabled) {
+    border-color: var(--color-secondary-hover, #075985);
+    background-color: var(--color-secondary-hover, #075985);
+}
+
+/* ── Spinner de carga ── */
+.spinner {
+    display: none;
+    inline-size: 1rem;
+    block-size: 1rem;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 9999px;
+    animation: girar 0.75s linear infinite;
+    flex-shrink: 0;
+}
+
+.btn-guardar.enviando .spinner {
+    display: inline-block;
+}
+
+@keyframes girar {
+    to { transform: rotate(360deg); }
+}
+
+/* ── Aviso sin consulta activa ── */
+.aviso-sin-consulta {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-4, 1rem);
+    padding: var(--space-8, 2rem) var(--space-4, 1rem);
+    text-align: center;
+    color: var(--color-text-muted, #475569);
+}
+
+.aviso-sin-consulta p {
+    margin: 0;
+    font-size: var(--text-sm, 0.875rem);
+}
+
+/* ── Responsivo ── */
+@container atencion (inline-size < 40rem) {
+    .tarjeta {
+        padding: var(--space-4, 1rem);
+    }
+
+    .cabecera {
+        padding: var(--space-3, 0.75rem) var(--space-4, 1rem);
+    }
+
+    .acciones {
+        flex-direction: column;
+    }
+
+    .btn {
+        inline-size: 100%;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .spinner {
+        animation-duration: 0.01ms;
+    }
+    .textarea,
+    .btn {
+        transition: none;
+    }
+}
+
+/* ── Stepper ── */
+.stepper-contenedor {
+    padding: var(--space-3, 0.75rem) var(--space-4, 1rem);
+    border: var(--border-width, 1px) solid var(--color-border, #64748b);
+    border-radius: var(--radius-lg, 0.75rem);
+    background-color: var(--color-surface, #ffffff);
+    box-shadow: var(--shadow-sm, 0 1px 2px rgb(15 23 42 / 0.08));
+}
+`);
+
 /**
  * Vista de atención médica de una consulta.
  * Presenta el formulario clínico para registrar las notas y el plan de tratamiento.
@@ -40,6 +412,10 @@ const TEXTO_FINALIZAR = "Finalizar Consulta";
  * @fires cancelar-atencion - Se despacha cuando el usuario cancela la atención.
  */
 export class AtencionConsultaView extends HTMLElement {
+    #eventos = new AbortController();
+    #conexion = new AbortController();
+    #acciones = new AbortController();
+    #accionesHtml = '';
     constructor() {
         super();
         this.attachShadow({ mode: "open" });
@@ -52,14 +428,12 @@ export class AtencionConsultaView extends HTMLElement {
         this._cargandoConsulta = false;
         this._solicitudConsulta = 0;
 
-
         /** @type {number} Paso activo en el stepper (0-based). */
         this._pasoActivo = 0;
         this._indicePasoTrabajo = 0;
         this._soloLectura = false;
         this._etapasFlujo = [...ETAPAS_FLUJO];
         this._borradores = new Map();
-        this._conectado = this._enLinea();
 
         /** @type {object|null} Paso detectado en la secuencia clínica. */
         this._pasoDetectado = null;
@@ -74,9 +448,6 @@ export class AtencionConsultaView extends HTMLElement {
                 estado?.consultaSeleccionada ??
                 estado?.consulta ??
                 null;
-            const conectado = this._enLinea();
-            const cambioConexion = conectado !== this._conectado;
-            this._conectado = conectado;
 
             if (consultaDelStore !== this._consulta) {
                 this._consulta = consultaDelStore;
@@ -87,11 +458,6 @@ export class AtencionConsultaView extends HTMLElement {
                 return;
             }
 
-            if (cambioConexion) {
-                this._sincronizarListaExamenes();
-                this._actualizarBotonera();
-                this._establecerEnviando(this._enviando);
-            }
             this._soloLectura = !this._puedeEditar();
             if (!this._soloLectura) this._mensajeRelevo = '';
             this._sincronizarListaExamenes();
@@ -101,6 +467,8 @@ export class AtencionConsultaView extends HTMLElement {
     }
 
     connectedCallback() {
+        this.#conexion.abort();
+        this.#conexion = new AbortController();
         // Lee la consulta activa del store al montar
         const estado = store.getState();
         this._consulta =
@@ -117,17 +485,19 @@ export class AtencionConsultaView extends HTMLElement {
             this._cargarConsultaPorId(params.id);
         }
 
-        this._conectado = this._enLinea();
         this._sincronizarPasoActivo();
         this.render();
         this._cargarDatosPasoActivo();
-        store.addEventListener("state-changed", this._alCambioStore);
+        store.addEventListener("state-changed", this._alCambioStore, { signal: this.#conexion.signal });
     }
 
     disconnectedCallback() {
+        this.#eventos.abort();
+        this.#conexion.abort();
+        this.#acciones.abort();
+
         this._solicitudConsulta++;
         this._cargandoConsulta = false;
-        store.removeEventListener("state-changed", this._alCambioStore);
     }
 
     /**
@@ -409,30 +779,6 @@ export class AtencionConsultaView extends HTMLElement {
         return this._normalizarTexto(estado);
     }
 
-    _esEstadoEnCurso(estado) {
-        return [
-            "EN CURSO",
-            "EN PROCESO",
-            "ACTIVO",
-            "ACTIVA",
-            "INICIADO",
-            "INICIADA",
-            "EN ATENCION"
-        ].includes(estado);
-    }
-
-    _esEstadoPendiente(estado) {
-        return [
-            "PENDIENTE",
-            "POR INICIAR",
-            "NO INICIADO",
-            "NO INICIADA",
-            "SIN INICIAR",
-            "PROGRAMADO",
-            "PROGRAMADA"
-        ].includes(estado);
-    }
-
     _indiceEtapa(nombre) {
         const texto = this._normalizarTexto(nombre);
         return this._etapasFlujo.findIndex((etapa) => this._normalizarTexto(etapa) === texto);
@@ -590,379 +936,11 @@ export class AtencionConsultaView extends HTMLElement {
     // ─── Renderizado ──────────────────────────────────────────────────────────
 
     render() {
+        this.#eventos.abort();
+        this.#eventos = new AbortController();
+        this.shadowRoot.adoptedStyleSheets = [estilos];
         this.shadowRoot.innerHTML = `
             <link rel="stylesheet" href="recursos/estilos/principal.css">
-            <style>
-                :host {
-                    display: block;
-                    min-inline-size: 0;
-                    container: atencion / inline-size;
-                    color: var(--color-text, #0f172a);
-                    font-family: var(--font-body, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
-                }
-
-                *, *::before, *::after {
-                    box-sizing: border-box;
-                }
-
-                /* ── Contenedor principal ── */
-                .vista {
-                    display: flex;
-                    flex-direction: column;
-                    gap: var(--space-6, 1.5rem);
-                    max-width: 56rem;
-                    margin: 0 auto;
-                }
-
-                /* ── Encabezado con resumen de la consulta ── */
-                .cabecera {
-                    display: flex;
-                    flex-wrap: wrap;
-                    align-items: flex-start;
-                    justify-content: space-between;
-                    gap: var(--space-4, 1rem);
-                    padding: var(--space-4, 1rem) var(--space-6, 1.5rem);
-                    border: var(--border-width, 1px) solid var(--color-border, #64748b);
-                    border-radius: var(--radius-lg, 0.75rem);
-                    background-color: var(--color-primary-soft, #dbeafe);
-                }
-
-                .cabecera-titulo {
-                    margin: 0 0 var(--space-1, 0.25rem);
-                    color: var(--color-primary, #1e3a8a);
-                    font-size: var(--text-lg, 1.125rem);
-                    font-weight: 700;
-                }
-
-                .cabecera > div {
-                    min-inline-size: 0;
-                    flex: 1 1 16rem;
-                }
-
-                .cabecera-meta li {
-                    min-inline-size: 0;
-                    max-inline-size: 100%;
-                    overflow-wrap: anywhere;
-                }
-
-                .cabecera-meta {
-                    display: flex;
-                    flex-wrap: wrap;
-                    gap: var(--space-1, 0.25rem) var(--space-4, 1rem);
-                    margin: 0;
-                    color: var(--color-text-muted, #475569);
-                    font-size: var(--text-sm, 0.875rem);
-                    list-style: none;
-                    padding: 0;
-                }
-
-                .btn-volver {
-                    display: inline-flex;
-                    align-items: center;
-                    gap: var(--space-1, 0.25rem);
-                    padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
-                    border: var(--border-width, 1px) solid var(--color-border, #64748b);
-                    border-radius: var(--radius, 0.5rem);
-                    background-color: var(--color-surface, #ffffff);
-                    color: var(--color-text, #0f172a);
-                    font: inherit;
-                    font-size: var(--text-sm, 0.875rem);
-                    cursor: pointer;
-                    white-space: nowrap;
-                }
-
-                .btn-volver:hover {
-                    background-color: var(--color-surface-alt, #e2e8f0);
-                }
-
-                .btn-volver:focus-visible {
-                    outline: var(--focus-width, 3px) solid var(--color-focus, var(--color-primary, #1e3a8a));
-                    outline-offset: var(--focus-offset, 3px);
-                }
-
-                /* ── Tarjeta de formulario ── */
-                .tarjeta {
-                    padding: clamp(0.75rem, 3cqi, 1.5rem);
-                    border: var(--border-width, 1px) solid var(--color-border, #64748b);
-                    border-radius: var(--radius-lg, 0.75rem);
-                    background-color: var(--color-surface, #ffffff);
-                    box-shadow: var(--shadow-sm, 0 1px 2px rgb(15 23 42 / 0.08));
-                }
-
-                .tarjeta-titulo {
-                    margin: 0 0 var(--space-6, 1.5rem);
-                    color: var(--color-primary, #1e3a8a);
-                    font-size: var(--text-xl, 1.25rem);
-                    font-weight: 700;
-                }
-
-                /* ── Formulario ── */
-                .form-clinico {
-                    display: flex;
-                    flex-direction: column;
-                    gap: var(--space-6, 1.5rem);
-                }
-
-                /* ── Grupo de campo ── */
-                .campo {
-                    display: flex;
-                    flex-direction: column;
-                    gap: var(--space-2, 0.5rem);
-                }
-
-                .campo-cabecera {
-                    display: flex;
-                    align-items: baseline;
-                    justify-content: space-between;
-                    gap: var(--space-2, 0.5rem);
-                    flex-wrap: wrap;
-                }
-
-                /* ── Etiqueta ── */
-                .etiqueta {
-                    color: var(--color-text, #0f172a);
-                    font-size: var(--text-sm, 0.875rem);
-                    font-weight: 600;
-                }
-
-                .etiqueta-descripcion {
-                    display: block;
-                    margin-top: var(--space-1, 0.25rem);
-                    color: var(--color-text-muted, #475569);
-                    font-size: var(--text-xs, 0.75rem);
-                    font-weight: 400;
-                }
-
-                /* ── Contador de caracteres ── */
-                .contador {
-                    font-size: var(--text-xs, 0.75rem);
-                    color: var(--color-text-muted, #475569);
-                    text-align: right;
-                    white-space: nowrap;
-                    flex-shrink: 0;
-                }
-
-                .contador[data-sobrepasado="true"] {
-                    color: var(--color-error, #b91c1c);
-                    font-weight: 600;
-                }
-
-                /* ── Textarea ── */
-                .textarea {
-                    width: 100%;
-                    min-height: 8rem;
-                    padding: var(--space-3, 0.75rem);
-                    border: var(--border-width, 1px) solid var(--color-border, #64748b);
-                    border-radius: var(--radius, 0.5rem);
-                    background-color: var(--color-surface, #ffffff);
-                    color: var(--color-text, #0f172a);
-                    font: inherit;
-                    font-size: var(--text-sm, 0.875rem);
-                    line-height: 1.6;
-                    resize: vertical;
-                    field-sizing: content;
-                    block-size: auto;
-                    min-block-size: 6lh;
-                    max-block-size: min(24lh, 60dvh);
-                    overflow-y: auto;
-                    overflow-x: hidden;
-                    transition: border-color 0.15s ease, box-shadow 0.15s ease;
-                }
-
-                .textarea::placeholder {
-                    color: var(--color-text-muted, #475569);
-                    opacity: 1;
-                }
-
-                input.textarea {
-                    min-height: 2.75rem;
-                    min-block-size: 2.75rem;
-                    field-sizing: fixed;
-                    resize: none;
-                }
-
-                .textarea:focus-visible {
-                    outline: var(--focus-width) solid var(--color-focus);
-                    outline-offset: var(--focus-offset);
-                    border-color: var(--color-primary, #1e3a8a);
-                    box-shadow: 0 0 0 3px var(--color-primary-soft, #dbeafe);
-                }
-
-                .textarea[aria-invalid="true"] {
-                    border-color: var(--color-error, #b91c1c);
-                    box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-error, #b91c1c) 15%, transparent);
-                }
-
-                /* ── Mensaje de error en campo ── */
-                .error-campo {
-                    min-height: 1rem;
-                    color: var(--color-error, #b91c1c);
-                    font-size: var(--text-xs, 0.75rem);
-                    font-weight: 500;
-                }
-
-                /* ── Divisor entre secciones ── */
-                .divisor {
-                    height: 1px;
-                    border: none;
-                    background-color: var(--color-surface-alt, #e2e8f0);
-                    margin: 0;
-                }
-
-                /* ── Acciones del formulario ── */
-                .acciones {
-                    display: flex;
-                    flex-wrap: wrap;
-                    justify-content: flex-end;
-                    gap: var(--space-3, 0.75rem);
-                    padding-top: var(--space-4, 1rem);
-                    border-top: var(--border-width, 1px) solid var(--color-surface-alt, #e2e8f0);
-                }
-
-                .aviso-offline {
-                    flex-basis: 100%;
-                    margin: 0;
-                    padding: var(--space-3, 0.75rem);
-                    border: var(--border-width, 1px) solid var(--color-warning, #b45309);
-                    border-radius: var(--radius, 0.5rem);
-                    background-color: var(--color-warning-soft, #fef3c7);
-                    color: var(--color-text, #0f172a);
-                    font-size: var(--text-sm, 0.875rem);
-                }
-
-                .btn {
-                    display: inline-flex;
-                    align-items: center;
-                    justify-content: center;
-                    gap: var(--space-2, 0.5rem);
-                    min-height: 2.75rem;
-                    padding: var(--space-2, 0.5rem) var(--space-5, 1.25rem);
-                    border: var(--border-width, 1px) solid var(--color-border, #64748b);
-                    border-radius: var(--radius, 0.5rem);
-                    background-color: var(--color-surface, #ffffff);
-                    color: var(--color-text, #0f172a);
-                    font: inherit;
-                    font-size: var(--text-sm, 0.875rem);
-                    font-weight: 600;
-                    cursor: pointer;
-                    transition: background-color 0.15s ease, border-color 0.15s ease;
-                }
-
-                .btn:hover {
-                    background-color: var(--color-surface-alt, #e2e8f0);
-                }
-
-                .btn:focus-visible {
-                    outline: var(--focus-width, 3px) solid var(--color-focus, var(--color-primary, #1e3a8a));
-                    outline-offset: var(--focus-offset, 3px);
-                }
-
-                .btn:disabled {
-                    cursor: not-allowed;
-                    opacity: 0.6;
-                }
-
-                .btn-cancelar {
-                    border-color: var(--color-border, #64748b);
-                }
-
-                .btn-guardar {
-                    border-color: var(--color-primary, #1e3a8a);
-                    background-color: var(--color-primary, #1e3a8a);
-                    color: #ffffff;
-                }
-
-                .btn-guardar:hover:not(:disabled) {
-                    border-color: var(--color-primary-hover, #172554);
-                    background-color: var(--color-primary-hover, #172554);
-                }
-
-                .btn-guardar-notas {
-                    border-color: var(--color-secondary, #0369a1);
-                    background-color: var(--color-secondary, #0369a1);
-                    color: #ffffff;
-                }
-
-                .btn-guardar-notas:hover:not(:disabled) {
-                    border-color: var(--color-secondary-hover, #075985);
-                    background-color: var(--color-secondary-hover, #075985);
-                }
-
-                /* ── Spinner de carga ── */
-                .spinner {
-                    display: none;
-                    width: 1rem;
-                    height: 1rem;
-                    border: 2px solid currentColor;
-                    border-right-color: transparent;
-                    border-radius: 9999px;
-                    animation: girar 0.75s linear infinite;
-                    flex-shrink: 0;
-                }
-
-                .btn-guardar.enviando .spinner {
-                    display: inline-block;
-                }
-
-                @keyframes girar {
-                    to { transform: rotate(360deg); }
-                }
-
-                /* ── Aviso sin consulta activa ── */
-                .aviso-sin-consulta {
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    gap: var(--space-4, 1rem);
-                    padding: var(--space-8, 2rem) var(--space-4, 1rem);
-                    text-align: center;
-                    color: var(--color-text-muted, #475569);
-                }
-
-                .aviso-sin-consulta p {
-                    margin: 0;
-                    font-size: var(--text-sm, 0.875rem);
-                }
-
-                /* ── Responsivo ── */
-                @container atencion (inline-size < 40rem) {
-                    .tarjeta {
-                        padding: var(--space-4, 1rem);
-                    }
-
-                    .cabecera {
-                        padding: var(--space-3, 0.75rem) var(--space-4, 1rem);
-                    }
-
-                    .acciones {
-                        flex-direction: column;
-                    }
-
-                    .btn {
-                        width: 100%;
-                    }
-                }
-
-                @media (prefers-reduced-motion: reduce) {
-                    .spinner {
-                        animation-duration: 0.01ms;
-                    }
-                    .textarea,
-                    .btn {
-                        transition: none;
-                    }
-                }
-
-                /* ── Stepper ── */
-                .stepper-contenedor {
-                    padding: var(--space-3, 0.75rem) var(--space-4, 1rem);
-                    border: var(--border-width, 1px) solid var(--color-border, #64748b);
-                    border-radius: var(--radius-lg, 0.75rem);
-                    background-color: var(--color-surface, #ffffff);
-                    box-shadow: var(--shadow-sm, 0 1px 2px rgb(15 23 42 / 0.08));
-                }
-
-            </style>
 
             <section class="vista" aria-labelledby="titulo-vista">
                 ${this._htmlCabecera()}
@@ -1051,7 +1029,7 @@ export class AtencionConsultaView extends HTMLElement {
         const fechaOriginal = fuentes.flatMap((datos) => [
             datos.inicio, datos.fecha, datos.fechaConsulta, datos.fechaCita, datos.fechaHora, datos.fechaInicio
         ]).find((valor) => GestorFechas.extraerFechaCalendario(valor));
-        const fecha = this._formatearFecha(fechaOriginal);
+        const fecha = GestorFechas.formatearFechaCalendario(fechaOriginal);
         const hora = consulta?.hora ?? consulta?.cita?.hora ?? "";
         const paciente = this._nombrePaciente(consulta);
         const clinica = obtenerNombreClinicaConsulta(consulta);
@@ -1064,11 +1042,11 @@ export class AtencionConsultaView extends HTMLElement {
                 <div>
                     <h1 class="cabecera-titulo">Atención de Consulta</h1>
                     <ul class="cabecera-meta" aria-label="Datos del paciente y la consulta">
-                        ${idConsulta !== "—" ? `<li>Consulta #${this._escapar(String(idConsulta))}</li>` : ""}
-                        ${paciente ? `<li><strong>${this._escapar(paciente)}</strong>${edad !== null ? ` · ${edad} años` : ""}</li>` : ""}
-                        ${documento ? `<li>Doc: ${this._escapar(documento)}</li>` : ""}
-                        ${fecha ? `<li>Fecha: ${this._escapar(fecha)}${hora ? ` · ${this._escapar(hora)}` : ""}</li>` : ""}
-                        ${clinica ? `<li>Clínica: ${this._escapar(String(clinica))}</li>` : ""}
+                        ${idConsulta !== "—" ? `<li>Consulta #${escaparHtml(String(idConsulta))}</li>` : ""}
+                        ${paciente ? `<li><strong>${escaparHtml(paciente)}</strong>${edad !== null ? ` · ${edad} años` : ""}</li>` : ""}
+                        ${documento ? `<li>Doc: ${escaparHtml(documento)}</li>` : ""}
+                        ${fecha ? `<li>Fecha: ${escaparHtml(fecha)}${hora ? ` · ${escaparHtml(hora)}` : ""}</li>` : ""}
+                        ${clinica ? `<li>Clínica: ${escaparHtml(String(clinica))}</li>` : ""}
                         ${!consulta ? `<li>Sin consulta activa</li>` : ""}
                     </ul>
                 </div>
@@ -1184,8 +1162,8 @@ export class AtencionConsultaView extends HTMLElement {
                 <div class="campo" id="grupo-examenes">
                     <lista-examenes-asignables
                         id="lista-examenes"
-                        id-consulta="${this._escapar(String(this._idConsulta() ?? ""))}"
-                        id-paso="${this._escapar(String(this._idPasoActivo() ?? ""))}"
+                        id-consulta="${escaparHtml(String(this._idConsulta() ?? ""))}"
+                        id-paso="${escaparHtml(String(this._idPasoActivo() ?? ""))}"
                     ></lista-examenes-asignables>
                 </div>
 
@@ -1261,11 +1239,10 @@ export class AtencionConsultaView extends HTMLElement {
             this._sincronizarStepper();
             stepper.addEventListener("paso-click", (evento) => {
                 const indice = evento.detail?.indice;
-                const estado = this._obtenerEstadoPaso(this._pasosFlujo[indice]);
                 if (Number.isInteger(indice) && this._pasosFlujo[indice]) {
                     this._seleccionarPaso(indice);
                 }
-            });
+            }, { signal: this.#eventos.signal });
         }
 
         // ── Órdenes de exámenes: vincular siempre al paso activo ──
@@ -1274,45 +1251,48 @@ export class AtencionConsultaView extends HTMLElement {
             this._sincronizarListaExamenes();
             listaExamenes.addEventListener("ordenes-asignadas", (evento) => {
                 this._alAsignarOrdenesExamen(evento.detail);
-            });
+            }, { signal: this.#eventos.signal });
         }
 
-        btnVolver?.addEventListener("click", () => this._volverAlDashboard());
+        btnVolver?.addEventListener("click", () => this._volverAlDashboard(), { signal: this.#eventos.signal });
         this._conectarEventosAcciones();
 
         if (textareaNotas) {
             textareaNotas.addEventListener("input", () => {
                 this._actualizarContador("contador-notas", textareaNotas.value.length, MAX_NOTAS);
                 this._limpiarErrorCampo("notas");
-            });
+            }, { signal: this.#eventos.signal });
         }
 
         if (textareaPlan) {
             textareaPlan.addEventListener("input", () => {
                 this._actualizarContador("contador-plan", textareaPlan.value.length, MAX_PLAN);
                 this._limpiarErrorCampo("plan");
-            });
+            }, { signal: this.#eventos.signal });
         }
 
         form?.addEventListener("submit", (evento) => {
             evento.preventDefault();
             this._alEnviarFormulario();
-        });
+        }, { signal: this.#eventos.signal });
     }
 
     _conectarEventosAcciones() {
+        this.#acciones.abort();
+        this.#acciones = new AbortController();
+        this.#accionesHtml = this._htmlAcciones();
         const btnCancelar = this.shadowRoot.querySelector("#btn-cancelar");
         const btnAnterior = this.shadowRoot.querySelector("#btn-anterior");
 
-        btnCancelar?.addEventListener("click", () => this._cancelar());
-        btnAnterior?.addEventListener("click", () => this._retrocederPaso());
+        btnCancelar?.addEventListener("click", () => this._cancelar(), { signal: this.#acciones.signal });
+        btnAnterior?.addEventListener("click", () => this._retrocederPaso(), { signal: this.#acciones.signal });
         this.shadowRoot.querySelector("#btn-retomar")?.addEventListener("click", () => {
             this._seleccionarPaso(this._indicePasoTrabajo);
-        });
+        }, { signal: this.#acciones.signal });
         this.shadowRoot.querySelector("#btn-guardar-notas")?.addEventListener("click", () => {
             this._guardarNotas();
-        });
-        this.shadowRoot.querySelector('#btn-dashboard')?.addEventListener('click', () => this._volverAlDashboard());
+        }, { signal: this.#acciones.signal });
+        this.shadowRoot.querySelector('#btn-dashboard')?.addEventListener('click', () => this._volverAlDashboard(), { signal: this.#acciones.signal });
     }
 
     // ─── Lógica de negocio ────────────────────────────────────────────────────
@@ -1549,7 +1529,6 @@ export class AtencionConsultaView extends HTMLElement {
             this._actualizarContador("contador-plan", 0, MAX_PLAN);
         }
 
-
     }
 
     _aplicarValidacionesPaso(indicePaso) {
@@ -1568,13 +1547,17 @@ export class AtencionConsultaView extends HTMLElement {
 
     _actualizarBotonera() {
         const acciones = this.shadowRoot?.querySelector(".acciones");
-
-        if (!acciones) {
-            return;
-        }
-
-        acciones.outerHTML = this._htmlAcciones();
+        const html = this._htmlAcciones();
+        if (!acciones || html === this.#accionesHtml) return;
+        const activo = this.shadowRoot.activeElement;
+        const idActivo = acciones.contains(activo) ? activo.id : null;
+        acciones.outerHTML = html;
         this._conectarEventosAcciones();
+        if (idActivo) {
+            const siguiente = this.shadowRoot.getElementById(idActivo)
+                ?? this.shadowRoot.querySelector('#btn-siguiente, #btn-finalizar, #btn-dashboard');
+            siguiente?.focus();
+        }
     }
 
     _publicarConsulta() {
@@ -1905,24 +1888,6 @@ export class AtencionConsultaView extends HTMLElement {
         return nombreCompleto || "";
     }
 
-    _formatearFecha(fecha) {
-        return GestorFechas.formatearFechaCalendario(fecha);
-    }
-
-    /**
-     * Escapa caracteres HTML especiales para evitar inyecciones en la plantilla.
-     * @param {string} texto
-     * @returns {string}
-     */
-    _escapar(texto) {
-        if (!texto) return "";
-        return String(texto)
-            .replace(/&/g, "&amp;")
-            .replace(/</g, "&lt;")
-            .replace(/>/g, "&gt;")
-            .replace(/"/g, "&quot;")
-            .replace(/'/g, "&#39;");
-    }
 }
 
 export default AtencionConsultaView;

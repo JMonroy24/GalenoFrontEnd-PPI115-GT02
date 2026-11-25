@@ -1,3 +1,4 @@
+import { crearPlantilla } from "../dom.js";
 import { consultaService, obtenerPacienteConsulta, obtenerDocumentoConsulta, obtenerNombreClinicaConsulta } from '../../control/consulta_service.js';
 import GestorFechas from '../../control/gestor_fechas.js';
 import '../componentes/historial_pasos.js';
@@ -6,7 +7,40 @@ import '../componentes/opciones_ticket.js';
 const texto = valor => Array.isArray(valor) ? valor.map(texto).filter(Boolean).join(' ')
     : typeof valor === 'string' || typeof valor === 'number' ? String(valor).trim() : '';
 
+const { contenido: plantilla, estilos } = crearPlantilla(`
+<link rel="stylesheet" href="recursos/estilos/principal.css">
+<style>
+    :host { display: block; min-inline-size: 0; container: detalle / inline-size; }
+    section { background: var(--color-surface, white); padding: clamp(0.75rem, 3cqi, 1.5rem); border: 1px solid var(--color-border, #64748b); border-radius: 0.75rem; }
+    h1, h2, h3 { color: var(--color-primary, #1e3a8a); }
+    h1 { font-size: clamp(1.5rem, 1.25rem + 1cqi, 2rem); margin-block-start: 0; }
+    dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: 1rem; }
+    dt { font-weight: 600; } dd { margin: 0.25rem 0 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+    article { margin-block: 1rem; padding-block: 0.5rem; border-block-start: 1px solid var(--color-border, #64748b); }
+    .acciones { display: flex; flex-wrap: wrap; gap: 1rem; margin-block-start: 1rem; }
+    [hidden] { display: none !important; }
+@container detalle (inline-size < 28rem) {
+    .acciones .btn { inline-size: 100%; }
+}
+</style>
+<section aria-labelledby="titulo-consulta">
+    <h1 id="titulo-consulta">Detalle de la consulta</h1>
+    <p>Información de solo lectura.</p>
+    <p id="estado" role="status" aria-live="polite"></p>
+    <div id="detalle" hidden>
+        <h2>Paciente y clínica</h2><dl id="datos"></dl>
+        <h2>Procedimientos y pasos realizados</h2><div id="procedimientos"></div>
+        <opciones-ticket></opciones-ticket>
+    </div>
+    <div class="acciones">
+        <a class="btn" href="#buscar-citas">Volver a buscar citas</a>
+        <button class="btn" id="reintentar" type="button" hidden>Reintentar</button>
+    </div>
+</section>
+`);
+
 export class DetalleConsultaView extends HTMLElement {
+    #eventos = new AbortController();
     static get observedAttributes() { return ['data-route-id', 'id-consulta']; }
 
     constructor() {
@@ -18,39 +52,19 @@ export class DetalleConsultaView extends HTMLElement {
     get idConsulta() { return this.getAttribute('id-consulta') ?? this.dataset.routeId ?? ''; }
 
     connectedCallback() {
-        this.shadowRoot.innerHTML = `
-            <link rel="stylesheet" href="recursos/estilos/principal.css">
-            <style>
-                :host { display: block; min-inline-size: 0; }
-                section { background: var(--color-surface, white); padding: 1rem; border: 1px solid var(--color-border, #64748b); border-radius: 0.75rem; }
-                h1, h2, h3 { color: var(--color-primary, #1e3a8a); }
-                h1 { margin-block-start: 0; }
-                dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: 1rem; }
-                dt { font-weight: 600; } dd { margin: 0.25rem 0 0; overflow-wrap: anywhere; white-space: pre-wrap; }
-                article { margin-block: 1rem; padding-block: 0.5rem; border-block-start: 1px solid var(--color-border, #64748b); }
-                .acciones { display: flex; flex-wrap: wrap; gap: 1rem; margin-block-start: 1rem; }
-                [hidden] { display: none !important; }
-            </style>
-            <section aria-labelledby="titulo-consulta">
-                <h1 id="titulo-consulta">Detalle de la consulta</h1>
-                <p>Información de solo lectura.</p>
-                <p id="estado" role="status" aria-live="polite"></p>
-                <div id="detalle" hidden>
-                    <h2>Paciente y clínica</h2><dl id="datos"></dl>
-                    <h2>Procedimientos y pasos realizados</h2><div id="procedimientos"></div>
-                    <opciones-ticket></opciones-ticket>
-                </div>
-                <div class="acciones">
-                    <a class="btn" href="#buscar-citas">Volver a buscar citas</a>
-                    <button class="btn" id="reintentar" type="button" hidden>Reintentar</button>
-                </div>
-            </section>
-        `;
-        this.shadowRoot.querySelector('#reintentar').addEventListener('click', () => this.cargar());
+        this.#eventos.abort();
+        this.#eventos = new AbortController();
+        if (!this.shadowRoot.firstChild) {
+            this.shadowRoot.adoptedStyleSheets = [estilos];
+            this.shadowRoot.append(plantilla.content.cloneNode(true));
+        }
+        this.shadowRoot.querySelector('#reintentar').addEventListener('click', () => this.cargar(), { signal: this.#eventos.signal });
         this.cargar();
     }
 
-    disconnectedCallback() { this._solicitud++; }
+    disconnectedCallback() {
+        this.#eventos.abort();
+ this._solicitud++; }
     attributeChangedCallback() { if (this.isConnected) this.cargar(); }
 
     async cargar() {

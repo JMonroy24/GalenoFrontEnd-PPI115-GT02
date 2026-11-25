@@ -1,8 +1,46 @@
+import { crearPlantilla } from "../dom.js";
 import { store } from "../../store.js";
 
 const MSG_OFFLINE =
     "Sin conexión. La interfaz disponible se sirve desde la caché y algunas acciones no estarán disponibles.";
 const MSG_ONLINE = "Conexión restablecida.";
+
+const { contenido: plantilla, estilos } = crearPlantilla(`
+<style>
+    :host { display: block; min-inline-size: 0; }
+    :host([hidden]) { display: none; }
+    #banner {
+        display: flex;
+        align-items: center;
+        gap: var(--espacio-2, 0.5rem);
+        padding: var(--espacio-2, 0.5rem) var(--espacio-4, 1rem);
+        font-family: var(--fuente-cuerpo, system-ui, sans-serif);
+        font-size: var(--tamano-sm, 0.9rem);
+        font-weight: 600;
+        border-block-end: 2px solid currentColor;
+    }
+    #banner[hidden] { display: none; }
+    #banner[data-modo="offline"] {
+        background: var(--color-advertencia-fondo, #fffbeb);
+        color: var(--color-advertencia, #854d0e);
+    }
+    #banner[data-modo="online"] {
+        background: var(--color-exito-fondo, #f0fdf4);
+        color: var(--color-exito, #166534);
+    }
+    .punto {
+        inline-size: 0.6rem;
+        block-size: 0.6rem;
+        border-radius: 50%;
+        background: currentColor;
+        flex: none;
+    }
+</style>
+<div id="banner" role="status" aria-live="polite" hidden>
+    <span class="punto" aria-hidden="true"></span>
+    <span id="texto"></span>
+</div>
+`);
 
 /**
  * <estado-red>
@@ -12,27 +50,28 @@ const MSG_ONLINE = "Conexión restablecida.";
  * Usa role="status" + aria-live="polite" para anunciarse a lectores de pantalla.
  */
 export class EstadoRed extends HTMLElement {
+    #eventos = new AbortController();
     constructor() {
         super();
         this.attachShadow({ mode: "open" });
         this.duracionMensajeMs = 4000;
         this._online = true;
         this._timer = null;
-        this._desuscribir = null;
     }
 
     connectedCallback() {
+        this.#eventos.abort();
+        this.#eventos = new AbortController();
         this._renderEstructura();
         this._online = store.state?.online !== false;
         this._mostrar(this._online ? null : "offline");
-        this._desuscribir = store.subscribe((evento) => {
+        store.subscribe((evento) => {
             this._cambio(evento.detail?.online !== false);
-        });
+        }, { signal: this.#eventos.signal });
     }
 
     disconnectedCallback() {
-        this._desuscribir?.();
-        this._desuscribir = null;
+        this.#eventos.abort();
         clearTimeout(this._timer);
     }
 
@@ -65,42 +104,10 @@ export class EstadoRed extends HTMLElement {
     }
 
     _renderEstructura() {
-        this.shadowRoot.innerHTML = `
-            <style>
-                :host { display: block; min-inline-size: 0; }
-                :host([hidden]) { display: none; }
-                #banner {
-                    display: flex;
-                    align-items: center;
-                    gap: var(--espacio-2, 0.5rem);
-                    padding: var(--espacio-2, 0.5rem) var(--espacio-4, 1rem);
-                    font-family: var(--fuente-cuerpo, system-ui, sans-serif);
-                    font-size: var(--tamano-sm, 0.9rem);
-                    font-weight: 600;
-                    border-bottom: 2px solid currentColor;
-                }
-                #banner[hidden] { display: none; }
-                #banner[data-modo="offline"] {
-                    background: var(--color-advertencia-fondo, #fffbeb);
-                    color: var(--color-advertencia, #854d0e);
-                }
-                #banner[data-modo="online"] {
-                    background: var(--color-exito-fondo, #f0fdf4);
-                    color: var(--color-exito, #166534);
-                }
-                .punto {
-                    inline-size: 0.6rem;
-                    block-size: 0.6rem;
-                    border-radius: 50%;
-                    background: currentColor;
-                    flex: none;
-                }
-            </style>
-            <div id="banner" role="status" aria-live="polite" hidden>
-                <span class="punto" aria-hidden="true"></span>
-                <span id="texto"></span>
-            </div>
-        `;
+        if (!this.shadowRoot.firstChild) {
+            this.shadowRoot.adoptedStyleSheets = [estilos];
+            this.shadowRoot.append(plantilla.content.cloneNode(true));
+        }
     }
 }
 

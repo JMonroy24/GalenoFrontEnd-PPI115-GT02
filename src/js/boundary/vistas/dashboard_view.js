@@ -1,3 +1,4 @@
+import { crearPlantilla } from "../dom.js";
 import { store } from "../../store.js";
 import { consultaService } from "../../control/consulta_service.js";
 import "../componentes/tarjeta_consulta.js";
@@ -9,7 +10,219 @@ import { puedeAtenderConsulta } from '../../entity/flujo_consulta.js';
 const DEBOUNCE_BUSQUEDA_MS = 300;
 const DIAS_RANGO_PERIODO = 30;
 
+const { contenido: plantilla, estilos } = crearPlantilla(`
+<link rel="stylesheet" href="recursos/estilos/principal.css">
+<style>
+    :host {
+        display: block;
+        min-inline-size: 0; container: dashboard / inline-size;
+        color: var(--color-text, #0f172a);
+        font-family: var(--font-body, system-ui, sans-serif);
+    }
+    .dashboard {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-4, 1rem);
+    }
+    .cabecera {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: var(--space-4, 1rem);
+        padding: var(--space-4, 1rem);
+        border: var(--border-width, 1px) solid var(--color-border, #64748b);
+        border-radius: var(--radius-lg, 0.75rem);
+        background-color: var(--color-surface, #ffffff);
+        box-shadow: var(--shadow-sm, 0 1px 2px rgb(15 23 42 / 0.08));
+    }
+    h2 {
+        margin: 0;
+        color: var(--color-primary, #1e3a8a);
+        font-size: var(--text-xl, 1.25rem);
+    }
+    .selectores,
+    .selector-contexto {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-3, 0.75rem);
+    }
+    .campo {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-xs, 0.25rem);
+        min-inline-size: 0;
+    }
+    .selector-contexto { min-inline-size: 0; flex: 1 1 24rem; }
+    .selector-contexto .campo { flex: 1 1 12rem; }
+    label {
+        color: var(--color-text-muted, #475569);
+        font-size: var(--text-xs, 0.75rem);
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+    .filtros,
+    .barra-filtros {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+        align-items: end;
+        gap: var(--space-3, 0.75rem);
+        padding: var(--space-4, 1rem);
+        border: var(--border-width, 1px) solid var(--color-border, #64748b);
+        border-radius: var(--radius-lg, 0.75rem);
+        background-color: var(--color-surface, #ffffff);
+        box-shadow: var(--shadow-sm, 0 1px 2px rgb(15 23 42 / 0.08));
+    }
+    .campo-busqueda {
+        min-inline-size: 0;
+    }
+    .panel-principal {
+        display: block;
+    }
+    .seccion-citas {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-4, 1rem);
+        min-inline-size: 0;
+    }
+    .citas,
+    .grilla-citas {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
+        gap: var(--space-4, 1rem);
+    }
+    .citas[hidden],
+    .estado[hidden] {
+        display: none;
+    }
+    .estado {
+        padding: var(--space-4, 1rem);
+        border: var(--border-width, 1px) solid var(--color-border, #64748b);
+        border-radius: var(--radius-lg, 0.75rem);
+        background-color: var(--color-surface, #ffffff);
+        color: var(--color-text-muted, #475569);
+        text-align: center;
+    }
+    .btn-atender {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: var(--space-2, 0.5rem) var(--space-4, 1rem);
+        border: 0;
+        border-radius: var(--radius-md, 0.5rem);
+        background-color: var(--color-primary, #1e3a8a);
+        color: #ffffff;
+        font: inherit;
+        font-size: var(--text-sm, 0.875rem);
+        font-weight: 600;
+        cursor: pointer;
+        transition: background-color 0.2s ease;
+    }
+    .btn-atender:hover {
+        background-color: var(--color-primary-hover, #172554);
+    }
+    .btn-atender:focus-visible {
+        outline: 2px solid var(--color-secondary, #0284c7);
+        outline-offset: 2px;
+    }
+@container dashboard (inline-size < 40rem) {
+    .cabecera { align-items: stretch; }
+    .selector-contexto { flex-basis: 100%; }
+}
+</style>
+<section class="dashboard">
+    <header class="cabecera">
+        <h2>Dashboard</h2>
+        <div class="selectores selector-contexto">
+            <div class="campo">
+                <label for="clinica-activa">Clínica Activa</label>
+                <select
+                    id="clinica-activa"
+                    name="clinicaActiva"
+                    class="form-control"
+                    aria-label="Clínica Activa"
+                ></select>
+            </div>
+            <div class="campo">
+                <label for="rol-activo">Rol Activo</label>
+                <select
+                    id="rol-activo"
+                    name="rolActivo"
+                    class="form-control"
+                    aria-label="Rol Activo"
+                ></select>
+            </div>
+        </div>
+    </header>
+    <div class="filtros barra-filtros">
+        <div class="campo">
+            <label for="periodo-citas">Periodo</label>
+            <select
+                id="periodo-citas"
+                name="periodo"
+                class="form-control"
+                aria-label="Periodo de las citas"
+            >
+                <option value="mes">Mes actual hasta hoy</option>
+                <option value="hoy">Hoy</option>
+                <option value="pasado">Pasado (30 días)</option>
+                <option value="futuro">Futuro (30 días)</option>
+                <option value="personalizado">Rango personalizado</option>
+            </select>
+        </div>
+        <div class="campo">
+            <label for="fechaDesde">Desde</label>
+            <input
+                id="fechaDesde"
+                name="fechaDesde"
+                type="date"
+                class="form-control"
+                aria-label="Fecha desde"
+                aria-describedby="error-fechas"
+            >
+        </div>
+        <div class="campo">
+            <label for="fechaHasta">Hasta</label>
+            <input
+                id="fechaHasta"
+                name="fechaHasta"
+                type="date"
+                class="form-control"
+                aria-label="Fecha hasta"
+                aria-describedby="error-fechas"
+            >
+        </div>
+        <div class="campo campo-busqueda">
+            <label for="busqueda-citas">Buscar paciente</label>
+            <input
+                id="busqueda-citas"
+                name="busqueda"
+                type="search"
+                class="form-control"
+                placeholder="Nombre o número de documento"
+                aria-label="Buscar por nombre o número de documento del paciente"
+            >
+        </div>
+    </div>
+    <p id="error-fechas" role="alert" hidden></p>
+    <div class="panel-principal">
+        <section class="seccion-citas" aria-label="Listado de Citas">
+            <div
+                id="estado-citas"
+                class="estado"
+                role="status"
+                aria-live="polite"
+                hidden
+            ></div>
+            <div id="citas" class="citas grilla-citas" role="list" hidden></div>
+        </section>
+    </div>
+</section>
+`);
+
 export class DashboardView extends HTMLElement {
+    #eventos = new AbortController();
+    #conexion = new AbortController();
     constructor() {
         super();
         this.attachShadow({ mode: "open" });
@@ -50,230 +263,35 @@ export class DashboardView extends HTMLElement {
     }
 
     connectedCallback() {
+        this.#conexion.abort();
+        this.#conexion = new AbortController();
         this._normalizarContexto(store.getState());
         const estado = store.getState();
         this.contextoPrevio = this._claveContexto(estado);
         this.render();
-        store.addEventListener("state-changed", this.actualizarDesdeStore);
+        store.addEventListener("state-changed", this.actualizarDesdeStore, { signal: this.#conexion.signal });
         this._cargarCitas();
     }
 
     disconnectedCallback() {
-        store.removeEventListener("state-changed", this.actualizarDesdeStore);
+        this.#eventos.abort();
+        this.#conexion.abort();
+
         this._cancelarDebounce();
         this.solicitudActual++;
     }
 
     render() {
+        this.#eventos.abort();
+        this.#eventos = new AbortController();
         const estado = store.getState();
         this.clinicas = this._obtenerClinicas(estado);
         this.roles = this._obtenerRoles(estado);
 
-        this.shadowRoot.innerHTML = `
-            <link rel="stylesheet" href="recursos/estilos/principal.css">
-            <style>
-                :host {
-                    display: block;
-                    min-inline-size: 0;
-                    color: var(--color-text, #0f172a);
-                    font-family: var(--font-body, system-ui, sans-serif);
-                }
-                .dashboard {
-                    display: flex;
-                    flex-direction: column;
-                    gap: var(--space-4, 1rem);
-                }
-                .cabecera {
-                    display: flex;
-                    flex-wrap: wrap;
-                    align-items: flex-end;
-                    justify-content: space-between;
-                    gap: var(--space-4, 1rem);
-                    padding: var(--space-4, 1rem);
-                    border: var(--border-width, 1px) solid var(--color-border, #64748b);
-                    border-radius: var(--radius-lg, 0.75rem);
-                    background-color: var(--color-surface, #ffffff);
-                    box-shadow: var(--shadow-sm, 0 1px 2px rgb(15 23 42 / 0.08));
-                }
-                h2 {
-                    margin: 0;
-                    color: var(--color-primary, #1e3a8a);
-                    font-size: var(--text-xl, 1.25rem);
-                }
-                .selectores,
-                .selector-contexto {
-                    display: flex;
-                    flex-wrap: wrap;
-                    gap: var(--space-3, 0.75rem);
-                }
-                .campo {
-                    display: flex;
-                    flex-direction: column;
-                    gap: var(--space-xs, 0.25rem);
-                    min-inline-size: 0;
-                }
-                .selector-contexto { min-inline-size: 0; flex: 1 1 24rem; }
-                .selector-contexto .campo { flex: 1 1 12rem; }
-                label {
-                    color: var(--color-text-muted, #475569);
-                    font-size: var(--text-xs, 0.75rem);
-                    font-weight: 600;
-                    text-transform: uppercase;
-                }
-                .filtros,
-                .barra-filtros {
-                    display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
-                    align-items: end;
-                    gap: var(--space-3, 0.75rem);
-                    padding: var(--space-4, 1rem);
-                    border: var(--border-width, 1px) solid var(--color-border, #64748b);
-                    border-radius: var(--radius-lg, 0.75rem);
-                    background-color: var(--color-surface, #ffffff);
-                    box-shadow: var(--shadow-sm, 0 1px 2px rgb(15 23 42 / 0.08));
-                }
-                .campo-busqueda {
-                    min-inline-size: 0;
-                }
-                .panel-principal {
-                    display: block;
-                }
-                .seccion-citas {
-                    display: flex;
-                    flex-direction: column;
-                    gap: var(--space-4, 1rem);
-                    min-width: 0;
-                }
-                .citas,
-                .grilla-citas {
-                    display: grid;
-                    grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
-                    gap: var(--space-4, 1rem);
-                }
-                .citas[hidden],
-                .estado[hidden] {
-                    display: none;
-                }
-                .estado {
-                    padding: var(--space-4, 1rem);
-                    border: var(--border-width, 1px) solid var(--color-border, #64748b);
-                    border-radius: var(--radius-lg, 0.75rem);
-                    background-color: var(--color-surface, #ffffff);
-                    color: var(--color-text-muted, #475569);
-                    text-align: center;
-                }
-                .btn-atender {
-                    display: inline-flex;
-                    align-items: center;
-                    justify-content: center;
-                    padding: var(--space-2, 0.5rem) var(--space-4, 1rem);
-                    border: 0;
-                    border-radius: var(--radius-md, 0.5rem);
-                    background-color: var(--color-primary, #1e3a8a);
-                    color: #ffffff;
-                    font: inherit;
-                    font-size: var(--text-sm, 0.875rem);
-                    font-weight: 600;
-                    cursor: pointer;
-                    transition: background-color 0.2s ease;
-                }
-                .btn-atender:hover {
-                    background-color: var(--color-primary-hover, #172554);
-                }
-                .btn-atender:focus-visible {
-                    outline: 2px solid var(--color-secondary, #0284c7);
-                    outline-offset: 2px;
-                }
-            </style>
-            <section class="dashboard">
-                <header class="cabecera">
-                    <h2>Dashboard</h2>
-                    <div class="selectores selector-contexto">
-                        <div class="campo">
-                            <label for="clinica-activa">Clínica Activa</label>
-                            <select
-                                id="clinica-activa"
-                                name="clinicaActiva"
-                                class="form-control"
-                                aria-label="Clínica Activa"
-                            ></select>
-                        </div>
-                        <div class="campo">
-                            <label for="rol-activo">Rol Activo</label>
-                            <select
-                                id="rol-activo"
-                                name="rolActivo"
-                                class="form-control"
-                                aria-label="Rol Activo"
-                            ></select>
-                        </div>
-                    </div>
-                </header>
-                <div class="filtros barra-filtros">
-                    <div class="campo">
-                        <label for="periodo-citas">Periodo</label>
-                        <select
-                            id="periodo-citas"
-                            name="periodo"
-                            class="form-control"
-                            aria-label="Periodo de las citas"
-                        >
-                            <option value="mes">Mes actual hasta hoy</option>
-                            <option value="hoy">Hoy</option>
-                            <option value="pasado">Pasado (30 días)</option>
-                            <option value="futuro">Futuro (30 días)</option>
-                            <option value="personalizado">Rango personalizado</option>
-                        </select>
-                    </div>
-                    <div class="campo">
-                        <label for="fechaDesde">Desde</label>
-                        <input
-                            id="fechaDesde"
-                            name="fechaDesde"
-                            type="date"
-                            class="form-control"
-                            aria-label="Fecha desde"
-                            aria-describedby="error-fechas"
-                        >
-                    </div>
-                    <div class="campo">
-                        <label for="fechaHasta">Hasta</label>
-                        <input
-                            id="fechaHasta"
-                            name="fechaHasta"
-                            type="date"
-                            class="form-control"
-                            aria-label="Fecha hasta"
-                            aria-describedby="error-fechas"
-                        >
-                    </div>
-                    <div class="campo campo-busqueda">
-                        <label for="busqueda-citas">Buscar paciente</label>
-                        <input
-                            id="busqueda-citas"
-                            name="busqueda"
-                            type="search"
-                            class="form-control"
-                            placeholder="Nombre o número de documento"
-                            aria-label="Buscar por nombre o número de documento del paciente"
-                        >
-                    </div>
-                </div>
-                <p id="error-fechas" role="alert" hidden></p>
-                <div class="panel-principal">
-                    <section class="seccion-citas" aria-label="Listado de Citas">
-                        <div
-                            id="estado-citas"
-                            class="estado"
-                            role="status"
-                            aria-live="polite"
-                            hidden
-                        ></div>
-                        <div id="citas" class="citas grilla-citas" role="list" hidden></div>
-                    </section>
-                </div>
-            </section>
-        `;
+        if (!this.shadowRoot.firstChild) {
+            this.shadowRoot.adoptedStyleSheets = [estilos];
+            this.shadowRoot.append(plantilla.content.cloneNode(true));
+        }
 
         const selectClinica = this.shadowRoot.querySelector("#clinica-activa");
         const selectRol = this.shadowRoot.querySelector("#rol-activo");
@@ -295,7 +313,7 @@ export class DashboardView extends HTMLElement {
             if (this.periodo !== "personalizado") this._sincronizarFechasConPeriodo(this.periodo);
             this._cancelarDebounce();
             this._cargarCitas();
-        });
+        }, { signal: this.#eventos.signal });
 
         const manejarCambioFechas = () => {
             this.fechaDesde = inputFechaDesde.value;
@@ -306,13 +324,13 @@ export class DashboardView extends HTMLElement {
             this._cargarCitas();
         };
 
-        inputFechaDesde.addEventListener("change", manejarCambioFechas);
-        inputFechaHasta.addEventListener("change", manejarCambioFechas);
+        inputFechaDesde.addEventListener("change", manejarCambioFechas, { signal: this.#eventos.signal });
+        inputFechaHasta.addEventListener("change", manejarCambioFechas, { signal: this.#eventos.signal });
 
         inputBusqueda.addEventListener("input", () => {
             this.busqueda = inputBusqueda.value;
             this._programarBusqueda();
-        });
+        }, { signal: this.#eventos.signal });
 
         inputBusqueda.addEventListener("keydown", (evento) => {
             if (evento.key === "Enter" && !evento.isComposing) {
@@ -320,7 +338,7 @@ export class DashboardView extends HTMLElement {
                 this._cancelarDebounce();
                 this._cargarCitas();
             }
-        });
+        }, { signal: this.#eventos.signal });
 
         const clinicaActual = this._idClinica(estado?.clinicaActiva ?? estado?.activeClinic);
         const rolActual = this._idRol(estado?.rolSeleccionado ?? estado?.selectedRole ?? estado?.rolActivo);
@@ -346,7 +364,7 @@ export class DashboardView extends HTMLElement {
                 ?? roles[0] ?? null;
             store.setContextoTrabajo(clinica, rol);
             this._emitirContextoActualizado();
-        });
+        }, { signal: this.#eventos.signal });
 
         selectRol.addEventListener("change", () => {
             const idSeleccionado = selectRol.value;
@@ -358,7 +376,7 @@ export class DashboardView extends HTMLElement {
 
             store.setContextoTrabajo(estadoActual.clinicaActiva, rol);
             this._emitirContextoActualizado();
-        });
+        }, { signal: this.#eventos.signal });
     }
 
     _normalizarContexto(estado) {
@@ -636,13 +654,13 @@ export class DashboardView extends HTMLElement {
         botonAtender.addEventListener("click", (evento) => {
             evento.stopPropagation();
             this._atenderConsulta(cita);
-        });
+        }, { signal: this.#eventos.signal });
 
         tarjeta.appendChild(botonAtender);
 
         tarjeta.addEventListener("click", () => {
             this._seleccionarConsulta(cita);
-        });
+        }, { signal: this.#eventos.signal });
 
         return tarjeta;
     }

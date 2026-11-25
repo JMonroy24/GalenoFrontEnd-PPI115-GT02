@@ -180,8 +180,8 @@ export class Store extends EventTarget {
         };
     }
 
-    subscribe(callback) {
-        this.addEventListener("state-changed", callback);
+    subscribe(callback, options = {}) {
+        this.addEventListener("state-changed", callback, options);
         return () => this.removeEventListener("state-changed", callback);
     }
 }

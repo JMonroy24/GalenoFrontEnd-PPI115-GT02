@@ -1,14 +1,94 @@
+import { crearPlantilla, escaparHtml as escapar } from "../dom.js";
 import { ordenExamenService } from "../../control/orden_examen_service.js";
 import GeneradorMensajes from "../../control/generador_mensajes.js";
 
 const CATEGORIA_POR_DEFECTO = "General";
 const TODAS = "__todas__";
 
-const escapar = (texto) => String(texto ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+const { contenido: plantilla, estilos } = crearPlantilla(`
+<link rel="stylesheet" href="recursos/estilos/principal.css">
+<style>
+    :host { display: block;
+        min-inline-size: 0;
+        container: examenes / inline-size; }
+    .panel {
+        background: var(--color-surface);
+        border: var(--border);
+        border-radius: var(--radius);
+        padding: var(--space-4);
+        display: grid;
+        gap: var(--space-3);
+    }
+    h3 { margin: 0; font-size: var(--text-lg); color: var(--color-primary); }
+    label.filtro { display: grid; gap: var(--space-1); font-size: var(--text-sm); font-weight: 600; }
+    select {
+        font: inherit; padding: var(--space-2);
+        border: var(--border); border-radius: var(--radius-sm);
+        background: var(--color-surface); color: var(--color-text);
+    }
+    fieldset { border: 0; margin: 0; padding: 0; min-inline-size: 0; }
+    legend { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); }
+    #lista {
+        display: grid; gap: var(--space-2);
+        max-block-size: min(24rem, 60dvh); overflow-y: auto;
+        overscroll-behavior: contain; scrollbar-gutter: stable;
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
+    }
+    .examen {
+        display: flex; align-items: center; gap: var(--space-2);
+        padding: var(--space-2) var(--space-3);
+        border: var(--border); border-radius: var(--radius-sm);
+        cursor: pointer; background: var(--color-bg);
+    }
+    .examen:has(input:checked) { background: var(--color-primary-soft); }
+    .examen:focus-within { outline: var(--focus-width) solid var(--color-focus); outline-offset: 2px; }
+    .examen input { inline-size: 1.15rem; block-size: 1.15rem; flex: none; }
+    .examen-nombre { flex: 1; min-inline-size: 0; overflow-wrap: anywhere; font-size: var(--text-sm); }
+    .examen-cat { min-inline-size: 0; overflow-wrap: anywhere; font-size: var(--text-xs); color: var(--color-text-muted); }
+    .vacio, #estado { margin: 0; color: var(--color-text-muted); font-size: var(--text-sm); }
+    .aviso-offline {
+        margin: 0;
+        padding: var(--space-2, 0.5rem);
+        border: 1px solid var(--color-warning, #b45309);
+        border-radius: var(--radius-sm, 0.375rem);
+        background: var(--color-warning-soft, #fef3c7);
+        font-size: var(--text-sm, 0.875rem);
+    }
+    .pie { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; justify-content: space-between; }
+    #contador { font-size: var(--text-sm); color: var(--color-text-muted); }
+    button {
+        font: inherit; font-weight: 600; cursor: pointer;
+        padding: var(--space-2) var(--space-4);
+        border: 0; border-radius: var(--radius-sm);
+        background: var(--color-primary); color: #fff;
+    }
+    button:hover:not(:disabled) { background: var(--color-primary-hover); }
+    button:focus-visible { outline: var(--focus-width) solid var(--color-focus); outline-offset: 2px; }
+    button:disabled { background: var(--color-surface-alt); color: var(--color-text-muted); cursor: not-allowed; }
+    @container examenes (inline-size < 36rem) { .pie button { inline-size: 100%; } }
+</style>
+<section class="panel" aria-labelledby="titulo">
+    <h3 id="titulo">Exámenes médicos</h3>
+    <label class="filtro">
+        Filtrar por categoría
+        <select id="filtro-categoria"></select>
+    </label>
+    <fieldset>
+        <legend>Exámenes disponibles</legend>
+        <div id="lista"></div>
+    </fieldset>
+    <p id="estado" role="status" aria-live="polite"></p>
+    <p id="aviso-offline" class="aviso-offline" role="status" aria-live="polite" hidden>
+        Sin conexión: la asignación de exámenes está deshabilitada. La selección se conserva.
+    </p>
+    <div class="pie">
+        <span id="contador" aria-live="polite">0 exámenes seleccionados</span>
+        <button type="button" id="btn-asignar" disabled aria-busy="false">
+            Asignar Exámenes Seleccionados
+        </button>
+    </div>
+</section>
+`);
 
 /**
  * <lista-examenes-asignables id-consulta="..." id-paso="...">
@@ -23,6 +103,7 @@ const escapar = (texto) => String(texto ?? "")
  * las pruebas unitarias.
  */
 export class ListaExamenesAsignables extends HTMLElement {
+    #eventos = new AbortController();
     static get observedAttributes() {
         return ["id-consulta", "id-paso", "id-paso-clinico", "id-procedimiento-paso", "solo-lectura", "sin-conexion"];
     }
@@ -129,6 +210,8 @@ export class ListaExamenesAsignables extends HTMLElement {
     }
 
     disconnectedCallback() {
+        this.#eventos.abort();
+
         this._cargaActual += 1;
         this._conexionActual += 1;
         this._estructuraLista = false;
@@ -410,98 +493,20 @@ export class ListaExamenesAsignables extends HTMLElement {
     }
 
     _renderEstructura() {
+        this.#eventos.abort();
+        this.#eventos = new AbortController();
         this._estructuraLista = false;
-        this.shadowRoot.innerHTML = `
-            <link rel="stylesheet" href="recursos/estilos/principal.css">
-            <style>
-                :host { display: block;
-                    min-inline-size: 0;
-                    container: examenes / inline-size; }
-                .panel {
-                    background: var(--color-surface);
-                    border: var(--border);
-                    border-radius: var(--radius);
-                    padding: var(--space-4);
-                    display: grid;
-                    gap: var(--space-3);
-                }
-                h3 { margin: 0; font-size: var(--text-lg); color: var(--color-primary); }
-                label.filtro { display: grid; gap: var(--space-1); font-size: var(--text-sm); font-weight: 600; }
-                select {
-                    font: inherit; padding: var(--space-2);
-                    border: var(--border); border-radius: var(--radius-sm);
-                    background: var(--color-surface); color: var(--color-text);
-                }
-                fieldset { border: 0; margin: 0; padding: 0; min-width: 0; }
-                legend { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
-                #lista {
-                    display: grid; gap: var(--space-2);
-                    max-block-size: min(24rem, 60dvh); overflow-y: auto;
-                    overscroll-behavior: contain; scrollbar-gutter: stable;
-                    grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
-                }
-                .examen {
-                    display: flex; align-items: center; gap: var(--space-2);
-                    padding: var(--space-2) var(--space-3);
-                    border: var(--border); border-radius: var(--radius-sm);
-                    cursor: pointer; background: var(--color-bg);
-                }
-                .examen:has(input:checked) { background: var(--color-primary-soft); }
-                .examen:focus-within { outline: var(--focus-width) solid var(--color-focus); outline-offset: 2px; }
-                .examen input { inline-size: 1.15rem; block-size: 1.15rem; flex: none; }
-                .examen-nombre { flex: 1; min-inline-size: 0; overflow-wrap: anywhere; font-size: var(--text-sm); }
-                .examen-cat { min-inline-size: 0; overflow-wrap: anywhere; font-size: var(--text-xs); color: var(--color-text-muted); }
-                .vacio, #estado { margin: 0; color: var(--color-text-muted); font-size: var(--text-sm); }
-                .aviso-offline {
-                    margin: 0;
-                    padding: var(--space-2, 0.5rem);
-                    border: 1px solid var(--color-warning, #b45309);
-                    border-radius: var(--radius-sm, 0.375rem);
-                    background: var(--color-warning-soft, #fef3c7);
-                    font-size: var(--text-sm, 0.875rem);
-                }
-                .pie { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center; justify-content: space-between; }
-                #contador { font-size: var(--text-sm); color: var(--color-text-muted); }
-                button {
-                    font: inherit; font-weight: 600; cursor: pointer;
-                    padding: var(--space-2) var(--space-4);
-                    border: 0; border-radius: var(--radius-sm);
-                    background: var(--color-primary); color: #fff;
-                }
-                button:hover:not(:disabled) { background: var(--color-primary-hover); }
-                button:focus-visible { outline: var(--focus-width) solid var(--color-focus); outline-offset: 2px; }
-                button:disabled { background: var(--color-surface-alt); color: var(--color-text-muted); cursor: not-allowed; }
-                @container examenes (inline-size < 36rem) { .pie button { inline-size: 100%; } }
-            </style>
-            <section class="panel" aria-labelledby="titulo">
-                <h3 id="titulo">Exámenes médicos</h3>
-                <label class="filtro">
-                    Filtrar por categoría
-                    <select id="filtro-categoria"></select>
-                </label>
-                <fieldset>
-                    <legend>Exámenes disponibles</legend>
-                    <div id="lista"></div>
-                </fieldset>
-                <p id="estado" role="status" aria-live="polite"></p>
-                <p id="aviso-offline" class="aviso-offline" role="status" aria-live="polite" hidden>
-                    Sin conexión: la asignación de exámenes está deshabilitada. La selección se conserva.
-                </p>
-                <div class="pie">
-                    <span id="contador" aria-live="polite">0 exámenes seleccionados</span>
-                    <button type="button" id="btn-asignar" disabled aria-busy="false">
-                        Asignar Exámenes Seleccionados
-                    </button>
-                </div>
-            </section>
-        `;
+        if (!this.shadowRoot.firstChild) {
+            this.shadowRoot.adoptedStyleSheets = [estilos];
+            this.shadowRoot.append(plantilla.content.cloneNode(true));
+        }
 
         this.shadowRoot.querySelector("#filtro-categoria").addEventListener("change", (e) => {
             this._categoria = e.target.value;
             this._pintarLista();
-        });
-        this.shadowRoot.querySelector("#lista").addEventListener("change", (e) => this._onCambioCheckbox(e));
-        this.shadowRoot.querySelector("#btn-asignar").addEventListener("click", () => this.asignarSeleccionados());
+        }, { signal: this.#eventos.signal });
+        this.shadowRoot.querySelector("#lista").addEventListener("change", (e) => this._onCambioCheckbox(e), { signal: this.#eventos.signal });
+        this.shadowRoot.querySelector("#btn-asignar").addEventListener("click", () => this.asignarSeleccionados(), { signal: this.#eventos.signal });
         this._estructuraLista = true;
     }
 }

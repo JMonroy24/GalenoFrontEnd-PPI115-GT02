@@ -1,10 +1,132 @@
+import { crearPlantilla } from "../dom.js";
 import "./instalador_app.js";
 import { authService } from "../../control/auth_service.js";
 import { store } from "../../store.js";
 import { esRolEmpleado } from '../../entity/rol_empleado.js';
 import { idEntidad, idClinicaAsignacion, idRolAsignacion } from '../../entity/flujo_consulta.js';
 
+const { contenido: plantilla, estilos } = crearPlantilla(`
+<link rel="stylesheet" href="recursos/estilos/principal.css">
+<style>
+    :host {
+        display: block;
+        min-inline-size: 0;
+        container: encabezado / inline-size;
+    }
+
+    .barra {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        padding: 0.75rem 1rem;
+        background-color: var(--color-superficie);
+        border-block-end: 1px solid var(--color-borde);
+        color: var(--color-texto);
+    }
+
+    #btnMenu {
+        display: none;
+        flex-direction: column;
+        gap: 3px;
+        padding: 0.5rem;
+    }
+
+    #btnMenu .linea {
+        display: block;
+        inline-size: 1.125rem;
+        block-size: 2px;
+        background-color: var(--color-texto);
+    }
+
+    .marca {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+
+    .logo {
+        inline-size: 2rem;
+        block-size: 2rem;
+        object-fit: contain;
+    }
+
+    .titulo {
+        font-size: 1.125rem;
+        font-weight: 700;
+    }
+
+    #textoContexto { min-inline-size: 0; overflow-wrap: anywhere; }
+    .contexto {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+        margin-inline-start: auto;
+        min-inline-size: 0;
+        flex: 1 1 18rem;
+    }
+
+    [hidden] {
+        display: none !important;
+    }
+
+    #panel-rol {
+        box-sizing: border-box;
+        margin: 1rem;
+        padding: 1.5rem;
+        border: 1px solid var(--color-borde, #64748b);
+        border-radius: 0.75rem;
+        color: var(--color-texto, #0f172a);
+        background: var(--color-superficie, #fff);
+    }
+    #form-cambio-rol { display: grid; gap: 0.75rem; }
+    #form-cambio-rol h2 { margin: 0; font-size: 1.5rem; }
+    #form-cambio-rol select { inline-size: 100%; min-inline-size: 0; font: inherit; min-block-size: 3rem; }
+    .acciones-rol { display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: end; }
+
+    @container encabezado (inline-size <= 50rem) {
+        #btnMenu {
+            display: inline-flex;
+        }
+    }
+</style>
+<header class="barra">
+    <button id="btnMenu" class="btn" type="button" aria-label="Alternar menú" aria-expanded="false">
+        <span class="linea"></span>
+        <span class="linea"></span>
+        <span class="linea"></span>
+    </button>
+    <div class="marca">
+        <img class="logo" src="recursos/imagenes/galenosv-logo.png" alt="GalenoSV">
+        <span class="titulo">GalenoSV</span>
+    </div>
+    <div class="contexto">
+        <span id="textoContexto"></span>
+        <button id="btnCambiarRol" class="btn" type="button" aria-expanded="false" aria-controls="panel-rol">Cambiar rol</button>
+        <button id="btnCerrarSesion" class="btn" type="button">Cerrar sesión</button>
+    </div>
+    <instalador-app></instalador-app>
+</header>
+<section id="panel-rol" hidden aria-labelledby="titulo-cambio-rol">
+    <form id="form-cambio-rol">
+        <h2 id="titulo-cambio-rol">Cambiar clínica y rol</h2>
+        <label for="clinica-cambio-rol">Clínica</label>
+        <select id="clinica-cambio-rol" name="clinica" required></select>
+        <label for="asignacion-cambio-rol">Rol</label>
+        <select id="asignacion-cambio-rol" name="rol" required aria-describedby="aviso-cambio-rol"></select>
+        <p id="aviso-cambio-rol" role="status"></p>
+        <div class="acciones-rol">
+            <button class="btn" id="btnCancelarRol" type="button">Cancelar</button>
+            <button class="btn" id="btnAplicarRol" type="submit" value="aplicar">Aplicar cambio</button>
+        </div>
+    </form>
+</section>
+`);
+
 export default class EncabezadoApp extends HTMLElement {
+    #eventos = new AbortController();
+    #conexion = new AbortController();
     constructor() {
         super();
         this.attachShadow({ mode: "open" });
@@ -12,138 +134,28 @@ export default class EncabezadoApp extends HTMLElement {
     }
 
     connectedCallback() {
+        this.#conexion.abort();
+        this.#conexion = new AbortController();
         this.render();
-        window.addEventListener("sesion-iniciada", this.alContexto);
-        window.addEventListener("sesion-cerrada", this.alContexto);
-        store.addEventListener("state-changed", this.alContexto);
+        window.addEventListener("sesion-iniciada", this.alContexto, { signal: this.#conexion.signal });
+        window.addEventListener("sesion-cerrada", this.alContexto, { signal: this.#conexion.signal });
+        store.addEventListener("state-changed", this.alContexto, { signal: this.#conexion.signal });
     }
 
     disconnectedCallback() {
+        this.#eventos.abort();
+        this.#conexion.abort();
+
         this._cerrarCambioRol(false);
-        window.removeEventListener("sesion-iniciada", this.alContexto);
-        window.removeEventListener("sesion-cerrada", this.alContexto);
-        store.removeEventListener("state-changed", this.alContexto);
     }
 
     render() {
-        this.shadowRoot.innerHTML = `
-            <link rel="stylesheet" href="recursos/estilos/principal.css">
-            <style>
-                :host {
-                    display: block;
-                    min-inline-size: 0;
-                    container: encabezado / inline-size;
-                }
-
-                .barra {
-                    display: flex;
-                    align-items: center;
-                    flex-wrap: wrap;
-                    gap: 0.75rem;
-                    padding: 0.75rem 1rem;
-                    background-color: var(--color-superficie);
-                    border-bottom: 1px solid var(--color-borde);
-                    color: var(--color-texto);
-                }
-
-                #btnMenu {
-                    display: none;
-                    flex-direction: column;
-                    gap: 3px;
-                    padding: 0.5rem;
-                }
-
-                #btnMenu .linea {
-                    display: block;
-                    inline-size: 1.125rem;
-                    height: 2px;
-                    background-color: var(--color-texto);
-                }
-
-                .marca {
-                    display: flex;
-                    align-items: center;
-                    gap: 0.5rem;
-                }
-
-                .logo {
-                    inline-size: 2rem;
-                    block-size: 2rem;
-                    object-fit: contain;
-                }
-
-                .titulo {
-                    font-size: 1.125rem;
-                    font-weight: 700;
-                }
-
-                #textoContexto { min-inline-size: 0; overflow-wrap: anywhere; }
-                .contexto {
-                    display: flex;
-                    align-items: center;
-                    flex-wrap: wrap;
-                    gap: 0.5rem;
-                    margin-inline-start: auto;
-                    min-inline-size: 0;
-                    flex: 1 1 18rem;
-                }
-
-                [hidden] {
-                    display: none !important;
-                }
-
-                #panel-rol {
-                    box-sizing: border-box;
-                    margin: 1rem;
-                    padding: 1.5rem;
-                    border: 1px solid var(--color-borde, #64748b);
-                    border-radius: 0.75rem;
-                    color: var(--color-texto, #0f172a);
-                    background: var(--color-superficie, #fff);
-                }
-                #form-cambio-rol { display: grid; gap: 0.75rem; }
-                #form-cambio-rol h2 { margin: 0; font-size: 1.5rem; }
-                #form-cambio-rol select { inline-size: 100%; min-inline-size: 0; font: inherit; min-block-size: 3rem; }
-                .acciones-rol { display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: end; }
-
-                @container encabezado (inline-size <= 50rem) {
-                    #btnMenu {
-                        display: inline-flex;
-                    }
-                }
-            </style>
-            <header class="barra">
-                <button id="btnMenu" class="btn" type="button" aria-label="Alternar menú" aria-expanded="false">
-                    <span class="linea"></span>
-                    <span class="linea"></span>
-                    <span class="linea"></span>
-                </button>
-                <div class="marca">
-                    <img class="logo" src="recursos/imagenes/galenosv-logo.png" alt="GalenoSV">
-                    <span class="titulo">GalenoSV</span>
-                </div>
-                <div class="contexto">
-                    <span id="textoContexto"></span>
-                    <button id="btnCambiarRol" class="btn" type="button" aria-expanded="false" aria-controls="panel-rol">Cambiar rol</button>
-                    <button id="btnCerrarSesion" class="btn" type="button">Cerrar sesión</button>
-                </div>
-                <instalador-app></instalador-app>
-            </header>
-            <section id="panel-rol" hidden aria-labelledby="titulo-cambio-rol">
-                <form id="form-cambio-rol">
-                    <h2 id="titulo-cambio-rol">Cambiar clínica y rol</h2>
-                    <label for="clinica-cambio-rol">Clínica</label>
-                    <select id="clinica-cambio-rol" name="clinica" required></select>
-                    <label for="asignacion-cambio-rol">Rol</label>
-                    <select id="asignacion-cambio-rol" name="rol" required aria-describedby="aviso-cambio-rol"></select>
-                    <p id="aviso-cambio-rol" role="status"></p>
-                    <div class="acciones-rol">
-                        <button class="btn" id="btnCancelarRol" type="button">Cancelar</button>
-                        <button class="btn" id="btnAplicarRol" type="submit" value="aplicar">Aplicar cambio</button>
-                    </div>
-                </form>
-            </section>
-        `;
+        this.#eventos.abort();
+        this.#eventos = new AbortController();
+        if (!this.shadowRoot.firstChild) {
+            this.shadowRoot.adoptedStyleSheets = [estilos];
+            this.shadowRoot.append(plantilla.content.cloneNode(true));
+        }
 
         this._actualizarSesion();
 
@@ -153,7 +165,7 @@ export default class EncabezadoApp extends HTMLElement {
                 bubbles: true,
                 composed: true
             }));
-        });
+        }, { signal: this.#eventos.signal });
 
         const navegar = (ruta) => {
             this.dispatchEvent(new CustomEvent("navegar", {
@@ -168,19 +180,19 @@ export default class EncabezadoApp extends HTMLElement {
         btnCambiarRol.addEventListener("click", () => {
             if (this.shadowRoot.querySelector("#panel-rol").hidden) this._abrirCambioRol();
             else this._cerrarCambioRol();
-        });
-        this.shadowRoot.querySelector("#btnCancelarRol").addEventListener("click", () => this._cerrarCambioRol());
-        this.shadowRoot.querySelector('#clinica-cambio-rol').addEventListener('change', () => this._cargarRolesCambio());
+        }, { signal: this.#eventos.signal });
+        this.shadowRoot.querySelector("#btnCancelarRol").addEventListener("click", () => this._cerrarCambioRol(), { signal: this.#eventos.signal });
+        this.shadowRoot.querySelector('#clinica-cambio-rol').addEventListener('change', () => this._cargarRolesCambio(), { signal: this.#eventos.signal });
         this.shadowRoot.querySelector('#form-cambio-rol').addEventListener('submit', (evento) => {
             evento.preventDefault();
             if (this._aplicarCambioRol()) navegar('dashboard');
-        });
+        }, { signal: this.#eventos.signal });
         btnCerrarSesion.addEventListener("click", () => {
             if (store.hasActiveSession()) {
                 authService.logout();
             }
             navegar("login");
-        });
+        }, { signal: this.#eventos.signal });
     }
 
     _asignacionesContexto() {

@@ -1,3 +1,4 @@
+import { crearEstilos } from "../dom.js";
 import { parseRouteParams } from "../../router.js";
 import { store } from "../../store.js";
 import { authService } from "../../control/auth_service.js";
@@ -13,7 +14,60 @@ const MENU = {
     ]
 };
 
+const estilos = crearEstilos(`
+:host {
+    display: block;
+    min-inline-size: 0;
+    inline-size: 100%;
+}
+nav {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4, 1rem);
+}
+.seccion-titulo {
+    margin: 0;
+    padding: 0 var(--space-3, 0.75rem);
+    font-size: var(--text-xs, 0.75rem);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted, #475569);
+}
+ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1, 0.25rem);
+}
+a {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3, 0.75rem);
+    padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
+    border-radius: var(--radius-md, 0.5rem);
+    color: var(--color-text, #0f172a);
+    text-decoration: none;
+    font-size: var(--text-sm, 0.875rem);
+    font-weight: 500;
+    transition: background-color var(--transition-fast, 150ms ease),
+                color var(--transition-fast, 150ms ease);
+}
+a:hover {
+    background-color: var(--color-surface-alt, #e2e8f0);
+    color: var(--color-primary, #1e3a8a);
+}
+a.activo {
+    background-color: var(--color-primary, #1e3a8a);
+    color: #ffffff;
+}
+`);
+
 export class MenuLateral extends HTMLElement {
+    #eventos = new AbortController();
+    #conexion = new AbortController();
     constructor() {
         super();
         this.attachShadow({ mode: "open" });
@@ -22,14 +76,17 @@ export class MenuLateral extends HTMLElement {
     }
 
     connectedCallback() {
+        this.#conexion.abort();
+        this.#conexion = new AbortController();
         this.render();
-        window.addEventListener("hashchange", this.alCambiarRuta);
-        store.addEventListener("state-changed", this.alCambiarSesion);
+        window.addEventListener("hashchange", this.alCambiarRuta, { signal: this.#conexion.signal });
+        store.addEventListener("state-changed", this.alCambiarSesion, { signal: this.#conexion.signal });
     }
 
     disconnectedCallback() {
-        window.removeEventListener("hashchange", this.alCambiarRuta);
-        store.removeEventListener("state-changed", this.alCambiarSesion);
+        this.#eventos.abort();
+        this.#conexion.abort();
+
     }
 
     _actualizarSesion() {
@@ -54,58 +111,11 @@ export class MenuLateral extends HTMLElement {
     }
 
     render() {
+        this.#eventos.abort();
+        this.#eventos = new AbortController();
+        this.shadowRoot.adoptedStyleSheets = [estilos];
         this.shadowRoot.innerHTML = `
             <link rel="stylesheet" href="recursos/estilos/principal.css">
-            <style>
-                :host {
-                    display: block;
-                    min-inline-size: 0;
-                    width: 100%;
-                }
-                nav {
-                    display: flex;
-                    flex-direction: column;
-                    gap: var(--space-4, 1rem);
-                }
-                .seccion-titulo {
-                    margin: 0;
-                    padding: 0 var(--space-3, 0.75rem);
-                    font-size: var(--text-xs, 0.75rem);
-                    font-weight: 700;
-                    text-transform: uppercase;
-                    letter-spacing: 0.05em;
-                    color: var(--color-text-muted, #475569);
-                }
-                ul {
-                    list-style: none;
-                    margin: 0;
-                    padding: 0;
-                    display: flex;
-                    flex-direction: column;
-                    gap: var(--space-1, 0.25rem);
-                }
-                a {
-                    display: flex;
-                    align-items: center;
-                    gap: var(--space-3, 0.75rem);
-                    padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
-                    border-radius: var(--radius-md, 0.5rem);
-                    color: var(--color-text, #0f172a);
-                    text-decoration: none;
-                    font-size: var(--text-sm, 0.875rem);
-                    font-weight: 500;
-                    transition: background-color var(--transition-fast, 150ms ease),
-                                color var(--transition-fast, 150ms ease);
-                }
-                a:hover {
-                    background-color: var(--color-surface-alt, #e2e8f0);
-                    color: var(--color-primary, #1e3a8a);
-                }
-                a.activo {
-                    background-color: var(--color-primary, #1e3a8a);
-                    color: #ffffff;
-                }
-            </style>
             <nav aria-label="Menú principal">
                 ${Object.entries(MENU).map(([seccion, items]) => `
                     <section>
@@ -135,7 +145,7 @@ export class MenuLateral extends HTMLElement {
                 bubbles: true,
                 composed: true
             }));
-        });
+        }, { signal: this.#eventos.signal });
         this._actualizarSesion();
         this._actualizarRutaActiva();
     }

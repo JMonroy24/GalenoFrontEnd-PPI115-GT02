@@ -1,10 +1,108 @@
+import { crearPlantilla } from "../dom.js";
 import "./buscador_tipo_doc.js";
 import { personaService } from "../../control/persona_service.js";
 import GeneradorMensajes from "../../control/generador_mensajes.js";
 
 const DEBOUNCE_DOCUMENTO_MS = 500;
 
+const { contenido: plantilla, estilos } = crearPlantilla(`
+<link rel="stylesheet" href="recursos/estilos/principal.css">
+<style>
+    :host {
+        display: block;
+        min-inline-size: 0; container: busqueda / inline-size;
+    }
+    form {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+        gap: 1rem;
+        align-items: start;
+    }
+    .campo {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        min-inline-size: 0;
+    }
+    label {
+        font-weight: 600;
+    }
+    .ayuda {
+        min-block-size: 1.1rem;
+        font-size: 0.8rem;
+        color: var(--color-texto-secundario, #475569);
+    }
+    .ayuda.mensaje-error {
+        color: #b91c1c;
+    }
+    .form-control.valido {
+        border-color: #166534;
+        outline-color: #166534;
+    }
+    .form-control.invalido {
+        border-color: #b91c1c;
+        outline-color: #b91c1c;
+    }
+    .acciones {
+        display: flex;
+        grid-column: 1 / -1;
+        justify-content: flex-end;
+    }
+@container busqueda (inline-size < 32rem) {
+    .acciones .btn { inline-size: 100%; }
+}
+</style>
+<form novalidate>
+    <buscador-tipo-documentos id="tipoDocumento" seleccion-explicita></buscador-tipo-documentos>
+
+    <div class="campo">
+        <label for="numeroDocumento">Número de documento</label>
+        <input
+            id="numeroDocumento"
+            name="numeroDocumento"
+            type="text"
+            class="form-control"
+            autocomplete="off"
+            placeholder="00000000-0"
+            aria-describedby="numero-documento-ayuda"
+            disabled
+        >
+        <span id="numero-documento-ayuda" class="ayuda" aria-live="polite"></span>
+    </div>
+
+    <div class="campo">
+        <label for="clinica">Clínica</label>
+        <select
+            id="clinica"
+            name="idClinica"
+            class="form-control"
+            aria-label="Clínica"
+            aria-describedby="clinica-ayuda"
+            disabled
+        ></select>
+        <span id="clinica-ayuda" class="ayuda" aria-live="polite">
+            Seleccione un tipo y número de documento.
+        </span>
+    </div>
+
+    <div class="campo">
+        <label for="fecha-desde">Desde</label>
+        <input id="fecha-desde" name="fechaDesde" type="date" class="form-control">
+    </div>
+
+    <div class="campo">
+        <label for="fecha-hasta">Hasta</label>
+        <input id="fecha-hasta" name="fechaHasta" type="date" class="form-control">
+    </div>
+
+    <div class="acciones">
+        <button type="submit" class="btn btn-primario">Buscar citas</button>
+    </div>
+</form>
+`);
+
 export class AsistenteBusqueda extends HTMLElement {
+    #eventos = new AbortController();
     constructor() {
         super();
         this.attachShadow({ mode: "open" });
@@ -22,105 +120,21 @@ export class AsistenteBusqueda extends HTMLElement {
     }
 
     disconnectedCallback() {
+        this.#eventos.abort();
+
         this._invalidarBusquedaClinicas();
     }
 
     _renderEstructura() {
-        this.shadowRoot.innerHTML = `
-            <link rel="stylesheet" href="recursos/estilos/principal.css">
-            <style>
-                :host {
-                    display: block;
-                    min-inline-size: 0;
-                }
-                form {
-                    display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
-                    gap: 1rem;
-                    align-items: start;
-                }
-                .campo {
-                    display: flex;
-                    flex-direction: column;
-                    gap: 0.35rem;
-                    min-width: 0;
-                }
-                label {
-                    font-weight: 600;
-                }
-                .ayuda {
-                    min-height: 1.1rem;
-                    font-size: 0.8rem;
-                    color: var(--color-texto-secundario, #475569);
-                }
-                .ayuda.mensaje-error {
-                    color: #b91c1c;
-                }
-                .form-control.valido {
-                    border-color: #166534;
-                    outline-color: #166534;
-                }
-                .form-control.invalido {
-                    border-color: #b91c1c;
-                    outline-color: #b91c1c;
-                }
-                .acciones {
-                    display: flex;
-                    grid-column: 1 / -1;
-                    justify-content: flex-end;
-                }
-            </style>
-            <form novalidate>
-                <buscador-tipo-documentos id="tipoDocumento" seleccion-explicita></buscador-tipo-documentos>
-
-                <div class="campo">
-                    <label for="numeroDocumento">Número de documento</label>
-                    <input
-                        id="numeroDocumento"
-                        name="numeroDocumento"
-                        type="text"
-                        class="form-control"
-                        autocomplete="off"
-                        placeholder="00000000-0"
-                        aria-describedby="numero-documento-ayuda"
-                        disabled
-                    >
-                    <span id="numero-documento-ayuda" class="ayuda" aria-live="polite"></span>
-                </div>
-
-                <div class="campo">
-                    <label for="clinica">Clínica</label>
-                    <select
-                        id="clinica"
-                        name="idClinica"
-                        class="form-control"
-                        aria-label="Clínica"
-                        aria-describedby="clinica-ayuda"
-                        disabled
-                    ></select>
-                    <span id="clinica-ayuda" class="ayuda" aria-live="polite">
-                        Seleccione un tipo y número de documento.
-                    </span>
-                </div>
-
-                <div class="campo">
-                    <label for="fecha-desde">Desde</label>
-                    <input id="fecha-desde" name="fechaDesde" type="date" class="form-control">
-                </div>
-
-                <div class="campo">
-                    <label for="fecha-hasta">Hasta</label>
-                    <input id="fecha-hasta" name="fechaHasta" type="date" class="form-control">
-                </div>
-
-                <div class="acciones">
-                    <button type="submit" class="btn btn-primario">Buscar citas</button>
-                </div>
-            </form>
-        `;
+        if (!this.shadowRoot.firstChild) {
+            this.shadowRoot.adoptedStyleSheets = [estilos];
+            this.shadowRoot.append(plantilla.content.cloneNode(true));
+        }
     }
 
     _conectarEventos() {
+        this.#eventos.abort();
+        this.#eventos = new AbortController();
         const form = this.shadowRoot.querySelector("form");
         const buscador = this.shadowRoot.querySelector("buscador-tipo-documentos");
         const numeroDocumento = this.shadowRoot.querySelector("#numeroDocumento");
@@ -135,7 +149,7 @@ export class AsistenteBusqueda extends HTMLElement {
                     ? "Ingrese el número de documento para buscar sus clínicas."
                     : "Seleccione un tipo y número de documento."
             );
-        });
+        }, { signal: this.#eventos.signal });
 
         numeroDocumento.addEventListener("input", () => {
             this.documentoTocado = true;
@@ -148,7 +162,7 @@ export class AsistenteBusqueda extends HTMLElement {
             }
 
             this._reiniciarClinicas("Ingrese un número de documento válido.");
-        });
+        }, { signal: this.#eventos.signal });
 
         numeroDocumento.addEventListener("blur", () => {
             this.documentoTocado = true;
@@ -161,7 +175,7 @@ export class AsistenteBusqueda extends HTMLElement {
             }
 
             this._reiniciarClinicas("Ingrese un número de documento válido.");
-        });
+        }, { signal: this.#eventos.signal });
 
         form.addEventListener("submit", (evento) => {
             evento.preventDefault();
@@ -192,7 +206,7 @@ export class AsistenteBusqueda extends HTMLElement {
                     fechaHasta: this.shadowRoot.querySelector("#fecha-hasta").value
                 }
             }));
-        });
+        }, { signal: this.#eventos.signal });
     }
 
     _cancelarBusquedaClinicas() {

@@ -1,4 +1,70 @@
+import { crearEstilos } from "../dom.js";
+
+const estilos = crearEstilos(`
+:host([hidden]) { display: none; }
+:host { display: block; min-inline-size: 0; }
+#contenedor {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-inline: 1rem;
+}
+#contenedor:empty { display: none; }
+.banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.875rem 1rem;
+    border-radius: var(--radius, 0.5rem);
+    margin-block: 0.5rem;
+    color: #ffffff;
+}
+.texto {
+    flex: 1;
+    min-inline-size: 0;
+}
+.texto strong {
+    display: block;
+    margin-block-end: 0.25rem;
+    font-size: 0.95rem;
+}
+.texto span {
+    display: block;
+    font-size: 0.85rem;
+    line-height: 1.4;
+    overflow-wrap: anywhere;
+}
+.cerrar {
+    flex: none;
+    padding: 0.125rem 0.4rem;
+    border: 1px solid rgb(255 255 255 / 0.6);
+    border-radius: var(--radius-sm, 0.25rem);
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 0.75rem;
+    cursor: pointer;
+}
+.cerrar:hover {
+    background-color: rgb(255 255 255 / 0.15);
+}
+.success {
+    background-color: #166534;
+}
+.warning {
+    background-color: #854d0e;
+}
+.error {
+    background-color: #b91c1c;
+}
+.info {
+    background-color: #075985;
+}
+`);
+
 export class NotificacionEmergente extends HTMLElement {
+    #eventos = new AbortController();
+    #cierres = new WeakMap();
     constructor() {
         super();
         this.attachShadow({ mode: "open" });
@@ -7,87 +73,33 @@ export class NotificacionEmergente extends HTMLElement {
     }
 
     connectedCallback() {
+        this.#eventos.abort();
+        this.#eventos = new AbortController();
         if (!this.shadowRoot.querySelector("#contenedor")) {
             this._crearEstructura();
         }
 
-        window.addEventListener("notificacion", this.escuchador);
+        window.addEventListener("notificacion", this.escuchador, { signal: this.#eventos.signal });
+        this.shadowRoot.addEventListener('click', evento => {
+            const boton = evento.target.closest('.cerrar');
+            this.#cierres.get(boton)?.();
+        }, { signal: this.#eventos.signal });
     }
 
     disconnectedCallback() {
-        window.removeEventListener("notificacion", this.escuchador);
+        this.#eventos.abort();
+
         this.temporizadores.forEach((id) => clearTimeout(id));
         this.temporizadores.clear();
     }
 
     _crearEstructura() {
-        const estilos = document.createElement("style");
-        estilos.textContent = `
-            :host([hidden]) { display: none; }
-            :host { display: block; min-inline-size: 0; }
-            #contenedor {
-                display: flex;
-                flex-direction: column;
-                gap: 0.5rem;
-                margin-inline: 1rem;
-            }
-            #contenedor:empty { display: none; }
-            .banner {
-                display: flex;
-                align-items: flex-start;
-                gap: 0.75rem;
-                padding: 0.875rem 1rem;
-                border-radius: 8px;
-                margin-block: 0.5rem;
-                color: #ffffff;
-            }
-            .texto {
-                flex: 1;
-                min-width: 0;
-            }
-            .texto strong {
-                display: block;
-                margin-bottom: 0.25rem;
-                font-size: 0.95rem;
-            }
-            .texto span {
-                display: block;
-                font-size: 0.85rem;
-                line-height: 1.4;
-                overflow-wrap: anywhere;
-            }
-            .cerrar {
-                flex: none;
-                padding: 0.125rem 0.4rem;
-                border: 1px solid rgb(255 255 255 / 0.6);
-                border-radius: 4px;
-                background: transparent;
-                color: inherit;
-                font: inherit;
-                font-size: 0.75rem;
-                cursor: pointer;
-            }
-            .cerrar:hover {
-                background-color: rgb(255 255 255 / 0.15);
-            }
-            .success {
-                background-color: #166534;
-            }
-            .warning {
-                background-color: #854d0e;
-            }
-            .error {
-                background-color: #b91c1c;
-            }
-            .info {
-                background-color: #075985;
-            }
-        `;
 
         const contenedor = document.createElement("div");
         contenedor.id = "contenedor";
 
-        this.shadowRoot.append(estilos, contenedor);
+        this.shadowRoot.adoptedStyleSheets = [estilos];
+        this.shadowRoot.append(contenedor);
     }
 
     mostrarMensaje(mensaje = {}) {
@@ -136,7 +148,7 @@ export class NotificacionEmergente extends HTMLElement {
             banner.remove();
         };
 
-        boton.addEventListener("click", cerrar);
+        this.#cierres.set(boton, cerrar);
 
         const duracion = this._normalizarDuracion(mensaje.duracion ?? mensaje.duration);
         if (duracion > 0) {

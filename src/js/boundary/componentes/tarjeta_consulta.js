@@ -1,9 +1,237 @@
+import { crearPlantilla } from "../dom.js";
 import GestorFechas from "../../control/gestor_fechas.js";
 import "./historial_pasos.js";
 import "./opciones_ticket.js";
 import { obtenerPacienteConsulta, obtenerDocumentoConsulta, obtenerNombreClinicaConsulta } from "../../control/consulta_service.js";
 
+const { contenido: plantilla, estilos } = crearPlantilla(`
+<link rel="stylesheet" href="recursos/estilos/principal.css">
+<style>
+    :host {
+        display: block;
+        min-inline-size: 0; container: tarjeta / inline-size;
+        color: var(--color-text, #0f172a);
+        font-family: var(--font-body, system-ui, sans-serif);
+    }
+    .tarjeta {
+        overflow: hidden;
+        border: var(--border-width, 1px) solid var(--color-border, #64748b);
+        border-radius: var(--radius-lg, 0.75rem);
+        background-color: var(--color-surface, #ffffff);
+        box-shadow: var(--shadow-sm, 0 1px 2px rgb(15 23 42 / 0.08));
+    }
+    .cabecera {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--space-3, 0.75rem);
+        padding: var(--space-4, 1rem);
+        background-color: var(--color-primary-soft, #dbeafe);
+    }
+    .fecha {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-1, 0.25rem);
+    }
+    .etiqueta {
+        color: var(--color-text-muted, #475569);
+        font-size: var(--text-xs, 0.75rem);
+        font-weight: 600;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+    }
+    .fecha-valor {
+        color: var(--color-primary, #1e3a8a);
+        font-size: var(--text-lg, 1.125rem);
+    }
+    .estado {
+        padding: var(--space-1, 0.25rem) var(--space-3, 0.75rem);
+        border-radius: var(--radius-full, 9999px);
+        font-size: var(--text-xs, 0.75rem);
+        font-weight: 700;
+        text-transform: uppercase;
+    }
+    .estado--success {
+        background-color: var(--color-success-bg, #f0fdf4);
+        color: var(--color-success, #166534);
+    }
+    .estado--warning {
+        background-color: var(--color-warning-bg, #fffbeb);
+        color: var(--color-warning, #854d0e);
+    }
+    .estado--error {
+        background-color: var(--color-error-bg, #fef2f2);
+        color: var(--color-error, #b91c1c);
+    }
+    .estado--info {
+        background-color: var(--color-info-bg, #f0f9ff);
+        color: var(--color-info, #075985);
+    }
+    .datos {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+        gap: var(--space-4, 1rem);
+        margin: 0;
+        padding: var(--space-4, 1rem);
+    }
+    .dato {
+        min-inline-size: 0;
+    }
+    .dato dt {
+        margin-block-end: var(--space-1, 0.25rem);
+        color: var(--color-text-muted, #475569);
+        font-size: var(--text-xs, 0.75rem);
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+    .dato dd {
+        margin: 0;
+        overflow-wrap: anywhere;
+    }
+    .procedimientos {
+        padding: var(--space-4, 1rem);
+        border-block-start: var(--border-width, 1px) solid var(--color-surface-alt, #e2e8f0);
+    }
+    .procedimientos h4 {
+        margin: 0 0 var(--space-2, 0.5rem);
+        color: var(--color-primary, #1e3a8a);
+        font-size: var(--text-base, 1rem);
+    }
+    .procedimientos ul {
+        margin: 0;
+        padding-inline-start: var(--space-6, 1.5rem);
+    }
+    .procedimientos li + li {
+        margin-block-start: var(--space-1, 0.25rem);
+    }
+    .procedimientos li::marker {
+        color: var(--color-secondary, #0284c7);
+    }
+    .procedimientos-vacio {
+        margin: 0;
+        color: var(--color-text-muted, #475569);
+        font-size: var(--text-sm, 0.875rem);
+    }
+    .historial-pasos {
+        padding: var(--space-4, 1rem);
+        border-block-start: var(--border-width, 1px) solid var(--color-surface-alt, #e2e8f0);
+    }
+    .historial-pasos h4 {
+        margin: 0 0 var(--space-2, 0.5rem);
+        color: var(--color-primary, #1e3a8a);
+        font-size: var(--text-base, 1rem);
+    }
+    .historial-desplegable[hidden] {
+        display: none;
+    }
+    .historial-desplegable summary {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: var(--space-2, 0.5rem);
+        padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
+        border: var(--border-width, 1px) solid var(--color-border, #64748b);
+        border-radius: var(--radius-md, 0.5rem);
+        background-color: var(--color-surface-alt, #e2e8f0);
+        color: var(--color-primary, #1e3a8a);
+        font-size: var(--text-sm, 0.875rem);
+        font-weight: 600;
+        cursor: pointer;
+    }
+    .historial-desplegable summary::marker {
+        color: var(--color-secondary, #0284c7);
+    }
+    .historial-contenido {
+        margin-block-start: var(--space-3, 0.75rem);
+    }
+    .historial-vacio {
+        margin: 0;
+        padding: var(--space-3, 0.75rem);
+        border: var(--border-width, 1px) dashed var(--color-border, #64748b);
+        border-radius: var(--radius-md, 0.5rem);
+        background-color: var(--color-surface-alt, #e2e8f0);
+        color: var(--color-text-muted, #475569);
+        font-size: var(--text-sm, 0.875rem);
+        text-align: center;
+    }
+    .historial-vacio[hidden] {
+        display: none;
+    }
+    .pie {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        gap: var(--space-2, 0.5rem);
+        padding: var(--space-3, 0.75rem) var(--space-4, 1rem);
+        border-block-start: var(--border-width, 1px) solid var(--color-surface-alt, #e2e8f0);
+    }
+@container tarjeta (inline-size < 20rem) {
+    .datos { grid-template-columns: minmax(0, 1fr); }
+    ::slotted(button) { inline-size: 100%; }
+}
+</style>
+<article class="tarjeta">
+    <header class="cabecera">
+        <div class="fecha">
+            <span class="etiqueta">Fecha</span>
+            <strong class="fecha-valor" id="fecha"></strong>
+        </div>
+        <span class="estado" id="estado"></span>
+    </header>
+    <dl class="datos">
+        <div class="dato">
+            <dt>Paciente</dt>
+            <dd id="paciente"></dd>
+        </div>
+        <div class="dato">
+            <dt>Documento</dt>
+            <dd id="documento-paciente"></dd>
+        </div>
+        <div class="dato">
+            <dt>Hora</dt>
+            <dd id="hora"></dd>
+        </div>
+        <div class="dato">
+            <dt>Clínica</dt>
+            <dd id="clinica"></dd>
+        </div>
+        <div class="dato">
+            <dt>Estado</dt>
+            <dd id="estado-texto"></dd>
+        </div>
+    </dl>
+    <section class="procedimientos">
+        <h4>Procedimientos activos</h4>
+        <ul id="lista-procedimientos"></ul>
+        <p class="procedimientos-vacio" id="procedimientos-vacio">Sin procedimientos activos.</p>
+    </section>
+    <section class="historial-pasos" aria-labelledby="titulo-historial-pasos">
+        <h4 id="titulo-historial-pasos">Historial de pasos</h4>
+        <details class="historial-desplegable" id="historial-desplegable" open>
+            <summary>
+                <span>Pasos ejecutados</span>
+                <span id="historial-contador"></span>
+            </summary>
+            <div class="historial-contenido">
+                <historial-pasos id="historial-pasos"></historial-pasos>
+            </div>
+        </details>
+        <p class="historial-vacio" id="historial-vacio" hidden>Sin pasos ejecutados.</p>
+    </section>
+    <footer class="pie">
+        <opciones-ticket></opciones-ticket>
+        <slot name="acciones"></slot>
+    </footer>
+</article>
+`);
+
 export class TarjetaConsulta extends HTMLElement {
+    #eventos = new AbortController();
+    disconnectedCallback() {
+        this.#eventos.abort();
+    }
+
     constructor() {
         super();
         this.attachShadow({ mode: "open" });
@@ -24,6 +252,8 @@ export class TarjetaConsulta extends HTMLElement {
     }
 
     render() {
+        this.#eventos.abort();
+        this.#eventos = new AbortController();
         const datos = {
             ...(this._consulta?.consulta?.cita ?? {}),
             ...(this._consulta?.consulta ?? {}),
@@ -34,223 +264,10 @@ export class TarjetaConsulta extends HTMLElement {
         const estado = this._obtenerEstado(datos);
         const pasos = this._obtenerPasos(datos);
 
-        this.shadowRoot.innerHTML = `
-            <link rel="stylesheet" href="recursos/estilos/principal.css">
-            <style>
-                :host {
-                    display: block;
-                    min-inline-size: 0;
-                    color: var(--color-text, #0f172a);
-                    font-family: var(--font-body, system-ui, sans-serif);
-                }
-                .tarjeta {
-                    overflow: hidden;
-                    border: var(--border-width, 1px) solid var(--color-border, #64748b);
-                    border-radius: var(--radius-lg, 0.75rem);
-                    background-color: var(--color-surface, #ffffff);
-                    box-shadow: var(--shadow-sm, 0 1px 2px rgb(15 23 42 / 0.08));
-                }
-                .cabecera {
-                    display: flex;
-                    flex-wrap: wrap;
-                    align-items: center;
-                    justify-content: space-between;
-                    gap: var(--space-3, 0.75rem);
-                    padding: var(--space-4, 1rem);
-                    background-color: var(--color-primary-soft, #dbeafe);
-                }
-                .fecha {
-                    display: flex;
-                    flex-direction: column;
-                    gap: var(--space-1, 0.25rem);
-                }
-                .etiqueta {
-                    color: var(--color-text-muted, #475569);
-                    font-size: var(--text-xs, 0.75rem);
-                    font-weight: 600;
-                    letter-spacing: 0.05em;
-                    text-transform: uppercase;
-                }
-                .fecha-valor {
-                    color: var(--color-primary, #1e3a8a);
-                    font-size: var(--text-lg, 1.125rem);
-                }
-                .estado {
-                    padding: var(--space-1, 0.25rem) var(--space-3, 0.75rem);
-                    border-radius: var(--radius-full, 9999px);
-                    font-size: var(--text-xs, 0.75rem);
-                    font-weight: 700;
-                    text-transform: uppercase;
-                }
-                .estado--success {
-                    background-color: var(--color-success-bg, #f0fdf4);
-                    color: var(--color-success, #166534);
-                }
-                .estado--warning {
-                    background-color: var(--color-warning-bg, #fffbeb);
-                    color: var(--color-warning, #854d0e);
-                }
-                .estado--error {
-                    background-color: var(--color-error-bg, #fef2f2);
-                    color: var(--color-error, #b91c1c);
-                }
-                .estado--info {
-                    background-color: var(--color-info-bg, #f0f9ff);
-                    color: var(--color-info, #075985);
-                }
-                .datos {
-                    display: grid;
-                    grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
-                    gap: var(--space-4, 1rem);
-                    margin: 0;
-                    padding: var(--space-4, 1rem);
-                }
-                .dato {
-                    min-width: 0;
-                }
-                .dato dt {
-                    margin-bottom: var(--space-1, 0.25rem);
-                    color: var(--color-text-muted, #475569);
-                    font-size: var(--text-xs, 0.75rem);
-                    font-weight: 600;
-                    text-transform: uppercase;
-                }
-                .dato dd {
-                    margin: 0;
-                    overflow-wrap: anywhere;
-                }
-                .procedimientos {
-                    padding: var(--space-4, 1rem);
-                    border-top: var(--border-width, 1px) solid var(--color-surface-alt, #e2e8f0);
-                }
-                .procedimientos h4 {
-                    margin: 0 0 var(--space-2, 0.5rem);
-                    color: var(--color-primary, #1e3a8a);
-                    font-size: var(--text-base, 1rem);
-                }
-                .procedimientos ul {
-                    margin: 0;
-                    padding-left: var(--space-6, 1.5rem);
-                }
-                .procedimientos li + li {
-                    margin-top: var(--space-1, 0.25rem);
-                }
-                .procedimientos li::marker {
-                    color: var(--color-secondary, #0284c7);
-                }
-                .procedimientos-vacio {
-                    margin: 0;
-                    color: var(--color-text-muted, #475569);
-                    font-size: var(--text-sm, 0.875rem);
-                }
-                .historial-pasos {
-                    padding: var(--space-4, 1rem);
-                    border-top: var(--border-width, 1px) solid var(--color-surface-alt, #e2e8f0);
-                }
-                .historial-pasos h4 {
-                    margin: 0 0 var(--space-2, 0.5rem);
-                    color: var(--color-primary, #1e3a8a);
-                    font-size: var(--text-base, 1rem);
-                }
-                .historial-desplegable[hidden] {
-                    display: none;
-                }
-                .historial-desplegable summary {
-                    display: flex;
-                    align-items: center;
-                    justify-content: space-between;
-                    gap: var(--space-2, 0.5rem);
-                    padding: var(--space-2, 0.5rem) var(--space-3, 0.75rem);
-                    border: var(--border-width, 1px) solid var(--color-border, #64748b);
-                    border-radius: var(--radius-md, 0.5rem);
-                    background-color: var(--color-surface-alt, #e2e8f0);
-                    color: var(--color-primary, #1e3a8a);
-                    font-size: var(--text-sm, 0.875rem);
-                    font-weight: 600;
-                    cursor: pointer;
-                }
-                .historial-desplegable summary::marker {
-                    color: var(--color-secondary, #0284c7);
-                }
-                .historial-contenido {
-                    margin-top: var(--space-3, 0.75rem);
-                }
-                .historial-vacio {
-                    margin: 0;
-                    padding: var(--space-3, 0.75rem);
-                    border: var(--border-width, 1px) dashed var(--color-border, #64748b);
-                    border-radius: var(--radius-md, 0.5rem);
-                    background-color: var(--color-surface-alt, #e2e8f0);
-                    color: var(--color-text-muted, #475569);
-                    font-size: var(--text-sm, 0.875rem);
-                    text-align: center;
-                }
-                .historial-vacio[hidden] {
-                    display: none;
-                }
-                .pie {
-                    display: flex;
-                    flex-wrap: wrap;
-                    justify-content: flex-end;
-                    gap: var(--space-2, 0.5rem);
-                    padding: var(--space-3, 0.75rem) var(--space-4, 1rem);
-                    border-top: var(--border-width, 1px) solid var(--color-surface-alt, #e2e8f0);
-                }
-            </style>
-            <article class="tarjeta">
-                <header class="cabecera">
-                    <div class="fecha">
-                        <span class="etiqueta">Fecha</span>
-                        <strong class="fecha-valor" id="fecha"></strong>
-                    </div>
-                    <span class="estado" id="estado"></span>
-                </header>
-                <dl class="datos">
-                    <div class="dato">
-                        <dt>Paciente</dt>
-                        <dd id="paciente"></dd>
-                    </div>
-                    <div class="dato">
-                        <dt>Documento</dt>
-                        <dd id="documento-paciente"></dd>
-                    </div>
-                    <div class="dato">
-                        <dt>Hora</dt>
-                        <dd id="hora"></dd>
-                    </div>
-                    <div class="dato">
-                        <dt>Clínica</dt>
-                        <dd id="clinica"></dd>
-                    </div>
-                    <div class="dato">
-                        <dt>Estado</dt>
-                        <dd id="estado-texto"></dd>
-                    </div>
-                </dl>
-                <section class="procedimientos">
-                    <h4>Procedimientos activos</h4>
-                    <ul id="lista-procedimientos"></ul>
-                    <p class="procedimientos-vacio" id="procedimientos-vacio">Sin procedimientos activos.</p>
-                </section>
-                <section class="historial-pasos" aria-labelledby="titulo-historial-pasos">
-                    <h4 id="titulo-historial-pasos">Historial de pasos</h4>
-                    <details class="historial-desplegable" id="historial-desplegable" open>
-                        <summary>
-                            <span>Pasos ejecutados</span>
-                            <span id="historial-contador"></span>
-                        </summary>
-                        <div class="historial-contenido">
-                            <historial-pasos id="historial-pasos"></historial-pasos>
-                        </div>
-                    </details>
-                    <p class="historial-vacio" id="historial-vacio" hidden>Sin pasos ejecutados.</p>
-                </section>
-                <footer class="pie">
-                    <opciones-ticket></opciones-ticket>
-                    <slot name="acciones"></slot>
-                </footer>
-            </article>
-        `;
+        if (!this.shadowRoot.firstChild) {
+            this.shadowRoot.adoptedStyleSheets = [estilos];
+            this.shadowRoot.append(plantilla.content.cloneNode(true));
+        }
 
         const fecha = this._obtenerFecha(datos);
         this.shadowRoot.querySelector("opciones-ticket").setAttribute("id-consulta", datos.idConsulta ?? datos.id ?? "");
@@ -276,10 +293,11 @@ export class TarjetaConsulta extends HTMLElement {
 
         const estadoElemento = this.shadowRoot.querySelector("#estado");
         estadoElemento.textContent = estado;
-        estadoElemento.classList.add(`estado--${this._claseEstado(estado)}`);
+        estadoElemento.className = `estado estado--${this._claseEstado(estado)}`;
 
         const lista = this.shadowRoot.querySelector("#lista-procedimientos");
         const vacio = this.shadowRoot.querySelector("#procedimientos-vacio");
+        lista.replaceChildren();
 
         vacio.hidden = listaProc.length > 0;
 
@@ -308,7 +326,7 @@ export class TarjetaConsulta extends HTMLElement {
                     composed: true,
                     detail: { consulta: this._consulta, paso: evento.detail.paso }
                 }));
-            });
+            }, { signal: this.#eventos.signal });
         }
     }
 

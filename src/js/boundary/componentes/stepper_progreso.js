@@ -1,22 +1,252 @@
+import { escaparHtml, crearEstilos } from "../dom.js";
+
+const estilos = crearEstilos(`
+:host {
+    display: block;
+    min-inline-size: 0;
+    container: progreso / inline-size;
+    inline-size: 100%;
+    box-sizing: border-box;
+    color: var(--color-text, #0f172a);
+    font-family: var(--font-body, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+}
+
+*, *::before, *::after {
+    box-sizing: inherit;
+}
+
+.sr-only {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border-width: 0;
+}
+
+.stepper-nav {
+    inline-size: 100%;
+    overflow-x: auto;
+    padding: var(--space-3, 0.75rem) 0;
+}
+
+.stepper-lista {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    inline-size: 100%;
+    min-inline-size: fit-content;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.stepper-paso {
+    flex: 1 1 0;
+    min-inline-size: 6.5rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    position: relative;
+}
+
+.stepper-indicador-fila {
+    display: flex;
+    align-items: center;
+    inline-size: 100%;
+    margin-block-end: var(--space-2, 0.5rem);
+}
+
+.stepper-seleccionar {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    inline-size: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+}
+
+.stepper-seleccionar:focus-visible {
+    outline: 2px solid var(--color-primary, #1e3a8a);
+    outline-offset: 3px;
+}
+
+.stepper-paso[aria-current="step"] .stepper-etiqueta {
+    text-decoration: underline;
+}
+
+.stepper-conector {
+    flex: 1 1 0;
+    block-size: 3px;
+    background-color: var(--color-surface-alt, #e2e8f0);
+    transition: background-color 0.25s ease;
+}
+
+.stepper-conector--completado {
+    background-color: var(--color-primary, #1e3a8a);
+}
+
+.stepper-conector--oculto {
+    visibility: hidden;
+}
+
+.stepper-circulo {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 2.5rem;
+    block-size: 2.5rem;
+    border-radius: var(--radius-full, 9999px);
+    font-size: var(--text-sm, 0.875rem);
+    font-weight: 600;
+    line-height: 1;
+    flex-shrink: 0;
+    transition: background-color 0.25s ease, border-color 0.25s ease, transform 0.25s ease;
+    background-color: var(--color-surface, #ffffff);
+    border: 2px solid var(--color-surface-alt, #cbd5e1);
+    color: var(--color-text-muted, #64748b);
+    box-sizing: border-box;
+}
+
+.stepper-icono {
+    display: block;
+    inline-size: 1.25rem;
+    block-size: 1.25rem;
+}
+
+.stepper-cifra {
+    line-height: 1;
+}
+
+.stepper-cuerpo {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: var(--space-1, 0.25rem);
+    padding: 0 var(--space-2, 0.5rem);
+    inline-size: 100%;
+}
+
+.stepper-numero {
+    font-size: var(--text-xs, 0.75rem);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+    color: var(--color-text-muted, #64748b);
+}
+
+.stepper-etiqueta {
+    font-size: var(--text-sm, 0.875rem);
+    line-height: 1.3;
+    font-weight: 500;
+    color: var(--color-text-muted, #64748b);
+    word-break: normal;
+    overflow-wrap: break-word;
+}
+
+.stepper-estado-badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    line-height: 1.2;
+    font-weight: 600;
+    padding: 0.125rem 0.5rem;
+    border-radius: var(--radius-full, 9999px);
+    margin-block-start: 0.125rem;
+}
+
+/* --- ESTADO: PENDIENTE --- */
+.stepper-paso--pendiente .stepper-circulo {
+    background-color: var(--color-surface, #ffffff);
+    border-color: var(--color-surface-alt, #cbd5e1);
+    color: var(--color-text-muted, #64748b);
+}
+.stepper-paso--pendiente .stepper-numero {
+    color: var(--color-text-muted, #64748b);
+}
+.stepper-paso--pendiente .stepper-etiqueta {
+    color: var(--color-text-muted, #64748b);
+}
+.stepper-paso--pendiente .stepper-estado-badge {
+    background-color: var(--color-surface-alt, #f1f5f9);
+    color: var(--color-text-muted, #64748b);
+}
+
+/* --- ESTADO: ACTIVO (DESTACADO CON --color-primary) --- */
+.stepper-paso--activo .stepper-circulo {
+    background-color: var(--color-primary, #1e3a8a);
+    border-color: var(--color-primary, #1e3a8a);
+    color: #ffffff;
+    box-shadow: 0 0 0 4px var(--color-primary-soft, #dbeafe);
+    transform: scale(1.06);
+}
+.stepper-paso--activo .stepper-numero {
+    color: var(--color-primary, #1e3a8a);
+    font-weight: 700;
+}
+.stepper-paso--activo .stepper-etiqueta {
+    color: var(--color-primary, #1e3a8a);
+    font-weight: 700;
+}
+.stepper-paso--activo .stepper-estado-badge {
+    background-color: var(--color-primary-soft, #dbeafe);
+    color: var(--color-primary, #1e3a8a);
+}
+
+/* --- ESTADO: COMPLETADO --- */
+.stepper-paso--completado .stepper-circulo {
+    background-color: var(--color-primary, #1e3a8a);
+    border-color: var(--color-primary, #1e3a8a);
+    color: #ffffff;
+}
+.stepper-paso--completado .stepper-numero {
+    color: var(--color-text-muted, #475569);
+}
+.stepper-paso--completado .stepper-etiqueta {
+    color: var(--color-text, #0f172a);
+    font-weight: 600;
+}
+.stepper-paso--completado .stepper-estado-badge {
+    background-color: var(--color-success-bg, #f0fdf4);
+    color: var(--color-success, #166534);
+}
+
+@container progreso (inline-size < 36rem) {
+    .stepper-lista { flex-direction: column; gap: 0.75rem; min-inline-size: 0; }
+    .stepper-paso { inline-size: 100%; min-inline-size: 0; text-align: start; }
+    .stepper-seleccionar { flex-direction: row; align-items: center; gap: 0.75rem; text-align: start; }
+    .stepper-indicador-fila { inline-size: auto; margin: 0; }
+    .stepper-cuerpo { align-items: flex-start; min-inline-size: 0; }
+    .stepper-conector { display: none; }
+    .stepper-circulo {
+        inline-size: 2.125rem;
+        block-size: 2.125rem;
+        font-size: var(--text-xs, 0.75rem);
+    }
+    .stepper-etiqueta {
+        font-size: var(--text-xs, 0.75rem);
+    }
+    .stepper-numero {
+        font-size: 0.65rem;
+    }
+    .stepper-estado-badge {
+        font-size: 0.65rem;
+        padding: 0.1rem 0.35rem;
+    }
+}
+`);
+
 /**
  * Constante con las etapas por defecto del flujo clínico / de atención.
  */
 export const ETAPAS_POR_DEFECTO = Object.freeze([]);
-
-/**
- * Escapa caracteres HTML especiales para evitar inyecciones al renderizar cadenas.
- * @param {unknown} texto - Texto a escapar.
- * @returns {string} Texto seguro para HTML.
- */
-function escaparHtml(texto) {
-    if (texto === null || texto === undefined) return "";
-    return String(texto)
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#39;");
-}
 
 /**
  * Parsea un valor (array, string JSON o string separado por comas) en un array de etapas.
@@ -160,6 +390,7 @@ function parsearEstados(valor) {
  * Muestra el progreso de un proceso a través de un indicador horizontal accesible.
  */
 export class StepperProgreso extends HTMLElement {
+    #eventos = new AbortController();
     static get observedAttributes() {
         return ["etapas", "estados", "paso-activo", "pasoactivo"];
     }
@@ -254,8 +485,22 @@ export class StepperProgreso extends HTMLElement {
     }
 
     connectedCallback() {
+        this.#eventos.abort();
+        this.#eventos = new AbortController();
+        this.shadowRoot.addEventListener('click', evento => {
+            const item = evento.target.closest('.stepper-paso');
+            if (!item) return;
+            const indice = Number(item.dataset.indice);
+            this.dispatchEvent(new CustomEvent('paso-click', {
+                bubbles: true, composed: true,
+                detail: { indice, etapa: this._etapas[indice], estado: this._estados[indice]
+                    ?? Object.keys(CLASE_ESTADO).find(estado => CLASE_ESTADO[estado] === this.obtenerEstadoPaso(indice)) }
+            }));
+        }, { signal: this.#eventos.signal });
         this.render();
     }
+
+    disconnectedCallback() { this.#eventos.abort(); }
 
     /**
      * Actualiza la fase activa dinámicamente.
@@ -443,250 +688,9 @@ export class StepperProgreso extends HTMLElement {
         }
         this._claveEtapas = claveEtapas;
 
+        this.shadowRoot.adoptedStyleSheets = [estilos];
         this.shadowRoot.innerHTML = `
             <link rel="stylesheet" href="recursos/estilos/principal.css">
-            <style>
-                :host {
-                    display: block;
-                    min-inline-size: 0;
-                    container: progreso / inline-size;
-                    width: 100%;
-                    box-sizing: border-box;
-                    color: var(--color-text, #0f172a);
-                    font-family: var(--font-body, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
-                }
-
-                *, *::before, *::after {
-                    box-sizing: inherit;
-                }
-
-                .sr-only {
-                    position: absolute;
-                    width: 1px;
-                    height: 1px;
-                    padding: 0;
-                    margin: -1px;
-                    overflow: hidden;
-                    clip-path: inset(50%);
-                    white-space: nowrap;
-                    border-width: 0;
-                }
-
-                .stepper-nav {
-                    width: 100%;
-                    overflow-x: auto;
-                    padding: var(--space-3, 0.75rem) 0;
-                }
-
-                .stepper-lista {
-                    display: flex;
-                    align-items: flex-start;
-                    justify-content: space-between;
-                    width: 100%;
-                    min-width: fit-content;
-                    margin: 0;
-                    padding: 0;
-                    list-style: none;
-                }
-
-                .stepper-paso {
-                    flex: 1 1 0;
-                    min-width: 6.5rem;
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    text-align: center;
-                    position: relative;
-                }
-
-                .stepper-indicador-fila {
-                    display: flex;
-                    align-items: center;
-                    width: 100%;
-                    margin-bottom: var(--space-2, 0.5rem);
-                }
-
-                .stepper-seleccionar {
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    width: 100%;
-                    padding: 0;
-                    border: 0;
-                    background: transparent;
-                    color: inherit;
-                    font: inherit;
-                    cursor: pointer;
-                }
-
-                .stepper-seleccionar:focus-visible {
-                    outline: 2px solid var(--color-primary, #1e3a8a);
-                    outline-offset: 3px;
-                }
-
-                .stepper-paso[aria-current="step"] .stepper-etiqueta {
-                    text-decoration: underline;
-                }
-
-                .stepper-conector {
-                    flex: 1 1 0;
-                    height: 3px;
-                    background-color: var(--color-surface-alt, #e2e8f0);
-                    transition: background-color 0.25s ease;
-                }
-
-                .stepper-conector--completado {
-                    background-color: var(--color-primary, #1e3a8a);
-                }
-
-                .stepper-conector--oculto {
-                    visibility: hidden;
-                }
-
-                .stepper-circulo {
-                    display: inline-flex;
-                    align-items: center;
-                    justify-content: center;
-                    width: 2.5rem;
-                    height: 2.5rem;
-                    border-radius: var(--radius-full, 9999px);
-                    font-size: var(--text-sm, 0.875rem);
-                    font-weight: 600;
-                    line-height: 1;
-                    flex-shrink: 0;
-                    transition: background-color 0.25s ease, border-color 0.25s ease, transform 0.25s ease;
-                    background-color: var(--color-surface, #ffffff);
-                    border: 2px solid var(--color-surface-alt, #cbd5e1);
-                    color: var(--color-text-muted, #64748b);
-                    box-sizing: border-box;
-                }
-
-                .stepper-icono {
-                    display: block;
-                    width: 1.25rem;
-                    height: 1.25rem;
-                }
-
-                .stepper-cifra {
-                    line-height: 1;
-                }
-
-                .stepper-cuerpo {
-                    display: flex;
-                    flex-direction: column;
-                    align-items: center;
-                    gap: var(--space-1, 0.25rem);
-                    padding: 0 var(--space-2, 0.5rem);
-                    width: 100%;
-                }
-
-                .stepper-numero {
-                    font-size: var(--text-xs, 0.75rem);
-                    text-transform: uppercase;
-                    letter-spacing: 0.05em;
-                    font-weight: 600;
-                    color: var(--color-text-muted, #64748b);
-                }
-
-                .stepper-etiqueta {
-                    font-size: var(--text-sm, 0.875rem);
-                    line-height: 1.3;
-                    font-weight: 500;
-                    color: var(--color-text-muted, #64748b);
-                    word-break: normal;
-                    overflow-wrap: break-word;
-                }
-
-                .stepper-estado-badge {
-                    display: inline-block;
-                    font-size: 0.7rem;
-                    line-height: 1.2;
-                    font-weight: 600;
-                    padding: 0.125rem 0.5rem;
-                    border-radius: var(--radius-full, 9999px);
-                    margin-top: 0.125rem;
-                }
-
-                /* --- ESTADO: PENDIENTE --- */
-                .stepper-paso--pendiente .stepper-circulo {
-                    background-color: var(--color-surface, #ffffff);
-                    border-color: var(--color-surface-alt, #cbd5e1);
-                    color: var(--color-text-muted, #64748b);
-                }
-                .stepper-paso--pendiente .stepper-numero {
-                    color: var(--color-text-muted, #64748b);
-                }
-                .stepper-paso--pendiente .stepper-etiqueta {
-                    color: var(--color-text-muted, #64748b);
-                }
-                .stepper-paso--pendiente .stepper-estado-badge {
-                    background-color: var(--color-surface-alt, #f1f5f9);
-                    color: var(--color-text-muted, #64748b);
-                }
-
-                /* --- ESTADO: ACTIVO (DESTACADO CON --color-primary) --- */
-                .stepper-paso--activo .stepper-circulo {
-                    background-color: var(--color-primary, #1e3a8a);
-                    border-color: var(--color-primary, #1e3a8a);
-                    color: #ffffff;
-                    box-shadow: 0 0 0 4px var(--color-primary-soft, #dbeafe);
-                    transform: scale(1.06);
-                }
-                .stepper-paso--activo .stepper-numero {
-                    color: var(--color-primary, #1e3a8a);
-                    font-weight: 700;
-                }
-                .stepper-paso--activo .stepper-etiqueta {
-                    color: var(--color-primary, #1e3a8a);
-                    font-weight: 700;
-                }
-                .stepper-paso--activo .stepper-estado-badge {
-                    background-color: var(--color-primary-soft, #dbeafe);
-                    color: var(--color-primary, #1e3a8a);
-                }
-
-                /* --- ESTADO: COMPLETADO --- */
-                .stepper-paso--completado .stepper-circulo {
-                    background-color: var(--color-primary, #1e3a8a);
-                    border-color: var(--color-primary, #1e3a8a);
-                    color: #ffffff;
-                }
-                .stepper-paso--completado .stepper-numero {
-                    color: var(--color-text-muted, #475569);
-                }
-                .stepper-paso--completado .stepper-etiqueta {
-                    color: var(--color-text, #0f172a);
-                    font-weight: 600;
-                }
-                .stepper-paso--completado .stepper-estado-badge {
-                    background-color: var(--color-success-bg, #f0fdf4);
-                    color: var(--color-success, #166534);
-                }
-
-                @container progreso (inline-size < 36rem) {
-                    .stepper-lista { flex-direction: column; gap: 0.75rem; min-inline-size: 0; }
-                    .stepper-paso { inline-size: 100%; min-inline-size: 0; text-align: start; }
-                    .stepper-seleccionar { flex-direction: row; align-items: center; gap: 0.75rem; text-align: start; }
-                    .stepper-indicador-fila { inline-size: auto; margin: 0; }
-                    .stepper-cuerpo { align-items: flex-start; min-inline-size: 0; }
-                    .stepper-conector { display: none; }
-                    .stepper-circulo {
-                        width: 2.125rem;
-                        height: 2.125rem;
-                        font-size: var(--text-xs, 0.75rem);
-                    }
-                    .stepper-etiqueta {
-                        font-size: var(--text-xs, 0.75rem);
-                    }
-                    .stepper-numero {
-                        font-size: 0.65rem;
-                    }
-                    .stepper-estado-badge {
-                        font-size: 0.65rem;
-                        padding: 0.1rem 0.35rem;
-                    }
-                }
-            </style>
             <nav class="stepper-nav" aria-label="Progreso del proceso">
                 <ol class="stepper-lista" role="list">
                     ${pasosHtml}
@@ -694,24 +698,6 @@ export class StepperProgreso extends HTMLElement {
             </nav>
         `;
 
-        // Delegar o registrar escuchador de evento de selección en cada paso
-        const items = this.shadowRoot.querySelectorAll(".stepper-paso");
-        items.forEach((item) => {
-            item.addEventListener("click", () => {
-                const idx = Number(item.getAttribute("data-indice"));
-                this.dispatchEvent(new CustomEvent("paso-click", {
-                    bubbles: true,
-                    composed: true,
-                    detail: {
-                        indice: idx,
-                        etapa: etapas[idx],
-                        estado: this._estados[idx] ?? Object.keys(CLASE_ESTADO).find(
-                            (estado) => CLASE_ESTADO[estado] === this.obtenerEstadoPaso(idx)
-                        )
-                    }
-                }));
-            });
-        });
     }
 }
 

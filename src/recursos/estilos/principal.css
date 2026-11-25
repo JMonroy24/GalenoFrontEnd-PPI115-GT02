@@ -46,7 +46,6 @@
     --radius-full: 9999px;
     --shadow-sm: 0 1px 2px rgb(15 23 42 / 0.08);
     --shadow: 0 4px 12px rgb(15 23 42 / 0.12);
-    --shadow-lg: 0 12px 28px rgb(15 23 42 / 0.16);
 
     --color-focus: var(--color-primary);
     --focus-width: 3px;
@@ -83,7 +82,7 @@
     box-sizing: border-box;
 }
 
-* {
+:where(body, h1, h2, h3, h4, h5, h6, p, dl, dd, ul, ol, figure, blockquote, pre, fieldset) {
     margin: 0;
 }
 
@@ -130,10 +129,9 @@ button {
     display: none !important;
 }
 
-img,
-svg {
+:where(img, svg) {
     display: block;
-    max-width: 100%;
+    max-inline-size: 100%;
 }
 
 a {
@@ -147,24 +145,28 @@ a {
 }
 
 .form-control {
-    width: 100%;
-    min-height: 2.75rem;
+    inline-size: 100%;
+    min-block-size: 2.75rem;
     padding: var(--espacio-2) var(--espacio-3);
     border: 1px solid var(--color-borde);
     border-radius: var(--radio);
     background-color: var(--color-superficie);
     color: var(--color-texto);
     font: inherit;
-}
 
-.form-control::placeholder {
-    color: var(--color-texto-secundario);
-    opacity: 1;
+    &::placeholder {
+        color: var(--color-texto-secundario);
+        opacity: 1;
+    }
+
+    &:where(:user-invalid, [aria-invalid="true"]) {
+        border-color: var(--color-error);
+    }
 }
 
 .btn {
     display: inline-flex;
-    min-height: 2.75rem;
+    min-block-size: 2.75rem;
     align-items: center;
     justify-content: center;
     padding: var(--espacio-2) var(--espacio-4);
@@ -174,21 +176,21 @@ a {
     color: var(--color-texto);
     font: inherit;
     cursor: pointer;
-}
 
-.btn:hover {
-    background-color: var(--color-superficie-alternativa);
+    &:hover:not(:disabled) {
+        background-color: var(--color-superficie-alternativa);
+    }
 }
 
 .btn-primario {
     border-color: var(--color-primario);
     background-color: var(--color-primario);
     color: var(--color-superficie);
-}
 
-.btn-primario:hover {
-    border-color: var(--color-primario-hover);
-    background-color: var(--color-primario-hover);
+    &:hover:not(:disabled) {
+        border-color: var(--color-primario-hover);
+        background-color: var(--color-primario-hover);
+    }
 }
 
 .app {

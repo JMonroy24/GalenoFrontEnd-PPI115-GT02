@@ -65,7 +65,8 @@ export class DefaultService {
                     {
                         code: "NETWORK_ERROR",
                         details: { url: String(url), causa: error.message }
-                    }
+                    },
+                    { cause: error }
                 );
             }
 

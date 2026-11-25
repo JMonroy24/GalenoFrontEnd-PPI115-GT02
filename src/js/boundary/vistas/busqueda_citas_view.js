@@ -1,10 +1,88 @@
+import { crearPlantilla } from "../dom.js";
 import "../componentes/asistente_busqueda.js";
 import "../componentes/tarjeta_consulta.js";
 import { consultaService } from "../../control/consulta_service.js";
 import GeneradorMensajes from "../../control/generador_mensajes.js";
 import { DEFAULT_FIRST, DEFAULT_PAGE_SIZE } from "../../config.js";
 
+const { contenido: plantilla, estilos } = crearPlantilla(`
+<link rel="stylesheet" href="recursos/estilos/principal.css">
+<style>
+    :host {
+        display: block;
+        min-inline-size: 0; container: citas / inline-size;
+        color: var(--color-text, #0f172a);
+        font-family: var(--font-body, system-ui, sans-serif);
+    }
+    .vista {
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-4, 1rem);
+    }
+    .resultados {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
+        gap: var(--space-4, 1rem);
+    }
+    .estado {
+        padding: var(--space-4, 1rem);
+        border: var(--border-width, 1px) solid var(--color-border, #64748b);
+        border-radius: var(--radius-lg, 0.75rem);
+        background-color: var(--color-surface, #ffffff);
+        color: var(--color-text-muted, #475569);
+        text-align: center;
+    }
+    .estado[hidden] {
+        display: none;
+    }
+    .paginacion {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        gap: var(--space-3, 0.75rem);
+    }
+    .paginacion[hidden] {
+        display: none;
+    }
+    .paginacion button:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+    }
+    #pagina-info {
+        color: var(--color-text-muted, #475569);
+        font-size: var(--text-sm, 0.875rem);
+    }
+@container citas (inline-size < 28rem) {
+    .paginacion { gap: var(--space-2, 0.5rem); }
+    #pagina-info { flex-basis: 100%; text-align: center; }
+}
+</style>
+<section class="vista">
+    <asistente-busqueda></asistente-busqueda>
+    <div
+        id="estado"
+        class="estado"
+        role="status"
+        aria-live="polite"
+        hidden
+    ></div>
+    <div id="resultados" class="resultados" role="list" hidden></div>
+    <div id="paginacion" class="paginacion" hidden>
+        <button id="pagina-anterior" type="button" class="btn" data-pagina="anterior">
+            Anterior
+        </button>
+        <span id="pagina-info" aria-live="polite"></span>
+        <button id="pagina-siguiente" type="button" class="btn" data-pagina="siguiente">
+            Siguiente
+        </button>
+    </div>
+</section>
+`);
+
 export class BusquedaCitasView extends HTMLElement {
+    #eventos = new AbortController();
+    #conexion = new AbortController();
     constructor() {
         super();
         this.attachShadow({ mode: "open" });
@@ -19,89 +97,28 @@ export class BusquedaCitasView extends HTMLElement {
     }
 
     connectedCallback() {
+        this.#conexion.abort();
+        this.#conexion = new AbortController();
         this.render();
-        this.addEventListener("buscar-citas", this.escucharBusqueda);
-        this.shadowRoot.addEventListener("click", this.escucharPaginacion);
+        this.addEventListener("buscar-citas", this.escucharBusqueda, { signal: this.#conexion.signal });
+        this.shadowRoot.addEventListener("click", this.escucharPaginacion, { signal: this.#conexion.signal });
     }
 
     disconnectedCallback() {
+        this.#eventos.abort();
+        this.#conexion.abort();
+
         this.solicitudActual++;
         this.cargando = false;
-        this.removeEventListener("buscar-citas", this.escucharBusqueda);
-        this.shadowRoot.removeEventListener("click", this.escucharPaginacion);
     }
 
     render() {
-        this.shadowRoot.innerHTML = `
-            <link rel="stylesheet" href="recursos/estilos/principal.css">
-            <style>
-                :host {
-                    display: block;
-                    min-inline-size: 0;
-                    color: var(--color-text, #0f172a);
-                    font-family: var(--font-body, system-ui, sans-serif);
-                }
-                .vista {
-                    display: flex;
-                    flex-direction: column;
-                    gap: var(--space-4, 1rem);
-                }
-                .resultados {
-                    display: grid;
-                    grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr));
-                    gap: var(--space-4, 1rem);
-                }
-                .estado {
-                    padding: var(--space-4, 1rem);
-                    border: var(--border-width, 1px) solid var(--color-border, #64748b);
-                    border-radius: var(--radius-lg, 0.75rem);
-                    background-color: var(--color-surface, #ffffff);
-                    color: var(--color-text-muted, #475569);
-                    text-align: center;
-                }
-                .estado[hidden] {
-                    display: none;
-                }
-                .paginacion {
-                    display: flex;
-                    flex-wrap: wrap;
-                    align-items: center;
-                    justify-content: center;
-                    gap: var(--space-3, 0.75rem);
-                }
-                .paginacion[hidden] {
-                    display: none;
-                }
-                .paginacion button:disabled {
-                    cursor: not-allowed;
-                    opacity: 0.5;
-                }
-                #pagina-info {
-                    color: var(--color-text-muted, #475569);
-                    font-size: var(--text-sm, 0.875rem);
-                }
-            </style>
-            <section class="vista">
-                <asistente-busqueda></asistente-busqueda>
-                <div
-                    id="estado"
-                    class="estado"
-                    role="status"
-                    aria-live="polite"
-                    hidden
-                ></div>
-                <div id="resultados" class="resultados" role="list" hidden></div>
-                <div id="paginacion" class="paginacion" hidden>
-                    <button id="pagina-anterior" type="button" class="btn" data-pagina="anterior">
-                        Anterior
-                    </button>
-                    <span id="pagina-info" aria-live="polite"></span>
-                    <button id="pagina-siguiente" type="button" class="btn" data-pagina="siguiente">
-                        Siguiente
-                    </button>
-                </div>
-            </section>
-        `;
+        this.#eventos.abort();
+        this.#eventos = new AbortController();
+        if (!this.shadowRoot.firstChild) {
+            this.shadowRoot.adoptedStyleSheets = [estilos];
+            this.shadowRoot.append(plantilla.content.cloneNode(true));
+        }
     }
 
     async buscar(filtros = this.filtros, { first = DEFAULT_FIRST, max = DEFAULT_PAGE_SIZE } = {}) {

@@ -1,7 +1,27 @@
+import { crearPlantilla } from "../dom.js";
 import { tipoDocumentoService } from "../../control/tipo_documento_service.js";
 import GeneradorMensajes from "../../control/generador_mensajes.js";
 
+const { contenido: plantilla, estilos } = crearPlantilla(`
+<link rel="stylesheet" href="recursos/estilos/principal.css">
+<style>
+    :host {
+        display: block;
+    }
+    label {
+        display: block;
+        margin-block-end: 0.35rem;
+        font-weight: 600;
+    }
+</style>
+<label for="tipo-documento">Tipo de documento</label>
+<select id="tipo-documento" class="form-control" aria-label="Tipo de documento" aria-busy="true" disabled>
+    <option value="">Cargando tipos de documento…</option>
+</select>
+`);
+
 export class BuscadorTipoDocumentos extends HTMLElement {
+    #eventos = new AbortController();
     constructor() {
         super();
         this.attachShadow({ mode: "open" });
@@ -42,27 +62,18 @@ export class BuscadorTipoDocumentos extends HTMLElement {
     }
 
     disconnectedCallback() {
+        this.#eventos.abort();
+
         this._solicitudActual++;
     }
 
     _renderEstructura() {
-        this.shadowRoot.innerHTML = `
-            <link rel="stylesheet" href="recursos/estilos/principal.css">
-            <style>
-                :host {
-                    display: block;
-                }
-                label {
-                    display: block;
-                    margin-bottom: 0.35rem;
-                    font-weight: 600;
-                }
-            </style>
-            <label for="tipo-documento">Tipo de documento</label>
-            <select id="tipo-documento" class="form-control" aria-label="Tipo de documento" aria-busy="true" disabled>
-                <option value="">Cargando tipos de documento…</option>
-            </select>
-        `;
+        this.#eventos.abort();
+        this.#eventos = new AbortController();
+        if (!this.shadowRoot.firstChild) {
+            this.shadowRoot.adoptedStyleSheets = [estilos];
+            this.shadowRoot.append(plantilla.content.cloneNode(true));
+        }
 
         const select = this.shadowRoot.querySelector("select");
 
@@ -77,7 +88,7 @@ export class BuscadorTipoDocumentos extends HTMLElement {
                 composed: true,
                 detail: { value, item }
             }));
-        });
+        }, { signal: this.#eventos.signal });
     }
 
     _cargarOpciones() {
@@ -87,6 +98,7 @@ export class BuscadorTipoDocumentos extends HTMLElement {
             return;
         }
 
+        const seleccionado = select.value;
         select.replaceChildren();
         select.setAttribute("aria-busy", "false");
         select.disabled = this.items.length === 0;
@@ -112,6 +124,9 @@ export class BuscadorTipoDocumentos extends HTMLElement {
             opcion.textContent = this._nombreItem(tipoDocumento);
             select.appendChild(opcion);
         });
+        if ([...select.options].some(opcion => opcion.value === seleccionado)) {
+            select.value = seleccionado;
+        }
     }
 
     _valorItem(tipoDocumento) {

@@ -379,18 +379,6 @@ export class ConsultaService extends DefaultService {
         return this._buscarCitas(normalizados, first, max);
     }
 
-    buscarPorClinica(idClinica, first = 0, max = DEFAULT_PAGE_SIZE) {
-        return this._buscarCitas({ idClinica }, first, max);
-    }
-
-    buscarPorEstado(estado, first = 0, max = DEFAULT_PAGE_SIZE) {
-        return this._buscarCitas({ estado }, first, max);
-    }
-
-    buscarCitasPorClinicaYEstado(idClinica, estado, first = 0, max = DEFAULT_PAGE_SIZE) {
-        return this._buscarCitas({ idClinica, estado }, first, max);
-    }
-
     /**
      * Busca consultas filtrando por datos del paciente y rango de fechas.
      *
