@@ -303,42 +303,15 @@ suite("BusquedaCitasView (unitaria)", () => {
         expect(resultados.querySelectorAll("tarjeta-consulta")).to.have.length(0);
     });
 
-    test("el botón de cada tarjeta descarga su consulta y bloquea clics repetidos", async () => {
-        let resolver;
-        const descargar = sinon.stub(consultaService, "descargarTicketPdf").returns(
-            new Promise((resolve) => { resolver = resolve; })
-        );
-        try {
-            await host.buscar({});
-            const tarjeta = host.shadowRoot.querySelector("tarjeta-consulta");
-            const boton = tarjeta.querySelector('button[slot="acciones"]');
-            expect(tarjeta.shadowRoot.querySelector('slot[name="acciones"]').assignedElements()).to.include(boton);
-            boton.click();
-            boton.click();
-            expect(descargar.calledOnceWithExactly(101)).to.be.true;
-            expect(boton.disabled).to.be.true;
-            resolver();
-            await esperar();
-            expect(boton.disabled).to.be.false;
-            expect(boton.textContent).to.equal("Descargar Ticket PDF");
-        } finally {
-            descargar.restore();
-        }
-    });
-
-    test("restaura el botón y muestra el error si falla la descarga", async () => {
-        const descargar = sinon.stub(consultaService, "descargarTicketPdf").rejects(new Error("Ticket no disponible"));
-        try {
-            await host.buscar({});
-            const boton = host.shadowRoot.querySelector("tarjeta-consulta button");
-            boton.click();
-            await esperar();
-            expect(boton.disabled).to.be.false;
-            expect(boton.hasAttribute("aria-busy")).to.be.false;
-            expect(mensajeSpy.calledOnceWithExactly("Error al descargar el ticket", "Ticket no disponible", "error")).to.be.true;
-        } finally {
-            descargar.restore();
-        }
+    test("cada tarjeta ofrece las dos opciones inline y enlaza a la vista previa", async () => {
+        await host.buscar({});
+        const tarjeta = host.shadowRoot.querySelector('tarjeta-consulta');
+        const opciones = tarjeta.shadowRoot.querySelector('opciones-ticket');
+        expect(opciones.getAttribute('id-consulta')).to.equal('101');
+        expect(opciones.shadowRoot.querySelector('#instalar').textContent).to.equal('Descargar aplicación para poder ver el ticket');
+        expect(opciones.shadowRoot.querySelector('#ver-web').getAttribute('href')).to.equal('#ticket/101');
+        expect(opciones.shadowRoot.querySelector('#ver-web').textContent).to.equal('ver ticket en la web');
+        expect(opciones.shadowRoot.querySelector('dialog, [popover], [aria-modal]')).to.be.null;
     });
 
     test("muestra carga y descarta las tarjetas anteriores mientras espera la nueva búsqueda", async () => {
@@ -398,55 +371,18 @@ suite("BusquedaCitasView (unitaria)", () => {
         });
     }
 
-    test("cada tarjeta descarga su idConsulta y deshabilita el ticket si falta el identificador", async () => {
+    test("cada tarjeta usa su idConsulta y deshabilita opciones sin identificador", async () => {
         citasRespuesta = [
             { ...citaFicticia, idConsulta: 101, id: 999 },
             { ...citaFicticia, idConsulta: 202 },
             { ...citaFicticia, idConsulta: null }
         ];
-        const descargar = sinon.stub(consultaService, "descargarTicketPdf").resolves();
-        try {
-            await host.buscar({});
-            const botones = [...host.shadowRoot.querySelectorAll('tarjeta-consulta button[slot="acciones"]')];
-            botones.forEach((boton) => boton.click());
-            expect(botones[2].disabled).to.be.true;
-            expect(descargar.getCalls().map((llamada) => llamada.args[0])).to.deep.equal([101, 202]);
-            await Promise.resolve();
-        } finally {
-            descargar.restore();
-        }
-    });
-
-    test("el botón completa el flujo HTTP del ticket como blob sin navegar fuera del runner", async () => {
-        const pdf = new Blob(["%PDF-1.4\nTicket\n%%EOF"], { type: "application/pdf" });
-        const leerBlob = sinon.stub().resolves(pdf);
-        fetchStub.withArgs(sinon.match((url) => String(url).endsWith("/consultas/101/ticket")))
-            .resolves({ ok: true, status: 200, blob: leerBlob });
-        const crearUrl = sinon.stub(URL, "createObjectURL").returns("blob:ticket-unitario");
-        const revocarUrl = sinon.stub(URL, "revokeObjectURL");
-        const clickEnlace = sinon.stub(HTMLAnchorElement.prototype, "click");
-        let reloj;
-        try {
-            await host.buscar({});
-            reloj = sinon.useFakeTimers();
-            const boton = host.shadowRoot.querySelector("tarjeta-consulta button");
-            boton.click();
-            await reloj.tickAsync(1000);
-
-            const solicitud = fetchStub.getCalls().find((llamada) => String(llamada.args[0]).endsWith("/ticket"));
-            expect(solicitud.args[1].method).to.equal("GET");
-            expect(solicitud.args[1].headers.get("Accept")).to.equal("application/pdf");
-            expect(leerBlob.calledOnce).to.be.true;
-            expect(crearUrl.calledOnceWithExactly(pdf)).to.be.true;
-            expect(clickEnlace.calledOnce).to.be.true;
-            expect(clickEnlace.firstCall.thisValue.download).to.equal("ticket-cita-101.pdf");
-            expect(revocarUrl.calledOnceWithExactly("blob:ticket-unitario")).to.be.true;
-            expect(boton.disabled).to.be.false;
-        } finally {
-            reloj?.restore();
-            crearUrl.restore();
-            revocarUrl.restore();
-            clickEnlace.restore();
-        }
+        await host.buscar({});
+        const opciones = [...host.shadowRoot.querySelectorAll('tarjeta-consulta')]
+            .map(tarjeta => tarjeta.shadowRoot.querySelector('opciones-ticket').shadowRoot);
+        expect(opciones[0].querySelector('#ver-web').getAttribute('href')).to.equal('#ticket/101');
+        expect(opciones[1].querySelector('#ver-web').getAttribute('href')).to.equal('#ticket/202');
+        expect(opciones[2].querySelector('#instalar').disabled).to.be.true;
+        expect(opciones[2].querySelector('#ver-web').hasAttribute('href')).to.be.false;
     });
 });

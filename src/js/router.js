@@ -29,6 +29,8 @@ const ROUTES = Object.freeze({
     login: "login-view",
     "buscar-citas": "busqueda-citas-view",
     dashboard: "dashboard-view",
+    consulta: "detalle-consulta-view",
+    ticket: "ticket-view",
     atencion: "atencion-consulta-view"
 });
 

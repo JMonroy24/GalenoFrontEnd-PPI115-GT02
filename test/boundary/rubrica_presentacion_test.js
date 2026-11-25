@@ -55,7 +55,7 @@ suite('Rúbrica: fechas, presentación inline y recursos offline', () => {
         const sw = new URL('../../src/sw.js', import.meta.url);
         const response = await fetch(sw);
         const fuente = await response.text();
-        expect(fuente).to.include('galenosv-app-shell-v30').and.not.to.match(/cie10/i);
+        expect(fuente).to.include('galenosv-app-shell-v31').and.not.to.match(/cie10/i);
         const rutas = [...fuente.matchAll(/"(\/[^"\n]+\.(?:html|js|css|json|png))"/g)].map(m => m[1]);
         expect(rutas.length).to.be.greaterThan(30);
         const resultados = await Promise.all(rutas.map(async ruta => {

@@ -567,31 +567,21 @@ export class ConsultaService extends DefaultService {
         });
     }
 
-    async descargarTicketPdf(idConsulta) {
+    async obtenerTicketPdf(idConsulta, { signal } = {}) {
         if (idConsulta == null || String(idConsulta).trim() === "") {
             throw new Error("La consulta no tiene un identificador válido para descargar el ticket.");
         }
 
-        const url = `${ENDPOINTS.API_BASE}${ENDPOINTS.CONSULTAS}/${encodeURIComponent(idConsulta)}/ticket`;
+        const parametros = new URLSearchParams({ frontendUrl: window.location.origin });
+        const url = `${ENDPOINTS.API_BASE}${ENDPOINTS.CONSULTAS}/${encodeURIComponent(idConsulta)}/ticket?${parametros}`;
         const response = await this._request(
             url,
-            { method: "GET", headers: { Accept: "application/pdf" } },
+            { method: "GET", headers: { Accept: "application/pdf" }, signal },
             "Error al descargar el ticket de la consulta"
         );
         const blob = await response.blob();
-        const objectUrl = URL.createObjectURL(blob);
-        const enlace = document.createElement("a");
-
-        enlace.href = objectUrl;
-        enlace.download = `ticket-cita-${idConsulta}.pdf`;
-        enlace.style.display = "none";
-
-        try {
-            document.body?.appendChild(enlace);
-            enlace.click();
-        } finally {
-            enlace.remove?.();
-            setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+        if (blob.type.split(";")[0].toLowerCase() !== "application/pdf") {
+            throw new Error("El servidor no devolvió un ticket PDF válido.");
         }
 
         return blob;

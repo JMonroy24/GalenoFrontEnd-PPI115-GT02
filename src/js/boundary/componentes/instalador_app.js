@@ -1,64 +1,38 @@
+import { instalacionService } from '../../control/instalacion_service.js';
+
 export default class InstaladorApp extends HTMLElement {
     constructor() {
         super();
-        this.attachShadow({ mode: "open" });
-        this.deferredPrompt = null;
-        this.alPrompt = (e) => {
-            e.preventDefault();
-            this.deferredPrompt = e;
-            this.mostrarBoton();
-        };
-        this.alInstalada = () => {
-            this.deferredPrompt = null;
-            this.ocultarBoton();
-        };
+        this.attachShadow({ mode: 'open' });
+        this._alCambio = () => this._actualizar();
     }
 
     connectedCallback() {
         this.shadowRoot.innerHTML = `
             <link rel="stylesheet" href="recursos/estilos/principal.css">
-            <button id="btnInstalar" class="btn" hidden>Instalar aplicación</button>
+            <button id="btnInstalar" class="btn" type="button" hidden>Instalar aplicación</button>
+            <span id="aviso" role="status" hidden></span>
         `;
-
-        const boton = this.shadowRoot.querySelector("#btnInstalar");
-        boton.hidden = !this.deferredPrompt;
-        boton.addEventListener("click", async () => {
-            if (!this.deferredPrompt) {
-                return;
+        this.shadowRoot.querySelector('#btnInstalar').addEventListener('click', async () => {
+            try {
+                await instalacionService.solicitarInstalacion();
+            } catch {
+                const aviso = this.shadowRoot.querySelector('#aviso');
+                aviso.textContent = 'Instala GalenoSV desde la barra o el menú del navegador.';
+                aviso.hidden = false;
             }
-            this.deferredPrompt.prompt();
-            await this.deferredPrompt.userChoice;
-            this.deferredPrompt = null;
-            this.ocultarBoton();
         });
-
-        if (window.matchMedia("(display-mode: standalone)").matches) {
-            return;
-        }
-
-        // beforeinstallprompt solo existe en navegadores Chromium; el componente debe cargarse temprano para no perder el evento.
-        window.addEventListener("beforeinstallprompt", this.alPrompt);
-        window.addEventListener("appinstalled", this.alInstalada);
+        instalacionService.addEventListener('cambio', this._alCambio);
+        this._actualizar();
     }
 
-    disconnectedCallback() {
-        window.removeEventListener("beforeinstallprompt", this.alPrompt);
-        window.removeEventListener("appinstalled", this.alInstalada);
-    }
+    disconnectedCallback() { instalacionService.removeEventListener('cambio', this._alCambio); }
 
-    mostrarBoton() {
-        const boton = this.shadowRoot.querySelector("#btnInstalar");
-        if (boton) {
-            boton.removeAttribute("hidden");
-        }
-    }
-
-    ocultarBoton() {
-        const boton = this.shadowRoot.querySelector("#btnInstalar");
-        if (boton) {
-            boton.setAttribute("hidden", "");
-        }
+    _actualizar() {
+        const boton = this.shadowRoot.querySelector('#btnInstalar');
+        boton.hidden = !instalacionService.disponible;
+        boton.disabled = instalacionService.enCurso;
     }
 }
 
-customElements.define("instalador-app", InstaladorApp);
+customElements.define('instalador-app', InstaladorApp);

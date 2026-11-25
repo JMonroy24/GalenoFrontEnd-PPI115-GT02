@@ -1,5 +1,6 @@
 import GestorFechas from "../../control/gestor_fechas.js";
 import "./historial_pasos.js";
+import "./opciones_ticket.js";
 import { obtenerPacienteConsulta, obtenerDocumentoConsulta, obtenerNombreClinicaConsulta } from "../../control/consulta_service.js";
 
 export class TarjetaConsulta extends HTMLElement {
@@ -245,12 +246,14 @@ export class TarjetaConsulta extends HTMLElement {
                     <p class="historial-vacio" id="historial-vacio" hidden>Sin pasos ejecutados.</p>
                 </section>
                 <footer class="pie">
+                    <opciones-ticket></opciones-ticket>
                     <slot name="acciones"></slot>
                 </footer>
             </article>
         `;
 
         const fecha = this._obtenerFecha(datos);
+        this.shadowRoot.querySelector("opciones-ticket").setAttribute("id-consulta", datos.idConsulta ?? datos.id ?? "");
         const hora = this._obtenerHora(datos);
         const paciente = obtenerPacienteConsulta(datos) ?? {};
         const texto = (valor) => Array.isArray(valor)
