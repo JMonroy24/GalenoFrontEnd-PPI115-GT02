@@ -8,7 +8,6 @@ import { store } from "../../src/js/store.js";
 import { Router } from "../../src/js/router.js";
 import DefaultService from "../../src/js/control/default_service.js";
 import { AuthService } from "../../src/js/control/auth_service.js";
-import { Cie10Service } from "../../src/js/control/cie10_service.js";
 import { consultaService } from "../../src/js/control/consulta_service.js";
 import { tipoDocumentoService } from "../../src/js/control/tipo_documento_service.js";
 import { expect } from "../lib/chai/index.js";
@@ -24,7 +23,6 @@ suite("Modernización: regresiones de interacción y responsividad", () => {
     const cssUrl = new URL("../../src/recursos/estilos/principal.css", import.meta.url).href;
     const flush = async () => { await Promise.resolve(); await Promise.resolve(); };
     const montar = (tag) => fixture.appendChild(document.createElement(tag));
-    const diagnostico = { codigo: "A00", nombre: "Resultado anterior" };
 
     const cargarEstilos = async (host) => {
         const roots = [host.shadowRoot];
@@ -73,59 +71,6 @@ suite("Modernización: regresiones de interacción y responsividad", () => {
         sinon.restore();
         store.setState(estadoAnterior);
         history.replaceState(null, "", location.pathname + location.search + rutaAnterior);
-    });
-
-    test("borrar el texto invalida la petición CIE-10 aunque el stub ignore AbortSignal", async () => {
-        const host = montar("auto-complete-cie10");
-        const pendiente = Promise.withResolvers();
-        host.servicio = { findRange: () => pendiente.promise };
-        const busqueda = host._ejecutarBusqueda("anterior");
-        const input = host.shadowRoot.querySelector("input");
-        input.value = "";
-        input.dispatchEvent(new Event("input"));
-        pendiente.resolve({ items: [diagnostico] });
-        await busqueda;
-        expect(host.shadowRoot.querySelector("#lista-resultados").hidden).to.be.true;
-        expect(input.getAttribute("aria-busy")).to.equal("false");
-    });
-
-    test("una nueva entrada invalida respuestas durante el debounce", async () => {
-        const clock = sinon.useFakeTimers();
-        const host = montar("auto-complete-cie10");
-        const pendiente = Promise.withResolvers();
-        host.servicio = { findRange: () => pendiente.promise };
-        const busqueda = host._ejecutarBusqueda("anterior");
-        const input = host.shadowRoot.querySelector("input");
-        input.value = "nuevo";
-        input.dispatchEvent(new Event("input"));
-        pendiente.resolve({ items: [diagnostico] });
-        await busqueda;
-        expect(host.shadowRoot.querySelector("#lista-resultados").textContent).not.to.contain("Resultado anterior");
-        host.remove();
-        clock.restore();
-    });
-
-    test("desmontar y reconectar no permite que una búsqueda antigua reabra sugerencias", async () => {
-        const host = montar("auto-complete-cie10");
-        const pendiente = Promise.withResolvers();
-        host.servicio = { findRange: () => pendiente.promise };
-        const busqueda = host._ejecutarBusqueda("anterior");
-        host.remove();
-        fixture.appendChild(host);
-        pendiente.resolve({ items: [diagnostico] });
-        await busqueda;
-        expect(host.shadowRoot.querySelector("#lista-resultados").hidden).to.be.true;
-    });
-
-    test("Enter durante composición IME no selecciona un diagnóstico", () => {
-        const host = montar("auto-complete-cie10");
-        host._resultados = [diagnostico];
-        host._indiceActivo = 0;
-        host._renderizarResultados([diagnostico], "A");
-        host.shadowRoot.querySelector("input").dispatchEvent(
-            new KeyboardEvent("keydown", { key: "Enter", isComposing: true, bubbles: true, cancelable: true })
-        );
-        expect(host.seleccionados).to.deep.equal([]);
     });
 
     test("una búsqueda de citas pendiente no repuebla una vista reconectada", async () => {
@@ -295,17 +240,6 @@ suite("Modernización: regresiones de interacción y responsividad", () => {
         expect(host.shadowRoot.querySelector('[aria-current="step"]').dataset.indice).to.equal("2");
     });
 
-    test("cancelar CIE-10 no dispara el respaldo offline", async () => {
-        const controller = new AbortController();
-        controller.abort();
-        const servicio = new Cie10Service();
-        const respaldo = sinon.spy(servicio, "_obtenerCatalogoLocal");
-        let error;
-        try { await servicio.findRange(0, 10, "A", { signal: controller.signal }); }
-        catch (recibido) { error = recibido; }
-        expect(error.name).to.equal("AbortError");
-        expect(respaldo.called).to.be.false;
-    });
 
     test("hidden oculta realmente el botón de instalación", async () => {
         const host = montar("instalador-app");
@@ -322,7 +256,7 @@ suite("Modernización: regresiones de interacción y responsividad", () => {
             clinica: { idClinica: 1, nombre: "Central" }, estado: "PENDIENTE", procedimientos: [], pasos: [] };
         for (const ancho of [220, 280, 320, 768]) {
             for (const tag of ["busqueda-citas-view", "dashboard-view", "lista-examenes-asignables",
-                "asistente-busqueda", "stepper-progreso", "tarjeta-consulta", "auto-complete-cie10",
+                "asistente-busqueda", "stepper-progreso", "tarjeta-consulta",
                 "atencion-consulta-view", "login-view", "encabezado-app", "menu-lateral", "historial-pasos"]) {
                 const wrapper = document.createElement("div");
                 wrapper.style.inlineSize = ancho + "px";
@@ -346,7 +280,6 @@ suite("Modernización: regresiones de interacción y responsividad", () => {
                     tarjeta.consulta = consulta;
                     grid.appendChild(tarjeta);
                 }
-                if (tag === "auto-complete-cie10") host.seleccionados = [diagnostico];
                 if (tag === "historial-pasos") host.pasos = [{
                     nombre: "PasoSinEspacios".repeat(6), estado: "COMPLETADO", valor: "Registro"
                 }];

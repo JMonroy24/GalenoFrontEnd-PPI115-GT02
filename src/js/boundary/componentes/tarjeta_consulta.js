@@ -322,7 +322,7 @@ export class TarjetaConsulta extends HTMLElement {
 
     _obtenerFecha(datos) {
         const fecha = this._fechasConsulta(datos)[0]?.trim() || "";
-        return GestorFechas.extraerFechaCalendario(fecha) || "Sin fecha";
+        return GestorFechas.formatearFechaCalendario(fecha) || "Sin fecha";
     }
 
     _obtenerHora(datos) {

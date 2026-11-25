@@ -19,8 +19,7 @@ export default class EncabezadoApp extends HTMLElement {
     }
 
     disconnectedCallback() {
-        const dialogo = this.shadowRoot.querySelector('#dialogo-rol');
-        if (dialogo?.open) dialogo.close();
+        this._cerrarCambioRol(false);
         window.removeEventListener("sesion-iniciada", this.alContexto);
         window.removeEventListener("sesion-cerrada", this.alContexto);
         store.removeEventListener("state-changed", this.alContexto);
@@ -93,26 +92,17 @@ export default class EncabezadoApp extends HTMLElement {
                     display: none !important;
                 }
 
-                dialog {
+                #panel-rol {
                     box-sizing: border-box;
-                    margin: auto;
-                    inline-size: min(32rem, calc(100% - 2rem));
-                    max-block-size: calc(100dvh - 2rem);
-                    overflow: auto;
+                    margin: 1rem;
                     padding: 1.5rem;
                     border: 1px solid var(--color-borde, #64748b);
                     border-radius: 0.75rem;
                     color: var(--color-texto, #0f172a);
                     background: var(--color-superficie, #fff);
                 }
-                dialog:modal { overscroll-behavior: contain; }
-                dialog::backdrop {
-                    background: rgb(15 23 42 / 0.45);
-                    overflow: hidden;
-                    overscroll-behavior: contain;
-                }
                 #form-cambio-rol { display: grid; gap: 0.75rem; }
-                #form-cambio-rol h1 { margin: 0; font-size: 1.5rem; }
+                #form-cambio-rol h2 { margin: 0; font-size: 1.5rem; }
                 #form-cambio-rol select { inline-size: 100%; min-inline-size: 0; font: inherit; min-block-size: 3rem; }
                 .acciones-rol { display: flex; flex-wrap: wrap; gap: 0.75rem; justify-content: end; }
 
@@ -134,25 +124,25 @@ export default class EncabezadoApp extends HTMLElement {
                 </div>
                 <div class="contexto">
                     <span id="textoContexto"></span>
-                    <button id="btnCambiarRol" class="btn" type="button">Cambiar rol</button>
+                    <button id="btnCambiarRol" class="btn" type="button" aria-expanded="false" aria-controls="panel-rol">Cambiar rol</button>
                     <button id="btnCerrarSesion" class="btn" type="button">Cerrar sesión</button>
                 </div>
                 <instalador-app></instalador-app>
             </header>
-            <dialog id="dialogo-rol" aria-labelledby="titulo-cambio-rol">
-                <form id="form-cambio-rol" method="dialog">
-                    <h1 id="titulo-cambio-rol">Cambiar clínica y rol</h1>
+            <section id="panel-rol" hidden aria-labelledby="titulo-cambio-rol">
+                <form id="form-cambio-rol">
+                    <h2 id="titulo-cambio-rol">Cambiar clínica y rol</h2>
                     <label for="clinica-cambio-rol">Clínica</label>
-                    <select id="clinica-cambio-rol" name="clinica" required autofocus></select>
+                    <select id="clinica-cambio-rol" name="clinica" required></select>
                     <label for="asignacion-cambio-rol">Rol</label>
                     <select id="asignacion-cambio-rol" name="rol" required aria-describedby="aviso-cambio-rol"></select>
                     <p id="aviso-cambio-rol" role="status"></p>
                     <div class="acciones-rol">
-                        <button class="btn" type="submit" value="cancelar" formnovalidate>Cancelar</button>
+                        <button class="btn" id="btnCancelarRol" type="button">Cancelar</button>
                         <button class="btn" id="btnAplicarRol" type="submit" value="aplicar">Aplicar cambio</button>
                     </div>
                 </form>
-            </dialog>
+            </section>
         `;
 
         this._actualizarSesion();
@@ -175,10 +165,13 @@ export default class EncabezadoApp extends HTMLElement {
 
         const btnCambiarRol = this.shadowRoot.querySelector("#btnCambiarRol");
         const btnCerrarSesion = this.shadowRoot.querySelector("#btnCerrarSesion");
-        btnCambiarRol.addEventListener("click", () => this._abrirCambioRol());
+        btnCambiarRol.addEventListener("click", () => {
+            if (this.shadowRoot.querySelector("#panel-rol").hidden) this._abrirCambioRol();
+            else this._cerrarCambioRol();
+        });
+        this.shadowRoot.querySelector("#btnCancelarRol").addEventListener("click", () => this._cerrarCambioRol());
         this.shadowRoot.querySelector('#clinica-cambio-rol').addEventListener('change', () => this._cargarRolesCambio());
         this.shadowRoot.querySelector('#form-cambio-rol').addEventListener('submit', (evento) => {
-            if (evento.submitter?.value === 'cancelar') return;
             evento.preventDefault();
             if (this._aplicarCambioRol()) navegar('dashboard');
         });
@@ -217,8 +210,18 @@ export default class EncabezadoApp extends HTMLElement {
         const actual = String(idEntidad(estado.clinicaActiva, 'idClinica'));
         if (clinicas.has(actual)) select.value = actual;
         this._cargarRolesCambio();
-        const dialogo = this.shadowRoot.querySelector('#dialogo-rol');
-        if (!dialogo.open) dialogo.showModal();
+        this.shadowRoot.querySelector('#panel-rol').hidden = false;
+        this.shadowRoot.querySelector('#btnCambiarRol').setAttribute('aria-expanded', 'true');
+        select.focus();
+    }
+
+    _cerrarCambioRol(restaurarFoco = true) {
+        const panel = this.shadowRoot.querySelector('#panel-rol');
+        if (!panel || panel.hidden) return;
+        panel.hidden = true;
+        const boton = this.shadowRoot.querySelector('#btnCambiarRol');
+        boton.setAttribute('aria-expanded', 'false');
+        if (restaurarFoco && boton.isConnected) boton.focus();
     }
 
     _cargarRolesCambio() {
@@ -253,7 +256,7 @@ export default class EncabezadoApp extends HTMLElement {
         const clinica = asignacion.clinica ?? (typeof asignacion.idClinica === 'object' ? asignacion.idClinica : null)
             ?? (String(idEntidad(activa, 'idClinica')) === idClinica ? activa : { idClinica,
                 nombre: this.shadowRoot.querySelector('#clinica-cambio-rol').selectedOptions[0].textContent });
-        this.shadowRoot.querySelector('#dialogo-rol').close();
+        this._cerrarCambioRol();
         store.setContextoTrabajo(clinica, asignacion);
         return true;
     }
@@ -275,8 +278,7 @@ export default class EncabezadoApp extends HTMLElement {
         const textoContexto = this.shadowRoot.querySelector("#textoContexto");
         if (!textoContexto) return;
         const sesionActiva = store.hasActiveSession();
-        const dialogo = this.shadowRoot.querySelector('#dialogo-rol');
-        if (!sesionActiva && dialogo?.open) dialogo.close();
+        if (!sesionActiva) this._cerrarCambioRol(false);
         this.shadowRoot.querySelector("#btnCambiarRol").hidden = !sesionActiva;
         escribir(this.shadowRoot.querySelector("#btnCerrarSesion"), sesionActiva
             ? "Cerrar sesión" : "Iniciar sesión");

@@ -173,7 +173,7 @@ suite("BusquedaCitasView (unitaria)", () => {
 
         const tarjeta = host.shadowRoot.querySelector("tarjeta-consulta");
         expect(tarjeta).to.exist;
-        expect(tarjeta.shadowRoot.querySelector("#fecha").textContent).to.equal("2026-11-16");
+        expect(tarjeta.shadowRoot.querySelector("#fecha").textContent).to.equal("16/11/2026");
         expect(tarjeta.shadowRoot.querySelector("#hora").textContent).to.equal("09:30");
         expect(tarjeta.shadowRoot.querySelector("#clinica").textContent).to.equal("Clínica Norte");
         expect(tarjeta.shadowRoot.querySelector("#paciente").textContent).to.equal("Ana López");

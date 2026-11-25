@@ -5,20 +5,90 @@
       "label": "Lanzar browser-sync",
       "type": "shell",
       "command": "browser-sync start --server src --files \"**/*\" --no-open",
+      "windows": {
+        "command": "$ErrorActionPreference = 'Stop'; if (Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue) { throw 'El puerto 3000 ya esta ocupado. Detenga el servidor anterior antes de depurar.' }; & browser-sync.cmd start --server src --files '**/*' --no-open --port 3000 --cwd '${workspaceFolder}'; exit $LASTEXITCODE",
+        "options": {
+          "cwd": "${workspaceFolder}",
+          "shell": {
+            "executable": "powershell.exe",
+            "args": [
+              "-NoLogo",
+              "-NoProfile",
+              "-Command"
+            ]
+          }
+        }
+      },
       "isBackground": true,
-      "problemMatcher": []
+      "problemMatcher": {
+        "owner": "browser-sync",
+        "pattern": {
+          "regexp": "^(.*):(\\d+):(\\d+): (.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "message": 4
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "\\[Browsersync\\] Access URLs:",
+          "endsPattern": "\\[Browsersync\\] Watching files"
+        }
+      }
     },
     {
       "label": "debug browser",
       "type": "shell",
       "command": "browser-sync start --server . --files \"**/*\" --no-open",
+      "windows": {
+        "command": "$ErrorActionPreference = 'Stop'; if (Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue) { throw 'El puerto 3000 ya esta ocupado. Detenga el servidor anterior antes de depurar.' }; & browser-sync.cmd start --server . --files '**/*' --no-open --port 3000 --cwd '${workspaceFolder}'; exit $LASTEXITCODE",
+        "options": {
+          "cwd": "${workspaceFolder}",
+          "shell": {
+            "executable": "powershell.exe",
+            "args": [
+              "-NoLogo",
+              "-NoProfile",
+              "-Command"
+            ]
+          }
+        }
+      },
       "isBackground": true,
-      "problemMatcher": []
+      "problemMatcher": {
+        "owner": "browser-sync",
+        "pattern": {
+          "regexp": "^(.*):(\\d+):(\\d+): (.*)$",
+          "file": 1,
+          "line": 2,
+          "column": 3,
+          "message": 4
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "\\[Browsersync\\] Access URLs:",
+          "endsPattern": "\\[Browsersync\\] Watching files"
+        }
+      }
     },
     {
       "label": "Apagar browser-sync",
       "type": "shell",
       "command": "echo ${input:matar}",
+      "windows": {
+        "command": "$ErrorActionPreference = 'Stop'; Get-NetTCPConnection -LocalPort 3000 -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { $procesoBrowserSync = Get-CimInstance Win32_Process -Filter \"ProcessId=$_\"; if ($procesoBrowserSync.Name -eq 'node.exe' -and $procesoBrowserSync.CommandLine -match 'browser-sync[\\\\/]dist[\\\\/]bin[.]js' -and $procesoBrowserSync.CommandLine.Contains('${workspaceFolder}')) { Stop-Process -Id $procesoBrowserSync.ProcessId -Force } }; exit 0",
+        "options": {
+          "cwd": "${workspaceFolder}",
+          "shell": {
+            "executable": "powershell.exe",
+            "args": [
+              "-NoLogo",
+              "-NoProfile",
+              "-Command"
+            ]
+          }
+        }
+      },
       "problemMatcher": []
     }
   ],

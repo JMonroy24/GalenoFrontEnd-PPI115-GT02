@@ -279,7 +279,7 @@ suite('HU3/HU4: permisos y flujo real por rol', () => {
         expect(host.shadowRoot.querySelector('#btn-siguiente').disabled).to.be.true;
     });
 
-    test('historial muestra responsable, rol, fechaFin y diálogo de lectura', () => {
+    test('historial muestra responsable, rol, fechaFin y registro inline', () => {
         const host = montar('historial-pasos');
         host.pasos = [{ ...paso(1, 'COMPLETADO'), responsable: { persona: { nombres: 'Ana', apellidos: 'López' } },
             fechaFin: '2026-11-24T10:30:00-06:00', valor: '{"notas":"Registro seguro <script>"}' }];
@@ -287,9 +287,10 @@ suite('HU3/HU4: permisos y flujo real por rol', () => {
         expect(host.shadowRoot.textContent).to.include('Enfermera');
         expect(host.shadowRoot.textContent).to.include('24/11/2026');
         host.shadowRoot.querySelector('.boton').click();
-        const dialogo = host.shadowRoot.querySelector('dialog');
-        expect(dialogo.open).to.be.true; expect(dialogo.querySelector('textarea, input, script')).to.be.null;
-        expect(dialogo.textContent).to.include('Registro seguro <script>'); dialogo.close();
+        const registro = host.shadowRoot.querySelector('details.registro-inline');
+        expect(registro.open).to.be.true; expect(registro.querySelector('textarea, input, script')).to.be.null;
+        expect(registro.textContent).to.include('Registro seguro <script>');
+        expect(host.shadowRoot.querySelector('dialog, [popover]')).to.be.null;
     });
 
     test('GET consultas solo envía los nombres oficiales del OpenAPI', async () => {

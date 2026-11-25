@@ -228,7 +228,7 @@ suite("AtencionConsultaView (unitaria)", () => {
 
     test("obtenerDatosFormulario() devuelve objeto con notasConsulta y planTratamiento vacíos por defecto", () => {
         const datos = host.obtenerDatosFormulario();
-        expect(datos).to.have.keys(["notasConsulta", "planTratamiento", "diagnostico", "diagnosticos"]);
+        expect(datos).to.have.keys(["notasConsulta", "planTratamiento", "diagnostico"]);
         expect(datos.notasConsulta).to.equal("");
         expect(datos.planTratamiento).to.equal("");
     });
@@ -455,8 +455,7 @@ suite("AtencionConsultaView (unitaria)", () => {
     });
 
     test("Guardar y Avanzar completa el paso actual, activa el siguiente y permanece en la vista", async () => {
-        const cie10 = host.shadowRoot.querySelector("#cie10-busqueda");
-        cie10.seleccionados = ["J00"];
+        host.shadowRoot.querySelector("#diagnostico").value = "Resfriado común";
         host.shadowRoot.querySelector("#notas").value = "Paciente estable";
         host.shadowRoot.querySelector("#plan").value = "Reposo";
         host.shadowRoot.querySelector("#btn-siguiente").click();
@@ -471,7 +470,7 @@ suite("AtencionConsultaView (unitaria)", () => {
         expect(recargarStub.calledOnce).to.be.true;
         expect(JSON.parse(payload.valor)).to.deep.equal({
             notas: "Paciente estable",
-            diagnostico: ["J00"],
+            diagnostico: "Resfriado común",
             plan: "Reposo"
         });
         expect(host.shadowRoot.querySelector("stepper-progreso").pasoActivo).to.equal(2);
@@ -522,7 +521,7 @@ suite("AtencionConsultaView (unitaria)", () => {
         expect(payload.estadoPaso).to.equal("COMPLETADO");
         expect(JSON.parse(payload.valor)).to.deep.equal({
             notas: "Alta indicada",
-            diagnostico: [],
+            diagnostico: "",
             plan: ""
         });
         expect(host._consulta.fechaFin).to.be.a("string");
@@ -565,32 +564,32 @@ suite("AtencionConsultaView (unitaria)", () => {
             ]
         } });
         expect(host.obtenerDatosFormulario()).to.deep.equal({
-            notasConsulta: "Control", diagnostico: [diagnostico], diagnosticos: [diagnostico], planTratamiento: "Reposo"
+            notasConsulta: "Control", diagnostico: "J00 — Rinofaringitis", planTratamiento: "Reposo"
         });
         host._seleccionarPaso(1);
         expect(host.obtenerDatosFormulario()).to.deep.equal({
-            notasConsulta: "", diagnostico: [], diagnosticos: [], planTratamiento: ""
+            notasConsulta: "", diagnostico: "", planTratamiento: ""
         });
         expect(host.shadowRoot.querySelector("#form-clinico").dataset.estadoPaso).to.equal("PENDIENTE");
         expect(guardarPasoStub.called).to.be.false;
         host._seleccionarPaso(0);
-        expect(host.obtenerDatosFormulario().diagnosticos).to.deep.equal([diagnostico]);
+        expect(host.obtenerDatosFormulario().diagnostico).to.equal("J00 — Rinofaringitis");
         expect(host.obtenerDatosFormulario().notasConsulta).to.equal("Control");
     });
 
     test("conserva los borradores y las eliminaciones al cambiar de paso", () => {
         host.cargarDatosFormulario({ notasConsulta: "Borrador", planTratamiento: "" });
-        host.shadowRoot.querySelector("#cie10-busqueda").seleccionados = ["J00"];
+        host.shadowRoot.querySelector("#diagnostico").value = "Resfriado común";
         host._seleccionarPaso(2);
         host._seleccionarPaso(1);
         expect(host.obtenerDatosFormulario().notasConsulta).to.equal("Borrador");
-        expect(host.obtenerDatosFormulario().diagnosticos).to.deep.equal(["J00"]);
-        host.shadowRoot.querySelector("#cie10-busqueda").seleccionados = [];
+        expect(host.obtenerDatosFormulario().diagnostico).to.equal("Resfriado común");
+        host.shadowRoot.querySelector("#diagnostico").value = "";
         host.cargarDatosFormulario({ notasConsulta: "" });
         host._seleccionarPaso(2);
         host._seleccionarPaso(1);
         expect(host.obtenerDatosFormulario().notasConsulta).to.equal("");
-        expect(host.obtenerDatosFormulario().diagnosticos).to.deep.equal([]);
+        expect(host.obtenerDatosFormulario().diagnostico).to.equal("");
     });
 
     test("un fallo de guardado conserva las notas y no activa el siguiente paso", async () => {
@@ -618,17 +617,17 @@ suite("AtencionConsultaView (unitaria)", () => {
         host.cargarDatosFormulario({ notasConsulta: "Evolución", planTratamiento: "Reposo" });
         await host._retrocederPaso();
         expect(JSON.parse(guardarPasoStub.firstCall.args[1].valor))
-            .to.deep.equal({ notas: "Evolución", diagnostico: [], plan: "Reposo" });
+            .to.deep.equal({ notas: "Evolución", diagnostico: "", plan: "Reposo" });
         host._seleccionarPaso(1);
         expect(host.obtenerDatosFormulario().notasConsulta).to.equal("Evolución");
     });
 
-    test("permite guardar un paso que solamente contiene diagnóstico CIE-10", async () => {
-        host.shadowRoot.querySelector("#cie10-busqueda").seleccionados = ["J00"];
+    test("permite guardar un paso que solamente contiene diagnóstico clínico libre", async () => {
+        host.shadowRoot.querySelector("#diagnostico").value = "Resfriado común";
         await host._avanzarPaso();
         expect(guardarPasoStub.callCount).to.equal(1);
         expect(JSON.parse(guardarPasoStub.firstCall.args[1].valor).diagnostico)
-            .to.deep.equal(["J00"]);
+            .to.equal("Resfriado común");
     });
 
     test("refresca la consulta del backend aunque ya exista en el store", async () => {
@@ -718,7 +717,7 @@ suite("AtencionConsultaView (unitaria)", () => {
         for (const selector of ["#notas", "#diagnostico", "#plan"]) {
             expect(host.shadowRoot.querySelector(selector).readOnly).to.be.true;
         }
-        expect(host.shadowRoot.querySelector("#cie10-busqueda").hasAttribute("inert")).to.be.true;
+        expect(host.shadowRoot.querySelector("#diagnostico").readOnly).to.be.true;
         expect(host.shadowRoot.querySelector("#lista-examenes").hasAttribute("inert")).to.be.true;
         expect(host.shadowRoot.querySelector("#btn-siguiente").disabled).to.be.true;
         await host._avanzarPaso();
@@ -910,7 +909,7 @@ suite("AtencionConsultaView (unitaria)", () => {
     test("#btn-guardar-notas no existe en modo solo lectura (paso completado)", () => {
         establecerEstado({ consultaActiva: { idConsulta: 55, pasos: [
             { idPaso: IDS_PASOS[0], nombre: "Triaje", estado: "COMPLETADO",
-                valor: JSON.stringify({ notas: "Triaje OK", diagnostico: [], plan: "" }) },
+                valor: JSON.stringify({ notas: "Triaje OK", diagnostico: "", plan: "" }) },
             { idPaso: IDS_PASOS[1], nombre: "Consulta Médica", estado: "EN_CURSO" }
         ] } });
         // Navegar al paso completado (modo lectura)
@@ -980,7 +979,7 @@ suite("AtencionConsultaView (unitaria)", () => {
     test("_guardarNotas no actúa en modo solo lectura", async () => {
         establecerEstado({ consultaActiva: { idConsulta: 55, pasos: [
             { idPaso: IDS_PASOS[0], nombre: "Triaje", estado: "COMPLETADO",
-                valor: JSON.stringify({ notas: "Registrado", diagnostico: [], plan: "" }) },
+                valor: JSON.stringify({ notas: "Registrado", diagnostico: "", plan: "" }) },
             { idPaso: IDS_PASOS[1], nombre: "Consulta Médica", estado: "EN_CURSO" }
         ] } });
         host._seleccionarPaso(0);
@@ -1005,7 +1004,7 @@ suite("AtencionConsultaView (unitaria)", () => {
         expect(host.shadowRoot.querySelector("#btn-siguiente").disabled).to.be.true;
         expect(host.shadowRoot.querySelector("#btn-anterior").disabled).to.be.true;
         expect(host.shadowRoot.querySelector("#stepper-flujo").hasAttribute("inert")).to.be.true;
-        expect(host.shadowRoot.querySelector("#cie10-busqueda").hasAttribute("inert")).to.be.false;
+        expect(host.shadowRoot.querySelector("#diagnostico").readOnly).to.be.false;
 
         const lista = host.shadowRoot.querySelector("#lista-examenes");
         expect(lista.hasAttribute("sin-conexion")).to.be.true;
@@ -1042,4 +1041,19 @@ suite("AtencionConsultaView (unitaria)", () => {
         expect(guardarPasoStub.called).to.be.false;
         expect(notas.value).to.equal("No enviar");
     });
+    test("conserva la lectura de diagnósticos históricos sin componente ni catálogo", () => {
+        for (const clave of ["diagnostico", "diagnosticos", "cie10", "codigosCie10", "codigosCIE10", "diagnosticosCie10"]) {
+            const valor = { notas: "Anterior", [clave]: [{ codigo: "J00", nombre: "Resfriado" }] };
+            const datos = {}; host._acumularDatosFormulario(datos, valor); host.cargarDatosFormulario(datos);
+            expect(host.obtenerDatosFormulario().diagnostico).to.equal("J00 — Resfriado");
+            expect(valor[clave]).to.deep.equal([{ codigo: "J00", nombre: "Resfriado" }]);
+        }
+        const datos = {};
+        host._acumularDatosFormulario(datos, { diagnostico: "", diagnosticos: [{ codigo: "J00", nombre: "Resfriado" }] });
+        host.cargarDatosFormulario(datos);
+        expect(host.obtenerDatosFormulario().diagnostico).to.equal("J00 — Resfriado");
+        expect(host.shadowRoot.querySelector("auto-complete-cie10")).to.be.null;
+        expect(host.shadowRoot.textContent).not.to.include("Códigos CIE-10");
+    });
+
 });

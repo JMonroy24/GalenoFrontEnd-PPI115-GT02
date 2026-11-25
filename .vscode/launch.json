@@ -3,7 +3,7 @@
     "configurations": [
         {
             "name": "BrowserSync",
-            "type": "pwa-chrome",
+            "type": "chrome",
             "request": "launch",
             "url": "http://localhost:3000",
             "webRoot": "${workspaceFolder}/src",
@@ -26,7 +26,7 @@
         },
         {
             "name": "browser-sync debug",
-            "type": "pwa-chrome",
+            "type": "chrome",
             "request": "launch",
             "url": "http://localhost:3000/test/runner.html",
             "webRoot": "${workspaceFolder}",

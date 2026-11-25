@@ -24,26 +24,21 @@ export class NotificacionEmergente extends HTMLElement {
         const estilos = document.createElement("style");
         estilos.textContent = `
             :host([hidden]) { display: none; }
+            :host { display: block; min-inline-size: 0; }
             #contenedor {
-                position: fixed;
-                top: 1rem;
-                right: 1rem;
-                z-index: 9999;
                 display: flex;
                 flex-direction: column;
                 gap: 0.5rem;
-                inline-size: min(22.5rem, calc(100% - 2rem));
-                max-block-size: calc(100dvh - 2rem);
-                overflow-y: auto;
-                overscroll-behavior: contain;
+                margin-inline: 1rem;
             }
+            #contenedor:empty { display: none; }
             .banner {
                 display: flex;
                 align-items: flex-start;
                 gap: 0.75rem;
                 padding: 0.875rem 1rem;
                 border-radius: 8px;
-                box-shadow: 0 8px 24px rgb(15 23 42 / 0.2);
+                margin-block: 0.5rem;
                 color: #ffffff;
             }
             .texto {

@@ -566,7 +566,7 @@ suite("DashboardView (unitaria)", () => {
         expect(host.shadowRoot.querySelectorAll("tarjeta-consulta")).to.have.length(0);
     });
 
-    test("cada modal muestra únicamente el valor de su consulta y emite su contexto", async () => {
+    test("cada registro inline muestra únicamente el valor de su consulta y emite su contexto", async () => {
         buscarCitasStub.resolves({ items: [101, 102].map((idConsulta) => ({
             idConsulta,
             paciente: { nombres: `Paciente ${idConsulta}`, numeroDocumento: String(idConsulta) },
@@ -581,8 +581,9 @@ suite("DashboardView (unitaria)", () => {
         const historial1 = tarjetas[0].shadowRoot.querySelector("historial-pasos");
         const historial2 = tarjetas[1].shadowRoot.querySelector("historial-pasos");
         historial1.shadowRoot.querySelector(".boton").click();
-        expect(historial1.shadowRoot.querySelector("#detalle-registro").textContent).to.include("Registro 101");
-        expect(historial2.shadowRoot.querySelector("dialog").open).to.be.false;
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(historial1.shadowRoot.querySelector(".detalle-registro").textContent).to.include("Registro 101");
+        expect(historial2.shadowRoot.querySelector("details.registro-inline").open).to.be.false;
         expect(evento.detail.consulta.idConsulta).to.equal(101);
         expect(evento.detail.paso.idPaso).to.equal(101);
         expect(host.consultaSeleccionada).to.be.null;

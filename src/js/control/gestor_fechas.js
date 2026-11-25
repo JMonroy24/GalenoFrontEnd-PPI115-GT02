@@ -25,14 +25,16 @@ export default class GestorFechas {
     static formatearFechaCalendario(valor) {
         const iso = this.extraerFechaCalendario(valor);
         if (!iso) return "";
-        const [anio, mes, dia] = iso.split("-").map(Number);
-        // UTC es solo el soporte de Intl para estos campos de calendario, no una conversión del instante.
-        const fecha = new Date(0);
-        fecha.setUTCHours(0, 0, 0, 0);
-        fecha.setUTCFullYear(anio, mes - 1, dia);
-        return new Intl.DateTimeFormat("es-SV", {
-            timeZone: "UTC", year: "numeric", month: "2-digit", day: "2-digit"
-        }).format(fecha);
+        const [anio, mes, dia] = iso.split("-");
+        return `${dia}/${mes}/${anio}`;
+    }
+
+    static formatearFechaHoraCalendario(valor, hora = "") {
+        const texto = this.normalizarFechaISO(valor);
+        const fecha = this.formatearFechaCalendario(texto);
+        if (!fecha) return "";
+        const horaVisible = hora || texto.match(/[T ](\d{2}:\d{2})/)?.[1] || "";
+        return [fecha, horaVisible].filter(Boolean).join(" ");
     }
 
     static formatearFechaISO(fechaIso) {

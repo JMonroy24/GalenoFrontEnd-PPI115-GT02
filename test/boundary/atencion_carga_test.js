@@ -150,10 +150,10 @@ suite("Carga de atención: ciclo de vida y DTO del backend", () => {
         expect(cabecera).not.to.include("[object Object]").and.not.to.include("[UTC]");
     });
 
-    test("las tarjetas comparten la clínica defensiva y conservan la fecha ISO del calendario", () => {
+    test("las tarjetas comparten la clínica defensiva y muestran DD/MM/YYYY conservando el día del calendario", () => {
         const host = document.createElement("tarjeta-consulta");
         const consulta = { fechaInicio: "2026-11-11T05:15:00Z[UTC]", clinica: { nombreClinica: "Central" } };
-        expect(host._obtenerFecha(consulta)).to.equal("2026-11-11");
+        expect(host._obtenerFecha(consulta)).to.equal("11/11/2026");
         expect(host._obtenerClinica(consulta)).to.equal("Central");
     });
 

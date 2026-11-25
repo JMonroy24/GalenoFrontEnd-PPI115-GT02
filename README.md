@@ -166,10 +166,10 @@ El proyecto mantiene un desacoplamiento estricto bajo el patrón BCE:
 
 - **Boundary (`src/js/boundary/`)**:
   - **Vistas**: `busqueda_citas_view.js` (#buscar-citas), `login_view.js` (#login), `dashboard_view.js` (#dashboard), `atencion_consulta_view.js` (#atencion/<id>).
-  - **Componentes**: `stepper_progreso.js`, `autocomplete_cie10.js`, `lista_examenes.js`, `historial_pasos.js`, `tarjeta_consulta.js`, `asistente_busqueda.js`, `estado_red.js`, `notificacion_emergente.js`, `encabezado_app.js`, `menu_lateral.js`, `pie_app.js`.
+  - **Componentes**: `stepper_progreso.js`, `lista_examenes.js`, `historial_pasos.js`, `tarjeta_consulta.js`, `asistente_busqueda.js`, `estado_red.js`, `notificacion_emergente.js`, `encabezado_app.js`, `menu_lateral.js`, `pie_app.js`.
 - **Control (`src/js/control/`)**:
   - `default_service.js`: Cliente HTTP base asíncrono (`async/await`) con interceptores para errores HTTP (401, 403, 412, 422, 428), inyección automática de tokens Bearer y control de timeout.
-  - Servicios especializados: `consulta_service.js`, `auth_service.js`, `persona_service.js`, `orden_examen_service.js`, `clinica_service.js`, `cie10_service.js`, etc.
+  - Servicios especializados: `consulta_service.js`, `auth_service.js`, `persona_service.js`, `orden_examen_service.js`, `clinica_service.js`, etc.
   - `router.js`: Enrutador SPA nativo por hash con guardias de sesión activas.
   - `store.js`: Almacén de estado reactivo global desacoplado basado en `EventTarget`.
 - **Entity (`src/js/entity/`)**:
@@ -239,7 +239,7 @@ Cubren con aislamiento total (`sinon.stub`) la capa de servicios y los Web Compo
   - `control/consulta_service_test.js`: Paginación, token bearer, errores 401, 422 y 500.
   - `control/auth_service_test.js`: Login, gestión de roles de empleado, sessionStorage y logout.
   - `control/orden_examen_service_test.js`: Creación en lote de órdenes de examen.
-  - `boundary/*_test.js`: Web Components (`dashboard_view`, `atencion_consulta_view`, `stepper_progreso`, `autocomplete_cie10`, `asistente_busqueda`, `lista_examenes`, `estado_red`).
+  - `boundary/*_test.js`: Web Components (`dashboard_view`, `atencion_consulta_view`, `stepper_progreso`, `asistente_busqueda`, `lista_examenes`, `estado_red`).
 
 ### 2. Pruebas de Integración BDD (`test/runner.html` y `test/runner_it.html`)
 Verifican la conectividad contra los endpoints de Open Liberty en `http://localhost:9080/galenoSV/api/v1`:
@@ -271,7 +271,7 @@ Verifican la conectividad contra los endpoints de Open Liberty en `http://localh
 
 ### HU4: Atención de Consulta Médica y Máquina de Estados
 1. En la vista `#atencion/<id>`, observe el `<stepper-progreso>` con las etapas clínicas.
-2. Complete las notas clínicas, busque diagnósticos en `<auto-complete-cie10>` y asigne órdenes en `<lista-examenes-asignables>`.
+2. Complete las notas, el diagnóstico clínico libre y el plan; asigne órdenes en `<lista-examenes-asignables>`. Los registros se consultan inline, sin ventanas flotantes, y las fechas visibles usan `DD/MM/YYYY`.
 3. Utilice los controles de la máquina de estados: *Anterior*, *Guardar y Avanzar al Siguiente Paso*, o *Finalizar Consulta*.
 
 ---

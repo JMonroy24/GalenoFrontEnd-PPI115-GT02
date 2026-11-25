@@ -1,4 +1,4 @@
-const CACHE_NAME = "galenosv-app-shell-v29";
+const CACHE_NAME = "galenosv-app-shell-v30";
 
 const APP_SHELL = [
     "/index.html",
@@ -7,7 +7,6 @@ const APP_SHELL = [
     "/recursos/imagenes/galenosv-logo.png",
     "/recursos/imagenes/icono_192.png",
     "/recursos/imagenes/icono_512.png",
-    "/recursos/datos/cie10.json",
     "/js/app.js",
     "/js/config.js",
     "/js/routes.js",
@@ -20,7 +19,6 @@ const APP_SHELL = [
     "/js/boundary/vistas/dashboard_view.js",
     "/js/boundary/vistas/atencion_consulta_view.js",
     "/js/boundary/componentes/asistente_busqueda.js",
-    "/js/boundary/componentes/autocomplete_cie10.js",
     "/js/boundary/componentes/buscador_tipo_doc.js",
     "/js/boundary/componentes/encabezado_app.js",
     "/js/boundary/componentes/estado_red.js",
@@ -33,7 +31,6 @@ const APP_SHELL = [
     "/js/boundary/componentes/stepper_progreso.js",
     "/js/boundary/componentes/tarjeta_consulta.js",
     "/js/control/auth_service.js",
-    "/js/control/cie10_service.js",
     "/js/control/clinica_service.js",
     "/js/control/consulta_procedimiento_service.js",
     "/js/control/consulta_service.js",

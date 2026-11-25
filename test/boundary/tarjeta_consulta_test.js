@@ -100,19 +100,19 @@ suite("TarjetaConsulta (unitaria)", () => {
             consulta: { fecha: "", inicio: "2026-11-17T09:35:00", hora: "", paciente: {},
                 persona: { nombres: ["Ana", "María"], apellidos: ["López"], documento: { valor: "01234567-8" } },
                 clinica: { nombre: "", descripcion: "Clínica Central" } },
-            esperado: ["2026-11-17", "09:35", "Ana María López", "01234567-8", "Clínica Central"]
+            esperado: ["17/11/2026", "09:35", "Ana María López", "01234567-8", "Clínica Central"]
         },
         {
             nombre: "fechaCreacion y datos de paciente planos",
             consulta: { fechaCreacion: "2026-11-16 10:45:00", nombresPaciente: ["Luis", "Alberto"],
                 apellidosPaciente: "Pérez", documentoPaciente: "ABC-123", nombreClinica: "Clínica Norte" },
-            esperado: ["2026-11-16", "10:45", "Luis Alberto Pérez", "ABC-123", "Clínica Norte"]
+            esperado: ["16/11/2026", "10:45", "Luis Alberto Pérez", "ABC-123", "Clínica Norte"]
         },
         {
             nombre: "nombrePaciente completo y horaInicio",
             consulta: { fecha: "2026-11-15", horaInicio: "14:20", nombrePaciente: "Sofía Ruiz",
                 numeroDocumentoPaciente: "PAS-123", idClinica: { nombreClinica: "Clínica Sur" } },
-            esperado: ["2026-11-15", "14:20", "Sofía Ruiz", "PAS-123", "Clínica Sur"]
+            esperado: ["15/11/2026", "14:20", "Sofía Ruiz", "PAS-123", "Clínica Sur"]
         },
         {
             nombre: "cita anidada con asociaciones vacías en la raíz",
@@ -121,26 +121,26 @@ suite("TarjetaConsulta (unitaria)", () => {
                     nombres: "Carlos", apellidos: "Paz", numeroDocumento: "DOC-14"
                 } }, clinica: { nombre: "Clínica Este" }
             } },
-            esperado: ["2026-11-14", "11:05", "Carlos Paz", "DOC-14", "Clínica Este"]
+            esperado: ["14/11/2026", "11:05", "Carlos Paz", "DOC-14", "Clínica Este"]
         },
         {
             nombre: "consulta e idPaciente.idPersona anidados",
             consulta: { consulta: { fechaCreacion: "2026-11-13T08:15:00", idPaciente: { idPersona: {
                 nombreCompleto: "Marta Sol", documento: { numero: "DOC-13" }
             } }, idClinica: { descripcion: "Clínica Oeste" } } },
-            esperado: ["2026-11-13", "08:15", "Marta Sol", "DOC-13", "Clínica Oeste"]
+            esperado: ["13/11/2026", "08:15", "Marta Sol", "DOC-13", "Clínica Oeste"]
         },
         {
             nombre: "nombre y documento en asociaciones separadas",
             consulta: { fechaInicio: "2026-11-12T07:40:00", paciente: { documento: "DOC-12" },
                 persona: { nombres: "Pedro", apellido: "Luna" }, clinica: "", idClinica: { nombre: "Clínica Centro" } },
-            esperado: ["2026-11-12", "07:40", "Pedro Luna", "DOC-12", "Clínica Centro"]
+            esperado: ["12/11/2026", "07:40", "Pedro Luna", "DOC-12", "Clínica Centro"]
         },
         {
             nombre: "fecha ISO canónica sin hora separada",
             consulta: { fecha: "2026-11-11T12:30:00", paciente: { nombre: "Lucía", dui: "DOC-11" },
                 clinica: { nombreClinica: "Clínica Principal" } },
-            esperado: ["2026-11-11", "12:30", "Lucía", "DOC-11", "Clínica Principal"]
+            esperado: ["11/11/2026", "12:30", "Lucía", "DOC-11", "Clínica Principal"]
         }
     ];
 
@@ -252,11 +252,11 @@ suite("TarjetaConsulta (unitaria)", () => {
         host.addEventListener("registro-consulta-abierto", (evento) => eventos.push(evento));
         host.addEventListener("registro-consulta-cerrado", (evento) => eventos.push(evento));
         const historial = host.shadowRoot.querySelector("historial-pasos");
-        historial.shadowRoot.querySelector(".boton").click();
-        const dialogo = historial.shadowRoot.querySelector("dialog");
-        const cierre = new Promise((resolve) => dialogo.addEventListener("close", resolve, { once: true }));
-        historial.shadowRoot.querySelector("#cerrar-registro").click();
-        await cierre;
+        const boton = historial.shadowRoot.querySelector(".boton");
+        const abierto = new Promise(resolve => host.addEventListener("registro-consulta-abierto", resolve, { once: true }));
+        boton.click(); await abierto;
+        const cerrado = new Promise(resolve => host.addEventListener("registro-consulta-cerrado", resolve, { once: true }));
+        boton.click(); await cerrado;
 
         expect(eventos.map((evento) => evento.type)).to.deep.equal([
             "registro-consulta-abierto", "registro-consulta-cerrado"
@@ -297,7 +297,7 @@ suite("TarjetaConsulta (unitaria)", () => {
         test("muestra la fecha, hora, clínica y estado correctos", () => {
             host.consulta = crearConsulta();
 
-            expect(host.shadowRoot.querySelector("#fecha").textContent).to.equal("2026-11-12");
+            expect(host.shadowRoot.querySelector("#fecha").textContent).to.equal("12/11/2026");
             expect(host.shadowRoot.querySelector("#hora").textContent).to.equal("09:00");
             expect(host.shadowRoot.querySelector("#clinica").textContent).to.equal("Clínica Central");
             expect(host.shadowRoot.querySelector("#estado-texto").textContent).to.equal("Pendiente");
@@ -344,7 +344,7 @@ suite("TarjetaConsulta (unitaria)", () => {
         test("extrae la fecha desde fechaHora ISO-8601 cuando no hay campo 'fecha'", () => {
             host.consulta = { idConsulta: 1, fechaHora: "2026-11-12T09:00:00", estado: "Activa" };
 
-            expect(host.shadowRoot.querySelector("#fecha").textContent).to.equal("2026-11-12");
+            expect(host.shadowRoot.querySelector("#fecha").textContent).to.equal("12/11/2026");
             expect(host.shadowRoot.querySelector("#hora").textContent).to.equal("09:00");
         });
 
@@ -389,7 +389,7 @@ suite("TarjetaConsulta (unitaria)", () => {
         const historial = host.shadowRoot.querySelector("historial-pasos");
         expect(historial.shadowRoot.querySelector(".paso-nombre").textContent).to.equal("Nuevo");
         historial.shadowRoot.querySelector(".boton").click();
-        expect(historial.shadowRoot.querySelector("#detalle-registro").textContent).to.include("Actualizado");
+        expect(historial.shadowRoot.querySelector(".detalle-registro").textContent).to.include("Actualizado");
     });
 
     // ── Bloque 3: Proyección de acciones mediante <slot> ──────────────────────
@@ -455,18 +455,19 @@ suite("TarjetaConsulta (unitaria)", () => {
             const historial = host.shadowRoot.querySelector("historial-pasos");
 
             expect(historial.shadowRoot.textContent).to.contain("Enf. López");
-            expect(historial.shadowRoot.textContent).to.contain("2026-11-12 08:30");
+            expect(historial.shadowRoot.textContent).to.contain("12/11/2026 08:30");
         });
 
-        test("el subcomponente expone el botón 'Ver Registro' y el diálogo modal", () => {
+        test("el subcomponente expone Ver Registro como desplegable inline", () => {
             host.consulta = crearConsulta({ pasos: pasosFicticios });
 
             const historial = host.shadowRoot.querySelector("historial-pasos");
             const boton = historial.shadowRoot.querySelector(".paso .boton");
-            const dialogo = historial.shadowRoot.querySelector("dialog#dialogo-registro");
+            const registro = historial.shadowRoot.querySelector("details.registro-inline");
 
             expect(boton.textContent.trim()).to.equal("Ver Registro");
-            expect(dialogo).to.exist;
+            expect(registro).to.exist;
+            expect(historial.shadowRoot.querySelector("dialog, [popover]")).to.be.null;
         });
 
         test("oculta el desplegable y muestra aviso cuando no hay pasos", () => {

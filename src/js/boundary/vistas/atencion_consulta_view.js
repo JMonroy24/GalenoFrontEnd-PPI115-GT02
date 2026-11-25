@@ -7,7 +7,6 @@ import { navigate, parseRouteParams } from "../../router.js";
 import { puedeOperarPaso, indicePasoVigente, esPasoFinal } from '../../entity/flujo_consulta.js';
 import '../componentes/historial_pasos.js';
 import "../../boundary/componentes/stepper_progreso.js";
-import "../../boundary/componentes/autocomplete_cie10.js";
 import "../../boundary/componentes/lista_examenes.js";
 
 /** Límite de caracteres para Notas de la Consulta. */
@@ -53,8 +52,6 @@ export class AtencionConsultaView extends HTMLElement {
         this._cargandoConsulta = false;
         this._solicitudConsulta = 0;
 
-        /** @type {Array<object|string>} Diagnósticos CIE-10 seleccionados. */
-        this._diagnosticos = [];
 
         /** @type {number} Paso activo en el stepper (0-based). */
         this._pasoActivo = 0;
@@ -84,7 +81,6 @@ export class AtencionConsultaView extends HTMLElement {
             if (consultaDelStore !== this._consulta) {
                 this._consulta = consultaDelStore;
                 this._borradores.clear();
-                this._diagnosticos = [];
                 this._sincronizarPasoActivo();
                 this.render();
                 this._cargarDatosPasoActivo();
@@ -156,7 +152,6 @@ export class AtencionConsultaView extends HTMLElement {
             this._consulta = procedimiento ? { ...consulta, pasos: procedimiento.pasos,
                 pasosClinicos: procedimiento.pasos, idConsultaProcedimientoActivo: idProcedimiento } : consulta;
             this._borradores.clear();
-            this._diagnosticos = [];
             this._sincronizarPasoActivo();
 
             store.setState({
@@ -187,25 +182,22 @@ export class AtencionConsultaView extends HTMLElement {
 
     // ─── API pública ──────────────────────────────────────────────────────────
 
-    /**
-     * Devuelve un objeto limpio con los valores actuales de los campos del formulario,
-     * incluyendo los diagnósticos CIE-10 seleccionados.
-     *
-     * @returns {{ notasConsulta: string, planTratamiento: string, diagnostico: string|Array<object|string>, diagnosticos: Array<object|string> }}
-     */
+    /** Devuelve el diagnóstico clínico libre junto con las notas y el plan. */
     obtenerDatosFormulario() {
-        const notas = this.shadowRoot?.querySelector("#notas");
-        const plan = this.shadowRoot?.querySelector("#plan");
-        const cie10 = this.shadowRoot?.querySelector("#cie10-busqueda");
-        const diagnostico = (this.shadowRoot?.querySelector("#diagnostico")?.value ?? "").trim();
-        const diagnosticos = cie10?.obtenerSeleccionados() ?? [...this._diagnosticos];
-
         return {
-            notasConsulta: (notas?.value ?? "").trim(),
-            planTratamiento: (plan?.value ?? "").trim(),
-            diagnostico: diagnostico || diagnosticos,
-            diagnosticos
+            notasConsulta: (this.shadowRoot?.querySelector("#notas")?.value ?? "").trim(),
+            planTratamiento: (this.shadowRoot?.querySelector("#plan")?.value ?? "").trim(),
+            diagnostico: (this.shadowRoot?.querySelector("#diagnostico")?.value ?? "").trim()
         };
+    }
+
+    _textoDiagnostico(valor) {
+        if (Array.isArray(valor)) return valor.map(item => this._textoDiagnostico(item)).filter(Boolean).join("; ");
+        if (valor && typeof valor === "object") {
+            return [valor.codigo ?? valor.code, valor.nombre ?? valor.descripcion ?? valor.description]
+                .filter(Boolean).join(" — ") || JSON.stringify(valor);
+        }
+        return String(valor ?? "");
     }
 
     /**
@@ -218,8 +210,8 @@ export class AtencionConsultaView extends HTMLElement {
         const plan = this.shadowRoot?.querySelector("#plan");
         const diagnostico = this.shadowRoot?.querySelector("#diagnostico");
 
-        if (diagnostico && typeof datos.diagnostico === "string") {
-            diagnostico.value = datos.diagnostico;
+        if (diagnostico && (datos.diagnostico !== undefined || datos.diagnosticos !== undefined)) {
+            diagnostico.value = this._textoDiagnostico(datos.diagnostico ?? datos.diagnosticos);
         }
 
         if (notas && datos.notasConsulta !== undefined) {
@@ -510,16 +502,6 @@ export class AtencionConsultaView extends HTMLElement {
 
         this.cargarDatosFormulario(datos);
 
-        if (datos.diagnosticos !== undefined) {
-            this._diagnosticos = Array.isArray(datos.diagnosticos)
-                ? [...datos.diagnosticos]
-                : [datos.diagnosticos];
-
-            const cie10 = this.shadowRoot?.querySelector("#cie10-busqueda");
-            if (cie10) {
-                cie10.seleccionados = [...this._diagnosticos];
-            }
-        }
     }
 
     _obtenerDatosPasoActivo() {
@@ -595,34 +577,13 @@ export class AtencionConsultaView extends HTMLElement {
             fuente.plan_manejo
         ]);
 
-        if (typeof fuente.diagnostico === "string" && destino.diagnostico === undefined) {
-            destino.diagnostico = fuente.diagnostico;
-        }
-
-        if (destino.diagnosticos === undefined) {
-            const diagnosticos = fuente.diagnosticos
-                ?? (typeof fuente.diagnostico === "string" ? undefined : fuente.diagnostico)
-                ?? fuente.cie10
-                ?? fuente.codigosCie10
-                ?? fuente.codigosCIE10
-                ?? fuente.diagnosticosCie10;
-
-            if (diagnosticos !== undefined && diagnosticos !== null && diagnosticos !== "") {
-                if (Array.isArray(diagnosticos)) {
-                    destino.diagnosticos = diagnosticos;
-                } else if (typeof diagnosticos === "string") {
-                    const lista = diagnosticos
-                        .split(",")
-                        .map((item) => item.trim())
-                        .filter((item) => item !== "");
-
-                    if (lista.length > 0) {
-                        destino.diagnosticos = lista;
-                    }
-                } else {
-                    destino.diagnosticos = [diagnosticos];
-                }
-            }
+        if (destino.diagnostico === undefined) {
+            // Compatibilidad de lectura: los registros antiguos pueden contener listas o códigos.
+            const valores = [fuente.diagnostico, fuente.diagnosticos, fuente.cie10,
+                fuente.codigosCie10, fuente.codigosCIE10, fuente.diagnosticosCie10];
+            const valor = valores.find(item => this._textoDiagnostico(item).trim() !== "")
+                ?? valores.find(item => item != null);
+            if (valor !== undefined && valor !== null) destino.diagnostico = this._textoDiagnostico(valor);
         }
     }
 
@@ -1001,14 +962,6 @@ export class AtencionConsultaView extends HTMLElement {
                     box-shadow: var(--shadow-sm, 0 1px 2px rgb(15 23 42 / 0.08));
                 }
 
-                /* ── Campo CIE-10 ── */
-                .campo-cie10-descripcion {
-                    display: block;
-                    margin-top: var(--space-1, 0.25rem);
-                    color: var(--color-text-muted, #475569);
-                    font-size: var(--text-xs, 0.75rem);
-                    font-weight: 400;
-                }
             </style>
 
             <section class="vista" aria-labelledby="titulo-vista">
@@ -1221,23 +1174,10 @@ export class AtencionConsultaView extends HTMLElement {
                     ></span>
                 </div>
 
-                <!-- ── Campo: Diagnósticos CIE-10 ── -->
-                <div class="campo" id="grupo-cie10">
-                    <label class="etiqueta" for="diagnostico">
-                        Diagnóstico
-                    </label>
+                <div class="campo" id="grupo-diagnostico">
+                    <label class="etiqueta" for="diagnostico">Diagnóstico</label>
                     <input id="diagnostico" name="diagnostico" type="text" class="textarea"
                         autocomplete="off" placeholder="Registre el diagnóstico clínico">
-                    <label class="etiqueta">
-                        Códigos CIE-10
-                        <span class="campo-cie10-descripcion">
-                            Busque y seleccione uno o varios códigos de diagnóstico.
-                        </span>
-                    </label>
-                    <auto-complete-cie10
-                        id="cie10-busqueda"
-                        aria-label="Buscador de diagnósticos CIE-10"
-                    ></auto-complete-cie10>
                 </div>
 
                 <!-- ── Órdenes de Exámenes ── -->
@@ -1325,17 +1265,6 @@ export class AtencionConsultaView extends HTMLElement {
                 if (Number.isInteger(indice) && this._pasosFlujo[indice]) {
                     this._seleccionarPaso(indice);
                 }
-            });
-        }
-
-        // ── Auto-complete CIE-10: restaurar selección previa y escuchar cambios ──
-        const cie10 = this.shadowRoot.querySelector("#cie10-busqueda");
-        if (cie10) {
-            if (this._diagnosticos.length > 0) {
-                cie10.seleccionados = [...this._diagnosticos];
-            }
-            cie10.addEventListener("cie10-change", (evento) => {
-                this._diagnosticos = evento.detail?.seleccionados ?? [];
             });
         }
 
@@ -1607,7 +1536,6 @@ export class AtencionConsultaView extends HTMLElement {
     _limpiarFormularioPaso() {
         const notas = this.shadowRoot?.querySelector("#notas");
         const plan = this.shadowRoot?.querySelector("#plan");
-        const cie10 = this.shadowRoot?.querySelector("#cie10-busqueda");
         const diagnostico = this.shadowRoot?.querySelector("#diagnostico");
         if (diagnostico) diagnostico.value = "";
 
@@ -1621,11 +1549,7 @@ export class AtencionConsultaView extends HTMLElement {
             this._actualizarContador("contador-plan", 0, MAX_PLAN);
         }
 
-        if (cie10) {
-            cie10.seleccionados = [];
-        }
 
-        this._diagnosticos = [];
     }
 
     _aplicarValidacionesPaso(indicePaso) {
@@ -1672,7 +1596,7 @@ export class AtencionConsultaView extends HTMLElement {
         const datos = this.obtenerDatosFormulario();
         const hayDatos =
             datos.notasConsulta.length > 0 ||
-            datos.planTratamiento.length > 0 || datos.diagnosticos.length > 0
+            datos.planTratamiento.length > 0
             || (typeof datos.diagnostico === "string" && datos.diagnostico.length > 0);
 
         if (!hayDatos) {
@@ -1791,7 +1715,6 @@ export class AtencionConsultaView extends HTMLElement {
             this._consulta = procedimiento ? { ...actualizada, pasos: procedimiento.pasos,
                 pasosClinicos: procedimiento.pasos, idConsultaProcedimientoActivo: idProcedimiento } : actualizada;
             this._borradores.clear();
-            this._diagnosticos = [];
             this._sincronizarPasoActivo();
             const rol = this._pasoDetectado?.rolResponsable?.nombre
                 ?? this._pasoDetectado?.rolResponsable?.descripcion ?? 'responsable del siguiente paso';
@@ -1917,7 +1840,7 @@ export class AtencionConsultaView extends HTMLElement {
                 : `Solo lectura. Este paso debe ser atendido por el rol ${rol} en la clínica de la consulta.`);
         }
 
-        for (const selector of ["#stepper-flujo", "#cie10-busqueda", "#lista-examenes"]) {
+        for (const selector of ["#stepper-flujo", "#lista-examenes"]) {
             const bloqueado = enviando
                 || (sinConexion && selector === "#stepper-flujo")
                 || (selector !== "#stepper-flujo" && this._soloLectura);

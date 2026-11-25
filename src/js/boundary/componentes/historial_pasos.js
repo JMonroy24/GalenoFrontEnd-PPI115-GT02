@@ -5,8 +5,7 @@ export class HistorialPasos extends HTMLElement {
         super();
         this.attachShadow({ mode: "open" });
         this._pasos = [];
-        this._pasoRegistro = null;
-        this._botonRegistro = null;
+        this._registros = new Map();
         this._pasosOriginales = new WeakMap();
     }
 
@@ -33,6 +32,7 @@ export class HistorialPasos extends HTMLElement {
 
     render() {
         this._cerrarRegistro();
+        this._registros.clear();
         this._cantidadRegistros = 0;
         this.shadowRoot.innerHTML = `
             <link rel="stylesheet" href="recursos/estilos/principal.css">
@@ -127,91 +127,16 @@ export class HistorialPasos extends HTMLElement {
                 .vacio[hidden] {
                     display: none;
                 }
-                .dialogo {
-                    inline-size: min(42rem, calc(100% - 2rem));
-                    max-block-size: calc(100dvh - 2rem);
-                    overscroll-behavior: contain;
-                    padding: 0;
-                    border: var(--border-width, 1px) solid var(--color-border, #64748b);
-                    border-radius: var(--radius-lg, 0.75rem);
-                    background-color: var(--color-surface, #ffffff);
-                    color: var(--color-text, #0f172a);
-                    box-shadow: var(--shadow-lg, 0 20px 40px rgb(15 23 42 / 0.3));
-                }
-                .dialogo::backdrop {
-                    background-color: rgb(15 23 42 / 0.55);
-                }
-                .modal {
-                    display: flex;
-                    flex-direction: column;
-                    gap: var(--space-4, 1rem);
-                    padding: var(--space-4, 1rem);
-                }
-                .modal-cabecera {
-                    display: flex;
-                    align-items: flex-start;
-                    justify-content: space-between;
-                    gap: var(--space-4, 1rem);
-                }
-                .modal-cabecera h3 {
-                    margin: var(--space-1, 0.25rem) 0 0;
-                    color: var(--color-primary, #1e3a8a);
-                    font-size: var(--text-lg, 1.125rem);
-                }
-                .etiqueta {
-                    color: var(--color-text-muted, #475569);
-                    font-size: var(--text-xs, 0.75rem);
-                    font-weight: 600;
-                    letter-spacing: 0.05em;
-                    text-transform: uppercase;
-                }
-                .detalle-registro {
-                    overflow-wrap: anywhere;
-                    white-space: pre-wrap;
-                    line-height: 1.6;
-                }
-                .boton-cerrar {
-                    flex: none;
-                    padding: var(--space-1, 0.25rem) var(--space-3, 0.75rem);
-                    border: var(--border-width, 1px) solid var(--color-border, #64748b);
-                    border-radius: var(--radius-md, 0.5rem);
-                    background-color: transparent;
-                    color: var(--color-text, #0f172a);
-                    font: inherit;
-                    font-size: var(--text-sm, 0.875rem);
-                    cursor: pointer;
-                }
-                .boton-cerrar:hover {
-                    background-color: var(--color-surface-alt, #e2e8f0);
-                }
+                .registro-inline { flex: 1 1 100%; min-inline-size: 0; }
+                summary.boton { inline-size: fit-content; }
+                .registro-contenido { padding-block-start: 1rem; overflow-wrap: anywhere; }
+                .titulo-registro { margin: 0 0 0.5rem; color: var(--color-primary, #1e3a8a); }
+                .detalle-registro { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; }
             </style>
             <section class="historial">
                 <ul id="lista-pasos" class="lista-pasos"></ul>
                 <p id="historial-vacio" class="vacio" hidden>No hay pasos registrados.</p>
             </section>
-            <dialog
-                id="dialogo-registro"
-                class="dialogo"
-                aria-labelledby="titulo-registro"
-            >
-                <div class="modal">
-                    <header class="modal-cabecera">
-                        <div>
-                            <span class="etiqueta">Registro del paso</span>
-                            <h3 id="titulo-registro"></h3>
-                        </div>
-                        <button
-                            type="button"
-                            id="cerrar-registro"
-                            class="boton-cerrar"
-                            aria-label="Cerrar registro"
-                            autofocus
-                        >Cerrar</button>
-                    </header>
-                    <p id="datos-registro" class="paso-datos"></p>
-                    <div id="detalle-registro" class="detalle-registro"></div>
-                </div>
-            </dialog>
         `;
 
         const lista = this.shadowRoot.querySelector("#lista-pasos");
@@ -222,140 +147,80 @@ export class HistorialPasos extends HTMLElement {
         vacio.hidden = pasos.length > 0;
         this._renderizarPasos(lista, pasos);
 
-        const dialogo = this.shadowRoot.querySelector("#dialogo-registro");
-        const cerrar = this.shadowRoot.querySelector("#cerrar-registro");
-        dialogo.addEventListener("close", () => this._notificarCierre());
-
-        cerrar.addEventListener("click", (evento) => {
-            evento.stopPropagation();
-            this._cerrarRegistro();
-        });
-        dialogo.addEventListener("click", (evento) => {
-            evento.stopPropagation();
-            if (evento.target === dialogo) {
-                this._cerrarRegistro();
-            }
-        });
     }
 
     _renderizarPasos(contenedor, pasos) {
         pasos.forEach((paso) => {
             const item = document.createElement("li");
             item.className = "paso";
-
             const contenido = document.createElement("div");
             contenido.className = "paso-contenido";
-
             const info = document.createElement("div");
             info.className = "paso-info";
-
             const nombre = document.createElement("h4");
             nombre.className = "paso-nombre";
             nombre.textContent = this._nombrePaso(paso);
-            const esGrupo = paso.esGrupoHistorial === true;
-
-            const datos = document.createElement("p");
-            datos.className = "paso-datos";
-
-            const profesional = document.createElement("span");
-            profesional.className = "paso-dato";
-            profesional.textContent = `Profesional: ${this._nombreProfesional(paso)}`;
-
-            const fechaHora = document.createElement("span");
-            fechaHora.className = "paso-dato";
-            fechaHora.textContent = `Fecha y hora: ${this._fechaHoraPaso(paso)}`;
-
-            datos.append(profesional, fechaHora);
             info.append(nombre);
-            if (!esGrupo) info.append(datos);
-
-            const boton = document.createElement("button");
-            boton.type = "button";
-            boton.className = "boton";
-            boton.textContent = "Ver Registro";
-            boton.addEventListener("click", (evento) => {
-                evento.stopPropagation();
-                this._abrirRegistro(paso, boton);
-            });
-
+            const esGrupo = paso.esGrupoHistorial === true;
+            const metadatos = `Profesional: ${this._nombreProfesional(paso)} · Fecha y hora: ${this._fechaHoraPaso(paso)}`;
+            if (!esGrupo) {
+                const datos = document.createElement("p");
+                datos.className = "paso-datos";
+                datos.textContent = metadatos;
+                info.append(datos);
+            }
             contenido.append(info);
             if (!esGrupo) {
-                contenido.append(boton);
+                const registro = document.createElement("details");
+                registro.className = "registro-inline";
+                const boton = document.createElement("summary");
+                boton.className = "boton";
+                boton.textContent = "Ver Registro";
+                const panel = document.createElement("div");
+                panel.className = "registro-contenido";
+                const titulo = document.createElement("h5");
+                titulo.className = "titulo-registro";
+                titulo.textContent = this._nombrePaso(paso);
+                const datos = document.createElement("p");
+                datos.className = "datos-registro paso-datos";
+                datos.textContent = metadatos;
+                const detalle = document.createElement("div");
+                detalle.className = "detalle-registro";
+                detalle.textContent = this._detallePaso(paso);
+                panel.append(titulo, datos, detalle);
+                registro.append(boton, panel);
+                let abierto = false;
+                const actualizar = () => {
+                    if (abierto === registro.open) return;
+                    abierto = registro.open;
+                    boton.textContent = abierto ? "Ocultar Registro" : "Ver Registro";
+                    this.dispatchEvent(new CustomEvent(abierto ? "registro-abierto" : "registro-cerrado", {
+                        bubbles: true, composed: true,
+                        detail: { paso: this._pasosOriginales.get(paso) ?? paso }
+                    }));
+                };
+                registro.addEventListener("toggle", actualizar);
+                registro.addEventListener("click", evento => evento.stopPropagation());
+                this._registros.set(registro, actualizar);
+                contenido.append(registro);
                 this._cantidadRegistros++;
             }
-            item.appendChild(contenido);
-
+            item.append(contenido);
             const subpasos = this._obtenerSubpasos(paso);
-
-            if (subpasos.length > 0) {
-                const listaHijos = document.createElement("ul");
-                this._renderizarPasos(listaHijos, subpasos);
-                item.appendChild(listaHijos);
+            if (subpasos.length) {
+                const lista = document.createElement("ul");
+                this._renderizarPasos(lista, subpasos);
+                item.append(lista);
             }
-
-            contenedor.appendChild(item);
+            contenedor.append(item);
         });
     }
 
-    _abrirRegistro(paso, boton = null) {
-        paso = this._pasosOriginales.get(paso) ?? paso;
-        const dialogo = this.shadowRoot.querySelector("#dialogo-registro");
-        const titulo = this.shadowRoot.querySelector("#titulo-registro");
-        const detalle = this.shadowRoot.querySelector("#detalle-registro");
-
-        this._pasoRegistro = paso;
-        this._botonRegistro = boton;
-
-        titulo.textContent = this._nombrePaso(paso);
-        detalle.textContent = this._detallePaso(paso);
-        this.shadowRoot.querySelector("#datos-registro").textContent =
-            `Profesional: ${this._nombreProfesional(paso)} · Fecha y hora: ${this._fechaHoraPaso(paso)}`;
-
-        if (typeof dialogo.showModal !== "function") {
-            dialogo.setAttribute("open", "");
-        } else if (!dialogo.open) {
-            dialogo.showModal();
-        }
-
-        this.dispatchEvent(new CustomEvent("registro-abierto", {
-            bubbles: true,
-            composed: true,
-            detail: { paso }
-        }));
-    }
-
     _cerrarRegistro() {
-        const dialogo = this.shadowRoot.querySelector("#dialogo-registro");
-
-        if (!dialogo?.open) {
-            return;
+        for (const [registro, actualizar] of this._registros) {
+            registro.open = false;
+            actualizar();
         }
-
-        if (typeof dialogo.close === "function") {
-            dialogo.close();
-        } else {
-            dialogo.removeAttribute("open");
-        }
-
-        this._notificarCierre();
-    }
-
-    _notificarCierre() {
-        if (!this._pasoRegistro) {
-            return;
-        }
-
-        const paso = this._pasoRegistro;
-
-        this._pasoRegistro = null;
-        this._botonRegistro?.focus();
-        this._botonRegistro = null;
-
-        this.dispatchEvent(new CustomEvent("registro-cerrado", {
-            bubbles: true,
-            composed: true,
-            detail: { paso }
-        }));
     }
 
     _filtrarEjecutados(pasos, ancestros = new Set()) {
@@ -524,30 +389,16 @@ export class HistorialPasos extends HTMLElement {
         }
 
         if (fechaHora instanceof Date) {
-            return Number.isNaN(fechaHora.getTime())
-                ? "Sin fecha"
-                : fechaHora.toLocaleString("es-SV");
+            return GestorFechas.formatearFechaISO(fechaHora) || "Sin fecha";
         }
-
         if (typeof fechaHora === "object") {
-            const fecha = fechaHora.fecha ?? fechaHora.fechaEjecucion ?? "";
-            const horaObjeto = fechaHora.hora ?? fechaHora.horaEjecucion ?? "";
-            return [fecha, horaObjeto].filter(Boolean).join(" ") || "Sin fecha";
+            return GestorFechas.formatearFechaHoraCalendario(
+                fechaHora.fecha ?? fechaHora.fechaEjecucion,
+                fechaHora.hora ?? fechaHora.horaEjecucion ?? hora
+            ) || "Sin fecha";
         }
-
-        if (paso?.fechaFin) return GestorFechas.formatearFechaISO(fechaHora) || 'Sin fecha';
-        const texto = GestorFechas.normalizarFechaISO(String(fechaHora));
-
-        if (texto.includes("T")) {
-            const [fecha, horaTexto] = texto.split("T");
-            return `${fecha} ${horaTexto.slice(0, 5)}`;
-        }
-
-        if (hora !== "" && hora !== null && hora !== undefined) {
-            return `${texto} ${hora}`;
-        }
-
-        return texto;
+        return (paso?.fechaFin ? GestorFechas.formatearFechaISO(fechaHora)
+            : GestorFechas.formatearFechaHoraCalendario(fechaHora, hora)) || "Sin fecha";
     }
 
     _detallePaso(paso) {
@@ -634,12 +485,16 @@ export class HistorialPasos extends HTMLElement {
     _esRegistroClinico(detalle) {
         return [
             "notas", "notasConsulta", "diagnostico", "diagnosticos",
-            "plan", "planTratamiento", "observaciones", "observacion"
+            "plan", "planTratamiento", "observaciones", "observacion",
+            "cie10", "codigosCie10", "codigosCIE10", "diagnosticosCie10"
         ].some((clave) => Object.hasOwn(detalle, clave));
     }
 
     _formatearRegistroClinico(detalle) {
-        const diagnosticos = detalle.diagnostico ?? detalle.diagnosticos ?? [];
+        const diagnosticos = [detalle.diagnostico, detalle.diagnosticos, detalle.cie10,
+            detalle.codigosCie10, detalle.codigosCIE10, detalle.diagnosticosCie10]
+            .find(valor => Array.isArray(valor) ? valor.length > 0
+                : valor != null && String(valor).trim() !== "") ?? [];
         const lista = Array.isArray(diagnosticos) ? diagnosticos : [diagnosticos];
         const textoDiagnosticos = lista
             .map((item) => {
