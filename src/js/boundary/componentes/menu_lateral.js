@@ -116,7 +116,7 @@ export class MenuLateral extends HTMLElement {
         this.shadowRoot.adoptedStyleSheets = [estilos];
         this.shadowRoot.innerHTML = `
             <link rel="stylesheet" href="recursos/estilos/principal.css">
-            <nav aria-label="Menú principal">
+            <nav id="menu-lateral-nav" aria-label="Menú principal">
                 ${Object.entries(MENU).map(([seccion, items]) => `
                     <section>
                         <h3 class="seccion-titulo">${seccion}</h3>
@@ -145,6 +145,15 @@ export class MenuLateral extends HTMLElement {
                 bubbles: true,
                 composed: true
             }));
+        }, { signal: this.#eventos.signal });
+        // Cerrar el menú al hacer clic en cualquier enlace (en móvil)
+        this.shadowRoot.querySelector('nav').addEventListener("click", (evento) => {
+            if (evento.target.closest('a')) {
+                this.dispatchEvent(new CustomEvent("cerrar-menu", {
+                    bubbles: true,
+                    composed: true
+                }));
+            }
         }, { signal: this.#eventos.signal });
         this._actualizarSesion();
         this._actualizarRutaActiva();

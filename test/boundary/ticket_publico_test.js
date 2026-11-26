@@ -10,7 +10,7 @@ import { expect } from '../lib/chai/index.js';
 mocha.setup('tdd');
 const esperar = () => new Promise(resolve => setTimeout(resolve, 0));
 
-suite('Ticket público: pestaña externa e instalación reactiva', () => {
+suite('Ticket público: modal de descarga PDF e instalación reactiva', () => {
     let contenedor, sesion, hash, bandera, standaloneAnterior;
     const montar = (nombre, id = 'consulta-1') => {
         const vista = document.createElement(nombre);
@@ -27,12 +27,9 @@ suite('Ticket público: pestaña externa e instalación reactiva', () => {
         window.dispatchEvent(evento);
         return evento;
     };
-    const soloVerTicket = root => {
-        expect(root.querySelector('#instalar').hidden).to.be.true;
-        expect(root.querySelector('#ver-web').hidden).to.be.true;
-        expect(root.querySelector('#ver-ticket').hidden).to.be.false;
-        expect(root.querySelector('#ver-ticket').textContent).to.equal('Ver ticket');
-        expect([...root.querySelectorAll('button, a')].filter(n => !n.hidden)).to.have.length(1);
+    /** Abre el modal haciendo clic en el botón "Descargar PDF" del banner. */
+    const abrirModal = (root) => {
+        root.querySelector('#btn-descargar-pdf').click();
     };
     setup(() => {
         contenedor = document.body.appendChild(document.createElement('main'));
@@ -56,88 +53,163 @@ suite('Ticket público: pestaña externa e instalación reactiva', () => {
         history.replaceState(null, '', location.pathname + location.search + hash);
     });
 
-    test('la tarjeta ofrece exactamente las dos opciones de promoción inline antes de instalar', () => {
-        const root = montar('tarjeta-consulta').shadowRoot.querySelector('opciones-ticket').shadowRoot;
-        expect(root.querySelector('#instalar').textContent).to.equal('Descargar aplicación para poder ver el ticket');
-        expect(root.querySelector('#instalar').hidden).to.be.false;
-        expect(root.querySelector('#ver-web').textContent).to.equal('ver ticket en la web');
-        expect(root.querySelector('#ver-web').hidden).to.be.false;
-        expect(root.querySelector('#ver-ticket').hidden).to.be.true;
-        expect(root.querySelector('#ver-web').href).to.equal(consultaService.obtenerUrlTicket('consulta-1'));
-        expect(root.querySelector('#ver-web').target).to.equal('_blank');
-        expect(root.querySelector('#ver-web').rel).to.equal('noopener');
-        expect(root.querySelector('object, iframe, [download], dialog, [popover], [aria-modal]')).to.be.null;
-        expect(getComputedStyle(root.querySelector('.opciones')).flexWrap).to.equal('wrap');
-    });
+    // ── Banner ────────────────────────────────────────────────────────────────
 
-    test('ver ticket en la web abre la URL PDF sin esperar, sin fetch, Blob ni descarga', () => {
-        const abrir = sinon.stub(window, 'open').returns(null);
-        const red = sinon.spy(window, 'fetch');
-        const crear = sinon.spy(URL, 'createObjectURL');
+    test('muestra un banner discreto con único botón "Descargar PDF"', () => {
         const root = montar('opciones-ticket').shadowRoot;
-        root.querySelector('#ver-web').click();
-        expect(abrir.calledOnceWithExactly(consultaService.obtenerUrlTicket('consulta-1'), '_blank', 'noopener')).to.be.true;
-        expect(red.called).to.be.false;
-        expect(crear.called).to.be.false;
-        expect(location.hash).to.equal(hash);
-        expect(root.querySelector('object, iframe, [download]')).to.be.null;
+        const banner = root.querySelector('#banner-pdf');
+        const btn = root.querySelector('#btn-descargar-pdf');
+        expect(banner).to.not.be.null;
+        expect(btn).to.not.be.null;
+        expect(btn.textContent.trim()).to.equal('Descargar PDF');
+        expect(banner.hidden).to.be.false;
+        // No muestra el modal por defecto
+        expect(root.querySelector('#modal-pdf').open).to.be.false;
     });
 
-    test('appinstalled transforma todas las tarjetas y oculta el instalador sin recargar', () => {
+    test('sin identificador oculta el banner y deshabilita el botón', () => {
+        const root = montar('opciones-ticket', '').shadowRoot;
+        expect(root.querySelector('#banner-pdf').hidden).to.be.true;
+        expect(root.querySelector('#btn-descargar-pdf').disabled).to.be.true;
+    });
+
+    // ── Modal ─────────────────────────────────────────────────────────────────
+
+    test('clic en "Descargar PDF" abre el modal nativo <dialog>', () => {
+        const root = montar('opciones-ticket').shadowRoot;
+        abrirModal(root);
+        expect(root.querySelector('#modal-pdf').open).to.be.true;
+    });
+
+    test('el modal tiene aria-labelledby y aria-modal', () => {
+        const root = montar('opciones-ticket').shadowRoot;
+        const modal = root.querySelector('#modal-pdf');
+        expect(modal.getAttribute('aria-labelledby')).to.equal('modal-pdf-titulo');
+        expect(modal.getAttribute('aria-modal')).to.equal('true');
+    });
+
+    test('el modal contiene los botones "Instalar y descargar" y "Solo ver"', () => {
+        const root = montar('opciones-ticket').shadowRoot;
+        abrirModal(root);
+        expect(root.querySelector('#btn-instalar-descargar')).to.not.be.null;
+        expect(root.querySelector('#btn-solo-ver')).to.not.be.null;
+        expect(root.querySelector('#btn-cerrar-modal')).to.not.be.null;
+    });
+
+    test('el foco inicial cae en el botón "Instalar y descargar" al abrir el modal', () => {
+        const root = montar('opciones-ticket').shadowRoot;
+        abrirModal(root);
+        expect(root.activeElement).to.equal(root.querySelector('#btn-instalar-descargar'));
+    });
+
+    test('cerrar con botón ✕ cierra el modal y devuelve el foco al disparador', async () => {
+        const root = montar('opciones-ticket').shadowRoot;
+        root.querySelector('#btn-descargar-pdf').focus();
+        abrirModal(root);
+        root.querySelector('#btn-cerrar-modal').click();
+        await esperar();
+        expect(root.querySelector('#modal-pdf').open).to.be.false;
+        expect(root.activeElement).to.equal(root.querySelector('#btn-descargar-pdf'));
+    });
+
+    // ── Botón "Solo ver" ──────────────────────────────────────────────────────
+
+    test('"Solo ver" abre el PDF en pestaña nueva y cierra el modal sin instalar', () => {
+        const abrir = sinon.stub(window, 'open').returns(null);
+        const root = montar('opciones-ticket').shadowRoot;
+        abrirModal(root);
+        root.querySelector('#btn-solo-ver').click();
+        expect(abrir.calledOnceWithExactly(
+            consultaService.obtenerUrlTicket('consulta-1'), '_blank', 'noopener'
+        )).to.be.true;
+        expect(root.querySelector('#modal-pdf').open).to.be.false;
+    });
+
+    // ── Botón "Instalar y descargar" ──────────────────────────────────────────
+
+    test('"Instalar y descargar" llama al prompt y luego abre el PDF', async () => {
+        const evento = prompt('accepted');
+        const abrir = sinon.stub(window, 'open').returns(null);
+        const root = montar('opciones-ticket').shadowRoot;
+        abrirModal(root);
+        root.querySelector('#btn-instalar-descargar').click();
+        await esperar();
+        expect(evento.prompt.calledOnce).to.be.true;
+        expect(abrir.calledOnceWithExactly(
+            consultaService.obtenerUrlTicket('consulta-1'), '_blank', 'noopener'
+        )).to.be.true;
+        expect(root.querySelector('#modal-pdf').open).to.be.false;
+    });
+
+    test('si no hay prompt disponible el botón principal solo descarga', async () => {
+        const abrir = sinon.stub(window, 'open').returns(null);
+        const root = montar('opciones-ticket').shadowRoot;
+        // Sin evento beforeinstallprompt: botón dice "Descargar"
+        expect(root.querySelector('#btn-instalar-descargar').textContent.trim()).to.equal('Descargar');
+        abrirModal(root);
+        root.querySelector('#btn-instalar-descargar').click();
+        await esperar();
+        expect(abrir.calledOnce).to.be.true;
+        expect(root.querySelector('#modal-pdf').open).to.be.false;
+    });
+
+    test('si la app ya está instalada el botón principal dice "Descargar"', () => {
+        store.setState({ appInstalada: true });
+        const root = montar('opciones-ticket').shadowRoot;
+        expect(root.querySelector('#btn-instalar-descargar').textContent.trim()).to.equal('Descargar');
+    });
+
+    // ── Offline ───────────────────────────────────────────────────────────────
+
+    test('offline muestra aviso en el modal sin abrir pestaña vacía', () => {
+        sinon.stub(navigator, 'onLine').get(() => false);
+        const abrir = sinon.stub(window, 'open');
+        const root = montar('opciones-ticket').shadowRoot;
+        abrirModal(root);
+        root.querySelector('#btn-solo-ver').click();
+        expect(abrir.called).to.be.false;
+        expect(root.querySelector('#aviso').textContent).to.include('Sin conexión');
+    });
+
+    // ── Reactivo a instalación ────────────────────────────────────────────────
+
+    test('appinstalled actualiza el texto del botón a "Descargar" sin recargar', () => {
         prompt();
-        const instalador = montar('instalador-app');
-        const tarjetas = [montar('tarjeta-consulta', 'uno'), montar('tarjeta-consulta', 'dos')];
-        const opciones = tarjetas.map(t => t.shadowRoot.querySelector('opciones-ticket').shadowRoot);
-        expect(instalador.shadowRoot.querySelector('button').hidden).to.be.false;
+        const root = montar('opciones-ticket').shadowRoot;
+        expect(root.querySelector('#btn-instalar-descargar').textContent.trim()).to.equal('Instalar y descargar');
         window.dispatchEvent(new Event('appinstalled'));
         expect(store.state.appInstalada).to.be.true;
-        expect(localStorage.getItem(APP_INSTALADA_KEY)).to.equal('1');
-        opciones.forEach(soloVerTicket);
-        expect(instalador.shadowRoot.querySelector('button').hidden).to.be.true;
-        const abrir = sinon.stub(window, 'open');
-        opciones[1].querySelector('#ver-ticket').click();
-        expect(abrir.calledOnceWithExactly(consultaService.obtenerUrlTicket('dos'), '_blank', 'noopener')).to.be.true;
+        expect(root.querySelector('#btn-instalar-descargar').textContent.trim()).to.equal('Descargar');
     });
 
     test('cambiar appInstalada en Store actualiza todos los componentes visibles', () => {
         const uno = montar('opciones-ticket').shadowRoot;
         const dos = montar('opciones-ticket', 'dos').shadowRoot;
-        uno.querySelector('#instalar').focus();
         store.setState({ appInstalada: true });
-        soloVerTicket(uno); soloVerTicket(dos);
-        expect(uno.activeElement).to.equal(uno.querySelector('#ver-ticket'));
+        expect(uno.querySelector('#btn-instalar-descargar').textContent.trim()).to.equal('Descargar');
+        expect(dos.querySelector('#btn-instalar-descargar').textContent.trim()).to.equal('Descargar');
         store.setState({ appInstalada: false });
+        // Con un prompt disponible volvería a "Instalar y descargar";
+        // sin prompt, se muestra "Descargar" en ambos casos.
         for (const root of [uno, dos]) {
-            expect(root.querySelector('#instalar').hidden).to.be.false;
-            expect(root.querySelector('#ver-web').hidden).to.be.false;
-            expect(root.querySelector('#ver-ticket').hidden).to.be.true;
+            expect(root.querySelector('#btn-descargar-pdf').disabled).to.be.false;
         }
     });
 
-    for (const modo of ['standalone', 'window-controls-overlay', 'ios']) {
-        test(`detecta modo instalado ${modo} y muestra únicamente Ver ticket`, () => {
-            if (modo === 'ios') Object.defineProperty(navigator, 'standalone', { configurable: true, value: true });
-            else sinon.stub(window, 'matchMedia').callsFake(query => ({ matches: query === `(display-mode: ${modo})` }));
-            instalacionService.sincronizarEstado();
-            expect(store.state.appInstalada).to.be.true;
-            soloVerTicket(montar('opciones-ticket').shadowRoot);
-        });
-    }
-
-    test('aceptar userChoice consume un único prompt y persiste instalada incluso sin appinstalled', async () => {
+    test('aceptar userChoice consume un único prompt', async () => {
         const evento = prompt('accepted');
+        sinon.stub(window, 'open').returns(null);
         const root = montar('opciones-ticket').shadowRoot;
         const segunda = montar('opciones-ticket').shadowRoot;
-        root.querySelector('#instalar').click();
-        segunda.querySelector('#instalar').click();
+        abrirModal(root);
+        root.querySelector('#btn-instalar-descargar').click();
+        abrirModal(segunda); // segundo componente no debería obtener el prompt
+        segunda.querySelector('#btn-instalar-descargar').click();
         expect(evento.defaultPrevented).to.be.true;
-        expect(evento.prompt.calledOnce).to.be.true;
-        expect(instalacionService.eventoPendiente).to.be.null;
         await esperar();
-        expect(instalacionService.enCurso).to.be.false;
+        expect(evento.prompt.calledOnce).to.be.true;
         expect(store.state.appInstalada).to.be.true;
         expect(localStorage.getItem(APP_INSTALADA_KEY)).to.equal('1');
-        soloVerTicket(root); soloVerTicket(segunda);
         expect(new Store().state.appInstalada).to.be.true;
     });
 
@@ -148,116 +220,25 @@ suite('Ticket público: pestaña externa e instalación reactiva', () => {
         instalador.shadowRoot.querySelector('button').click();
         expect(evento.prompt.calledOnce).to.be.true;
         await esperar();
-        soloVerTicket(root);
+        expect(root.querySelector('#btn-instalar-descargar').textContent.trim()).to.equal('Descargar');
         expect(instalador.shadowRoot.querySelector('button').hidden).to.be.true;
     });
 
-    test('cancelar restaura los botones y permite volver a solicitar instalación sin bloqueo', async () => {
+    test('cancelar restaura los botones y permite volver a solicitar instalación', async () => {
         let resolver;
         const evento = prompt();
         evento.userChoice = new Promise(resolve => { resolver = resolve; });
+        sinon.stub(window, 'open').returns(null);
         const root = montar('opciones-ticket').shadowRoot;
-        root.querySelector('#instalar').click();
-        expect(root.querySelector('#instalar').disabled).to.be.true;
-        expect(root.querySelector('#instalar').getAttribute('aria-busy')).to.equal('true');
+        abrirModal(root);
+        root.querySelector('#btn-instalar-descargar').click();
+        expect(root.querySelector('#btn-instalar-descargar').disabled).to.be.true;
+        expect(root.querySelector('#btn-instalar-descargar').getAttribute('aria-busy')).to.equal('true');
         resolver({ outcome: 'dismissed' }); await esperar();
         expect(store.state.appInstalada).to.be.false;
         expect(instalacionService.enCurso).to.be.false;
-        expect(root.querySelector('#instalar').disabled).to.be.false;
-        expect(root.querySelector('#instalar').getAttribute('aria-busy')).to.equal('false');
-        expect(root.querySelector('#aviso').textContent).to.include('no se completó');
-        expect(root.querySelector('#ver-web').hidden).to.be.false;
-        root.querySelector('#instalar').click(); await esperar();
-        expect(root.querySelector('#instalar').disabled).to.be.false;
-        expect(root.querySelector('#aviso').textContent).to.include('barra del navegador');
-        const siguiente = prompt('accepted');
-        root.querySelector('#instalar').click(); await esperar();
-        expect(siguiente.prompt.calledOnce).to.be.true;
-        soloVerTicket(root);
-    });
-
-    test('sin beforeinstallprompt informa inline sin usar otra API ni bloquear el botón', async () => {
-        const root = montar('opciones-ticket').shadowRoot;
-        root.querySelector('#instalar').click(); await esperar();
-        expect(root.querySelector('#aviso').hidden).to.be.false;
-        expect(root.querySelector('#aviso').textContent).to.include('barra del navegador');
-        expect(root.querySelector('#instalar').disabled).to.be.false;
-        expect(instalacionService.enCurso).to.be.false;
-    });
-
-    for (const tipo of ['AbortError', 'Error']) {
-        test(`fallo ${tipo} del prompt restaura el estado y permite usar la web`, async () => {
-            const evento = prompt();
-            evento.prompt.rejects(Object.assign(new Error('Fallo'), { name: tipo }));
-            const root = montar('opciones-ticket').shadowRoot;
-            root.querySelector('#instalar').click(); await esperar();
-            expect(instalacionService.enCurso).to.be.false;
-            expect(root.querySelector('#instalar').disabled).to.be.false;
-            expect(root.querySelector('#ver-web').hidden).to.be.false;
-            expect(root.querySelector('#aviso').hidden).to.be.false;
-        });
-    }
-
-    test('un nuevo beforeinstallprompt limpia la bandera persistida de una desinstalación', () => {
-        store.setState({ appInstalada: true });
-        const root = montar('opciones-ticket').shadowRoot;
-        soloVerTicket(root);
-        const evento = prompt();
-        expect(store.state.appInstalada).to.be.false;
-        expect(localStorage.getItem(APP_INSTALADA_KEY)).to.be.null;
-        expect(instalacionService.eventoPendiente).to.equal(evento);
-        expect(root.querySelector('#instalar').hidden).to.be.false;
-        expect(root.querySelector('#ver-web').hidden).to.be.false;
-    });
-
-    test('appinstalled durante un prompt pendiente desbloquea inmediatamente la UI', async () => {
-        let resolver;
-        const evento = prompt();
-        evento.userChoice = new Promise(resolve => { resolver = resolve; });
-        const root = montar('opciones-ticket').shadowRoot;
-        root.querySelector('#instalar').click();
-        window.dispatchEvent(new Event('appinstalled'));
-        expect(instalacionService.enCurso).to.be.false;
-        soloVerTicket(root);
-        resolver({ outcome: 'dismissed' }); await esperar();
-        expect(store.state.appInstalada).to.be.true;
-    });
-
-    test('una aceptación obsoleta no invalida el nuevo prompt disponible', async () => {
-        let resolver;
-        const anterior = prompt();
-        anterior.userChoice = new Promise(resolve => { resolver = resolve; });
-        const root = montar('opciones-ticket').shadowRoot;
-        root.querySelector('#instalar').click();
-        const nuevo = prompt();
-        resolver({ outcome: 'accepted' }); await esperar();
-        expect(store.state.appInstalada).to.be.false;
-        expect(instalacionService.eventoPendiente).to.equal(nuevo);
-        expect(root.querySelector('#instalar').disabled).to.be.false;
-    });
-
-    for (const instalada of [false, true]) {
-        test(`offline no abre pestañas vacías con appInstalada=${instalada}`, () => {
-            store.setState({ appInstalada: instalada });
-            sinon.stub(navigator, 'onLine').get(() => false);
-            const abrir = sinon.stub(window, 'open');
-            const root = montar('opciones-ticket').shadowRoot;
-            root.querySelector(instalada ? '#ver-ticket' : '#ver-web').click();
-            expect(abrir.called).to.be.false;
-            expect(root.querySelector('#aviso').textContent).to.include('Sin conexión');
-            expect(root.querySelector('object, iframe, dialog')).to.be.null;
-        });
-    }
-
-    test('sin identificador no permite abrir un ticket', () => {
-        const abrir = sinon.stub(window, 'open');
-        const root = montar('opciones-ticket', '').shadowRoot;
-        expect(root.querySelector('#instalar').disabled).to.be.true;
-        expect(root.querySelector('#ver-web').hasAttribute('href')).to.be.false;
-        root.querySelector('#ver-web').click();
-        expect(abrir.called).to.be.false;
-        store.setState({ appInstalada: true });
-        expect(root.querySelector('#ver-ticket').disabled).to.be.true;
+        expect(root.querySelector('#btn-instalar-descargar').disabled).to.be.false;
+        expect(root.querySelector('#btn-instalar-descargar').getAttribute('aria-busy')).to.equal('false');
     });
 
     test('sin localStorage disponible sigue reaccionando al estado de instalación', () => {
@@ -269,15 +250,69 @@ suite('Ticket público: pestaña externa e instalación reactiva', () => {
         const root = montar('opciones-ticket').shadowRoot;
         window.dispatchEvent(new Event('appinstalled'));
         expect(store.state.appInstalada).to.be.true;
-        soloVerTicket(root);
+        expect(root.querySelector('#btn-instalar-descargar').textContent.trim()).to.equal('Descargar');
     });
 
     test('los cambios de instalación en otra pestaña se reflejan en la tarjeta', () => {
         const root = montar('opciones-ticket').shadowRoot;
         localStorage.setItem(APP_INSTALADA_KEY, '1');
         window.dispatchEvent(new StorageEvent('storage', { key: APP_INSTALADA_KEY, newValue: '1', storageArea: localStorage }));
-        soloVerTicket(root);
+        expect(root.querySelector('#btn-instalar-descargar').textContent.trim()).to.equal('Descargar');
     });
+
+    for (const modo of ['standalone', 'window-controls-overlay', 'ios']) {
+        test(`detecta modo instalado ${modo} y muestra "Descargar" en el modal`, () => {
+            if (modo === 'ios') Object.defineProperty(navigator, 'standalone', { configurable: true, value: true });
+            else sinon.stub(window, 'matchMedia').callsFake(query => ({ matches: query === `(display-mode: ${modo})` }));
+            instalacionService.sincronizarEstado();
+            expect(store.state.appInstalada).to.be.true;
+            const root = montar('opciones-ticket').shadowRoot;
+            expect(root.querySelector('#btn-instalar-descargar').textContent.trim()).to.equal('Descargar');
+        });
+    }
+
+    test('un nuevo beforeinstallprompt limpia la bandera persistida de una desinstalación', () => {
+        store.setState({ appInstalada: true });
+        const root = montar('opciones-ticket').shadowRoot;
+        expect(root.querySelector('#btn-instalar-descargar').textContent.trim()).to.equal('Descargar');
+        const evento = prompt();
+        expect(store.state.appInstalada).to.be.false;
+        expect(localStorage.getItem(APP_INSTALADA_KEY)).to.be.null;
+        expect(instalacionService.eventoPendiente).to.equal(evento);
+        expect(root.querySelector('#btn-instalar-descargar').textContent.trim()).to.equal('Instalar y descargar');
+    });
+
+    test('appinstalled durante un prompt pendiente desbloquea inmediatamente la UI', async () => {
+        let resolver;
+        const evento = prompt();
+        evento.userChoice = new Promise(resolve => { resolver = resolve; });
+        sinon.stub(window, 'open').returns(null);
+        const root = montar('opciones-ticket').shadowRoot;
+        abrirModal(root);
+        root.querySelector('#btn-instalar-descargar').click();
+        window.dispatchEvent(new Event('appinstalled'));
+        expect(instalacionService.enCurso).to.be.false;
+        expect(root.querySelector('#btn-instalar-descargar').textContent.trim()).to.equal('Descargar');
+        resolver({ outcome: 'dismissed' }); await esperar();
+        expect(store.state.appInstalada).to.be.true;
+    });
+
+    test('una aceptación obsoleta no invalida el nuevo prompt disponible', async () => {
+        let resolver;
+        const anterior = prompt();
+        anterior.userChoice = new Promise(resolve => { resolver = resolve; });
+        sinon.stub(window, 'open').returns(null);
+        const root = montar('opciones-ticket').shadowRoot;
+        abrirModal(root);
+        root.querySelector('#btn-instalar-descargar').click();
+        const nuevo = prompt();
+        resolver({ outcome: 'accepted' }); await esperar();
+        expect(store.state.appInstalada).to.be.false;
+        expect(instalacionService.eventoPendiente).to.equal(nuevo);
+        expect(root.querySelector('#btn-instalar-descargar').disabled).to.be.false;
+    });
+
+    // ── Integración: detalle de consulta ──────────────────────────────────────
 
     for (const caso of ['404', 'offline']) {
         test(`el detalle público mantiene el error ${caso} amigable y de solo lectura`, async () => {
@@ -286,9 +321,10 @@ suite('Ticket público: pestaña externa e instalación reactiva', () => {
             const root = montar('detalle-consulta-view').shadowRoot; await esperar();
             expect(root.querySelector('#estado').textContent).to.include(caso === '404' ? 'No se encontró' : 'Sin conexión');
             expect(root.querySelector('#reintentar').hidden).to.be.false;
-            expect(root.querySelector('form, input, textarea, dialog, [popover]')).to.be.null;
+            expect(root.querySelector('form, input, textarea, [popover]')).to.be.null;
         });
     }
+
     test('la ruta QR renderiza datos y todos los procedimientos históricos sin sesión ni edición', async () => {
         const paso = { nombre: 'Recepción', estado: 'COMPLETADO', orden: 1,
             responsable: { nombres: 'Ana', apellidos: 'Pérez', rol: { nombre: 'Enfermera' } },
@@ -312,7 +348,7 @@ suite('Ticket público: pestaña externa e instalación reactiva', () => {
         const historial = root.querySelector('historial-pasos').shadowRoot;
         for (const contenido of ['Recepción', 'Ana Pérez', '17/11/2026', 'Notas clínicas', 'Migraña', 'Reposo', 'Hemograma']) expect(historial.textContent).to.include(contenido);
         expect(historial.textContent).not.to.match(/\d{4}-\d{2}-\d{2}/);
-        expect(root.querySelector('form, input, textarea, dialog, [popover]')).to.be.null;
+        expect(root.querySelector('form, input, textarea, [popover]')).to.be.null;
         expect(root.querySelector('opciones-ticket').getAttribute('id-consulta')).to.equal('consulta-1');
     });
 

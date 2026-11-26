@@ -92,7 +92,7 @@ const { contenido: plantilla, estilos } = crearPlantilla(`
     }
 </style>
 <header class="barra">
-    <button id="btnMenu" class="btn" type="button" aria-label="Alternar menú" aria-expanded="false">
+    <button id="btnMenu" class="btn" type="button" aria-label="Alternar menú" aria-expanded="false" aria-controls="menu-lateral-nav">
         <span class="linea"></span>
         <span class="linea"></span>
         <span class="linea"></span>
